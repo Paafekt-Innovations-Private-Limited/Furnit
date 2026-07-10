@@ -9,8 +9,12 @@ final class RoomPlanStillImageTests: XCTestCase {
 
     func testRoomPlanCannotRunFromSingleStillImage() throws {
         let imagePath = "/Users/al/Downloads/WhatsApp Image 2026-07-06 at 10.21.21.jpeg"
-        let image = UIImage(contentsOfFile: imagePath)
-        XCTAssertNotNil(image, "Fixture image should load so this test covers the requested still-image scenario.")
+        guard FileManager.default.fileExists(atPath: imagePath),
+              let image = UIImage(contentsOfFile: imagePath) else {
+            throw XCTSkip("Still-image fixture is not available at \(imagePath)")
+        }
+        XCTAssertGreaterThan(image.size.width, 0)
+        XCTAssertGreaterThan(image.size.height, 0)
 
         #if canImport(RoomPlan)
         if #available(iOS 16.0, *) {

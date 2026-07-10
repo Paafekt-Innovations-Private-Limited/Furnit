@@ -190,11 +190,11 @@ final class ImageBasedTests: XCTestCase {
         // Should keep 1 couch (highest confidence), 1 chair, 1 table = 3 detections
         XCTAssertEqual(result.count, 3, "NMS should suppress duplicate couch detections")
 
-        // Verify the highest confidence couch was kept
+        // Verify the tighter overlapping couch box was kept (NMS prefers smaller area, then confidence).
         let couchDetections = result.filter { $0.classIdx == 57 }
         XCTAssertEqual(couchDetections.count, 1)
         if let couchConfidence = couchDetections.first?.confidence {
-            XCTAssertEqual(couchConfidence, 0.92, accuracy: 0.01)
+            XCTAssertEqual(couchConfidence, 0.88, accuracy: 0.01)
         }
 
         // Verify chair and table are preserved

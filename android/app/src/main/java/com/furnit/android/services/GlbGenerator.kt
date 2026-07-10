@@ -284,14 +284,32 @@ class GlbGenerator {
 
     /**
      * Natural room photos encode much faster and smaller as JPEG than PNG.
+     * Downscale very large camera images so GLB files stay WebView- and GPU-friendly.
      */
     private fun bitmapToJpegTextureData(bitmap: Bitmap): TextureData {
+        val textureBitmap = scaleBitmapForTexture(bitmap, maxDimension = 2048)
         val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)
+        textureBitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)
+        if (textureBitmap !== bitmap) {
+            textureBitmap.recycle()
+        }
         return TextureData(
             bytes = stream.toByteArray(),
             mimeType = "image/jpeg",
         )
+    }
+
+    private fun scaleBitmapForTexture(bitmap: Bitmap, maxDimension: Int): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val longestSide = max(width, height)
+        if (longestSide <= maxDimension) {
+            return bitmap
+        }
+        val scale = maxDimension.toFloat() / longestSide
+        val scaledWidth = max(1, (width * scale).toInt())
+        val scaledHeight = max(1, (height * scale).toInt())
+        return Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
     }
 
     /**

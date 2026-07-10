@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
-		61AB30102F2B000000000001 /* FurnitTests/rtmdet_repeated_chair_frame.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 61AB30112F2B000000000001 /* FurnitTests/rtmdet_repeated_chair_frame.jpg */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
 		61MS00052F01000000000003 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00042F01000000000003 /* SplatIO */; };
 		61WV00022F01000000000002 /* Furnit/Resources/WebViewVendor in Resources */ = {isa = PBXBuildFile; fileRef = 61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */; };
@@ -28,7 +27,6 @@
 /* Begin PBXFileReference section */
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		61A62FAD2F24C31500FE755A /* FurnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		61AB30112F2B000000000001 /* FurnitTests/rtmdet_repeated_chair_frame.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = FurnitTests/rtmdet_repeated_chair_frame.jpg; sourceTree = SOURCE_ROOT; };
 		61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Furnit/Resources/WebViewVendor; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -94,7 +92,6 @@
 				61A62FAE2F24C31500FE755A /* FurnitTests */,
 				045F5BDA2E6D302900C5585D /* Products */,
 				61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */,
-				61CC17AB2FEF8E40009D6DA7 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -105,14 +102,6 @@
 				61A62FAD2F24C31500FE755A /* FurnitTests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		61CC17AB2FEF8E40009D6DA7 /* Recovered References */ = {
-			isa = PBXGroup;
-			children = (
-				61AB30112F2B000000000001 /* FurnitTests/rtmdet_repeated_chair_frame.jpg */,
-			);
-			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -243,7 +232,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				61AB30102F2B000000000001 /* FurnitTests/rtmdet_repeated_chair_frame.jpg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

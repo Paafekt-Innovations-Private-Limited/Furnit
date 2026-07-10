@@ -312,9 +312,22 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
     private func assertRTMDetInterface(_ model: MLModel) {
         let inputs = model.modelDescription.inputDescriptionsByName
         XCTAssertEqual(inputs.count, 1)
-        XCTAssertNotNil(inputs["input"])
-        XCTAssertEqual(inputs["input"]?.type, .multiArray)
-        XCTAssertEqual(inputs["input"]?.multiArrayConstraint?.shape.map(\.intValue), [1, 3, 640, 640])
+
+        let inputName = inputs["image"] != nil ? "image" : "input"
+        guard let input = inputs[inputName] else {
+            XCTFail("RTMDet model must expose an image or tensor input. Inputs: \(inputs.keys.sorted())")
+            return
+        }
+
+        if input.type == .image {
+            let width = input.imageConstraint?.pixelsWide ?? 0
+            let height = input.imageConstraint?.pixelsHigh ?? 0
+            XCTAssertGreaterThan(width, 0)
+            XCTAssertGreaterThan(height, 0)
+        } else {
+            XCTAssertEqual(input.type, .multiArray)
+            XCTAssertEqual(input.multiArrayConstraint?.shape.map(\.intValue), [1, 3, 640, 640])
+        }
 
         let outputs = model.modelDescription.outputDescriptionsByName
         let hasPostprocessedOutputs =

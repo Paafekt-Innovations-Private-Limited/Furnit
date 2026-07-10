@@ -3,8 +3,8 @@
 // 1) Unit tests using the same math as the JS in SplatRoomView.
 // 2) Integration test that runs the real zoom formula in a WKWebView.
 
-import XCTest
 import WebKit
+import XCTest
 @testable import Furnit
 
 // MARK: - Zoom math (mirrors JS in SplatRoomView: amplifiedScale, offset scale, distance clamp)
@@ -255,13 +255,20 @@ extension SplatRoomZoomTests {
     func testZoomBehaviorInWebView() throws {
         let expectation = expectation(description: "WebView load and zoom test")
         let config = WKWebViewConfiguration()
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 240), configuration: config)
         var result: Result<String, Error>?
 
-        webView.loadHTMLString(Self.zoomTestHTML, baseURL: nil)
+        final class NavigationDelegate: NSObject, WKNavigationDelegate {
+            var onFinish: (() -> Void)?
+            func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+                onFinish?()
+            }
+        }
 
-        let observer = webView.observe(\.url, options: [.new]) { _, _ in }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        var retainedDelegate: NavigationDelegate?
+        let delegate = NavigationDelegate()
+        retainedDelegate = delegate
+        delegate.onFinish = {
             webView.evaluateJavaScript("window.runZoomTest ? window.runZoomTest() : 'notReady';") { value, error in
                 if let error = error {
                     result = .failure(error)
@@ -273,9 +280,12 @@ extension SplatRoomZoomTests {
                 expectation.fulfill()
             }
         }
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(Self.zoomTestHTML, baseURL: nil)
 
         wait(for: [expectation], timeout: 5.0)
-        observer.invalidate()
+        retainedDelegate = nil
+        webView.navigationDelegate = nil
 
         guard case .success(let jsonString)? = result else {
             if case .failure(let error)? = result { XCTFail("Zoom WebView test failed: \(error)") }

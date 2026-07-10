@@ -12,7 +12,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
-import android.util.Base64
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDialogs
@@ -48,6 +47,7 @@ import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebViewAssetLoader
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import com.furnit.android.models.ModelManager
@@ -119,6 +119,7 @@ class GLBRoomActivity : AppCompatActivity() {
     @Volatile private var inlineBrainFullVideoEnabled = false
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
     private var glbPath: String? = null
+    private var glbViewerCacheDir: File? = null
     private var roomName: String = "3D Room"
     private var roomId: String? = null
     private var isPreviewMode: Boolean = false
@@ -1358,15 +1359,51 @@ class GLBRoomActivity : AppCompatActivity() {
 
         LogUtil.d(TAG, "Loading GLB file: ${glbFile.name} (${glbFile.length()} bytes)")
 
-        // Read GLB and convert to base64
-        val glbData = glbFile.readBytes()
-        val base64GLB = Base64.encodeToString(glbData, Base64.NO_WRAP)
+        // Serve GLB from cache via WebViewAssetLoader instead of inlining base64 in HTML.
+        // Portrait photos embed a full JPEG in the GLB; base64 in loadData() often truncates
+        // on Android WebView and produces a corrupt buffer that GLTFLoader cannot parse.
+        val viewerDir = File(cacheDir, "glb_web_viewer").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        glbViewerCacheDir = viewerDir
+        glbFile.inputStream().use { input ->
+            File(viewerDir, "room.glb").outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        File(viewerDir, "index.html").writeText(generateWebGLHTML())
 
-        val html = generateWebGLHTML(base64GLB)
-        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/glb/", WebViewAssetLoader.InternalStoragePathHandler(this, viewerDir))
+            .build()
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest,
+            ): WebResourceResponse? {
+                return assetLoader.shouldInterceptRequest(request.url)
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                LogUtil.d(TAG, "WebView page loaded")
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?,
+            ) {
+                LogUtil.e(TAG, "WebView error: ${error?.description}")
+            }
+        }
+
+        webView.loadUrl("https://appassets.androidplatform.net/glb/index.html")
     }
 
-    private fun generateWebGLHTML(base64GLB: String): String {
+    private fun generateWebGLHTML(): String {
         val isPortrait = photoOrientation == "portrait"
 
         // Three.js GLB viewer matching iOS GLBRoomView exactly
@@ -1580,23 +1617,9 @@ class GLBRoomActivity : AppCompatActivity() {
         directionalLight.position.set(5, 10, 5);
         scene.add(directionalLight);
 
-        // Load GLB from base64
-        const base64GLB = '$base64GLB';
-
-        try {
-            // Decode base64 to ArrayBuffer
-            const binaryString = atob(base64GLB);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            const arrayBuffer = bytes.buffer;
-
-            console.log('[GLBViewer] GLB data size:', arrayBuffer.byteLength);
-
-            // Load with GLTFLoader
-            const loader = new GLTFLoader();
-            loader.parse(arrayBuffer, '', function(gltf) {
+        // Load GLB from same-origin cache URL (avoids huge inline base64 in HTML).
+        const loader = new GLTFLoader();
+        loader.load('room.glb', function(gltf) {
                 console.log('[GLBViewer] GLB loaded successfully');
 
                 const model = gltf.scene;
@@ -1659,19 +1682,12 @@ class GLBRoomActivity : AppCompatActivity() {
                     window.Android.onLoaded();
                 }
 
-            }, function(error) {
-                console.error('[GLBViewer] GLB parse error:', error);
-                if (window.Android) {
-                    window.Android.onError('Failed to parse 3D model');
-                }
-            });
-
-        } catch (error) {
-            console.error('[GLBViewer] Error:', error);
+        }, undefined, function(error) {
+            console.error('[GLBViewer] GLB load/parse error:', error);
             if (window.Android) {
-                window.Android.onError(error.message || 'Failed to load 3D model');
+                window.Android.onError('Failed to parse 3D model');
             }
-        }
+        });
 
         // Animation loop
         function animate() {
@@ -1879,6 +1895,8 @@ class GLBRoomActivity : AppCompatActivity() {
         furnitureFitManager?.close()
         furnitureFitManager = null
         cameraExecutor.shutdown()
+        glbViewerCacheDir?.deleteRecursively()
+        glbViewerCacheDir = null
         webView.destroy()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         super.onDestroy()
