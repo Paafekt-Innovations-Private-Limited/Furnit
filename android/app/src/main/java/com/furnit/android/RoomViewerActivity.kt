@@ -1,10 +1,14 @@
 package com.furnit.android
 
+import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Typeface
 import android.os.Bundle
+import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.MotionEvent
@@ -42,11 +46,12 @@ class RoomViewerActivity : AppCompatActivity() {
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
     private lateinit var mainImageView: ImageView
     private val imageMatrix = Matrix()
+    private lateinit var rootLayout: FrameLayout
+    private lateinit var hintController: PaafektHintController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
@@ -83,21 +88,20 @@ class RoomViewerActivity : AppCompatActivity() {
             return
         }
 
-        // List files in folder for debugging
         roomFolder.listFiles()?.forEach { file ->
             LogUtil.d("RoomViewer", "  File: ${file.name}")
         }
 
-        // Initialize scale gesture detector
         scaleGestureDetector = ScaleGestureDetector(this, ScaleListener())
-
         setupUI(roomFolder)
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             scaleFactor *= detector.scaleFactor
-            scaleFactor = max(0.5f, min(scaleFactor, 5.0f)) // Limit zoom between 0.5x and 5x
+            scaleFactor = max(0.5f, min(scaleFactor, 5.0f))
             updateImageTransform()
             return true
         }
@@ -111,50 +115,18 @@ class RoomViewerActivity : AppCompatActivity() {
     }
 
     private fun setupUI(roomFolder: File) {
-        val rootLayout = LinearLayout(this).apply {
+        rootLayout = FrameLayout(this).apply {
+            setBackgroundColor(PaafektColors.background)
+        }
+
+        val contentColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#1A1A1A"))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
         }
 
-        // Top bar
-        val topBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#2A2A2A"))
-            setPadding(16, 48, 16, 16)
-            gravity = Gravity.CENTER_VERTICAL
-
-            val backBtn = TextView(this@RoomViewerActivity).apply {
-                text = getString(R.string.photo_room_back)
-                textSize = 16f
-                setTextColor(Color.parseColor("#007AFF"))
-                setOnClickListener { finish() }
-            }
-            addView(backBtn)
-
-            val title = TextView(this@RoomViewerActivity).apply {
-                text = getString(R.string.room_viewer_your_room)
-                textSize = 18f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            addView(title)
-
-            val saveBtn = TextView(this@RoomViewerActivity).apply {
-                text = getString(R.string.common_save)
-                textSize = 16f
-                setTextColor(Color.parseColor("#4CAF50"))
-                setOnClickListener {
-                    Toast.makeText(this@RoomViewerActivity, getString(R.string.room_viewer_saved_toast), Toast.LENGTH_SHORT).show()
-                    finish()
-                }
-            }
-            addView(saveBtn)
-        }
-        rootLayout.addView(topBar)
-
-        // Main content - front wall preview (the main room view) with pinch-to-zoom
         val frontWallFile = File(roomFolder, "front_wall.png")
         if (frontWallFile.exists()) {
             val bitmap = BitmapFactory.decodeFile(frontWallFile.absolutePath)
@@ -164,11 +136,11 @@ class RoomViewerActivity : AppCompatActivity() {
                 setBackgroundColor(Color.BLACK)
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    0, 1f
+                    0,
+                    1f,
                 )
             }
 
-            // Add touch listener for pinch-to-zoom and pan
             mainImageView.setOnTouchListener { _, event ->
                 scaleGestureDetector.onTouchEvent(event)
 
@@ -209,9 +181,7 @@ class RoomViewerActivity : AppCompatActivity() {
                 true
             }
 
-            // Initialize matrix after layout
             mainImageView.post {
-                // Center the image initially
                 val drawable = mainImageView.drawable ?: return@post
                 val dWidth = drawable.intrinsicWidth.toFloat()
                 val dHeight = drawable.intrinsicHeight.toFloat()
@@ -229,31 +199,30 @@ class RoomViewerActivity : AppCompatActivity() {
                 imageMatrix.postTranslate(translateX, translateY)
                 mainImageView.imageMatrix = imageMatrix
 
-                // Reset for proper pan/zoom from centered position
                 translateX = 0f
                 translateY = 0f
             }
 
-            rootLayout.addView(mainImageView)
+            contentColumn.addView(mainImageView)
         } else {
-            mainImageView = ImageView(this)  // Dummy to avoid uninitialized
+            mainImageView = ImageView(this)
             val placeholder = TextView(this).apply {
                 text = getString(R.string.room_viewer_preview_unavailable)
                 textSize = 16f
-                setTextColor(Color.GRAY)
+                setTextColor(PaafektColors.textSecondary)
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    0, 1f
+                    0,
+                    1f,
                 )
             }
-            rootLayout.addView(placeholder)
+            contentColumn.addView(placeholder)
         }
 
-        // Texture previews (thumbnails)
         val textureBar = HorizontalScrollView(this).apply {
-            setBackgroundColor(Color.parseColor("#2A2A2A"))
-            setPadding(8, 8, 8, 8)
+            setBackgroundColor(PaafektColors.surface)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
         }
 
         val textureContainer = LinearLayout(this).apply {
@@ -261,13 +230,12 @@ class RoomViewerActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        // Add texture thumbnails
         val textureFiles = listOf(
             "front_wall.png" to "Front",
             "floor.png" to "Floor",
             "ceiling.png" to "Ceiling",
             "left_wall.png" to "Left",
-            "right_wall.png" to "Right"
+            "right_wall.png" to "Right",
         )
 
         for ((fileName, label) in textureFiles) {
@@ -276,21 +244,21 @@ class RoomViewerActivity : AppCompatActivity() {
                 val container = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
-                    setPadding(8, 8, 8, 8)
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
                 }
 
                 val bitmap = BitmapFactory.decodeFile(file.absolutePath)
                 val thumb = ImageView(this).apply {
                     setImageBitmap(bitmap)
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    layoutParams = LinearLayout.LayoutParams(100, 100)
+                    layoutParams = LinearLayout.LayoutParams(dp(100), dp(100))
                 }
                 container.addView(thumb)
 
                 val labelView = TextView(this).apply {
                     text = label
                     textSize = 10f
-                    setTextColor(Color.LTGRAY)
+                    setTextColor(PaafektColors.textSecondary)
                     gravity = Gravity.CENTER
                 }
                 container.addView(labelView)
@@ -300,31 +268,29 @@ class RoomViewerActivity : AppCompatActivity() {
         }
 
         textureBar.addView(textureContainer)
-        rootLayout.addView(textureBar)
+        contentColumn.addView(textureBar)
 
-        // Info panel
         val infoPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#333333"))
-            setPadding(24, 16, 24, 24)
+            setBackgroundColor(PaafektColors.surfaceHi)
+            setPadding(dp(24), dp(16), dp(24), dp(24))
 
             val infoTitle = TextView(this@RoomViewerActivity).apply {
                 text = getString(R.string.room_viewer_created_success)
                 textSize = 16f
                 setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
+                setTextColor(PaafektColors.textPrimary)
             }
             addView(infoTitle)
 
             val infoText = TextView(this@RoomViewerActivity).apply {
                 text = getString(R.string.room_viewer_created_message)
                 textSize = 14f
-                setTextColor(Color.LTGRAY)
-                setPadding(0, 8, 0, 0)
+                setTextColor(PaafektColors.textSecondary)
+                setPadding(0, dp(8), 0, 0)
             }
             addView(infoText)
 
-            // Read dimensions if available
             val dimensionsFile = File(roomFolder, "dimensions.txt")
             if (dimensionsFile.exists()) {
                 val heightMeters = dimensionsFile.readText()
@@ -340,14 +306,92 @@ class RoomViewerActivity : AppCompatActivity() {
                         getString(R.string.room_viewer_dimensions, dimensionsFile.readText().replace("\n", ", "))
                     }
                     textSize = 12f
-                    setTextColor(Color.GRAY)
-                    setPadding(0, 8, 0, 0)
+                    setTextColor(PaafektColors.textSecondary)
+                    setPadding(0, dp(8), 0, 0)
                 }
                 addView(dimsView)
             }
         }
-        rootLayout.addView(infoPanel)
+        contentColumn.addView(infoPanel)
 
+        rootLayout.addView(contentColumn)
+
+        val topBar = FrameLayout(this).apply {
+            setPadding(dp(16), dp(48), dp(16), 0)
+            elevation = 40f
+        }
+
+        val backBtn = TextView(this).apply {
+            text = getString(R.string.photo_room_back)
+            textSize = 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = PaafektDrawables.toolbarCircle()
+            setOnClickListener { finish() }
+        }
+        topBar.addView(
+            backBtn,
+            FrameLayout.LayoutParams(dp(36), dp(36)).apply {
+                gravity = Gravity.START or Gravity.TOP
+            },
+        )
+
+        val titleCapsule = TextView(this).apply {
+            text = getString(R.string.room_viewer_your_room)
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(PaafektColors.textPrimary)
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            background = PaafektDrawables.toolbarCapsule()
+        }
+        topBar.addView(
+            titleCapsule,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL },
+        )
+
+        val saveBtn = TextView(this).apply {
+            text = getString(R.string.common_save)
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(PaafektColors.accentText)
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = PaafektDrawables.primaryButton()
+            setOnClickListener {
+                Toast.makeText(this@RoomViewerActivity, getString(R.string.room_viewer_saved_toast), Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
+        topBar.addView(
+            saveBtn,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.END or Gravity.TOP },
+        )
+
+        rootLayout.addView(
+            topBar,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.TOP },
+        )
+
+        hintController = PaafektHintController(rootLayout)
         setContentView(rootLayout)
+
+        rootLayout.post {
+            hintController.show(
+                this,
+                R.drawable.ic_gesture_pinch,
+                R.string.room_viewer_pinch_hint,
+            )
+        }
     }
 }
