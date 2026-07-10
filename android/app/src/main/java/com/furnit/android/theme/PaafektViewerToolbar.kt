@@ -2,8 +2,11 @@ package com.furnit.android.theme
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.PorterDuff
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -128,31 +131,46 @@ object PaafektViewerToolbar {
 
     /**
      * Resting summon affordance — mirrors iOS `PaafektImmersiveGoldSummonButton`:
-     * 46dp gold disk, 22dp chevron inset, dark glyph, drop shadow.
+     * 46dp gold disk, 22dp PaafektIconChevronUp (PNG template), dark glyph, drop shadow.
      */
     fun createGoldSummonButton(
         context: Context,
         contentDescription: CharSequence,
         onClick: () -> Unit,
-    ): ImageButton {
+    ): FrameLayout {
         val size = dp(context, 46)
-        val iconInset = dp(context, 12)
-        return ImageButton(context, null, 0).apply {
-            setImageResource(R.drawable.ic_chevron_up)
-            imageTintList = ColorStateList.valueOf(PaafektColors.accentText)
+        val iconSize = dp(context, 22)
+        val shadowColor = Color.argb(89, 0, 0, 0) // iOS .black.opacity(0.35)
+        return FrameLayout(context).apply {
+            layoutParams = goldSummonButtonLayoutParams(context)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(PaafektColors.accent)
             }
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(iconInset, iconInset, iconInset, iconInset)
-            this.contentDescription = contentDescription
-            layoutParams = goldSummonButtonLayoutParams(context)
             ViewCompat.setElevation(this, dp(context, 6).toFloat())
             outlineProvider = ViewOutlineProvider.BACKGROUND
             clipToOutline = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                outlineAmbientShadowColor = shadowColor
+                outlineSpotShadowColor = shadowColor
+            }
+
+            addView(
+                ImageView(context).apply {
+                    setImageResource(R.drawable.ic_chevron_up)
+                    imageTintList = ColorStateList.valueOf(PaafektColors.accentText)
+                    imageTintMode = PorterDuff.Mode.SRC_IN
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER),
+            )
+
             minimumWidth = size
             minimumHeight = size
+            this.contentDescription = contentDescription
+            isClickable = true
+            isFocusable = true
             setOnClickListener { onClick() }
         }
     }
