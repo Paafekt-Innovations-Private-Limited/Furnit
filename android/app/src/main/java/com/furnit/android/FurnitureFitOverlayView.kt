@@ -71,13 +71,6 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val bboxCornerRadiusPx = 6f * density
 
-    private val productionHighlightPaint = Paint().apply {
-        color = PaafektColors.accent
-        alpha = 110
-        isAntiAlias = true
-        isFilterBitmap = true
-    }
-
     private val maskSilhouettePaint = Paint().apply {
         isAntiAlias = true
         isFilterBitmap = true
@@ -656,11 +649,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 drawMatrix.postTranslate(translateX, translateY)
             }
 
-            if (liveFrameAlignedOverlay && !BuildConfig.DEBUG) {
-                drawProductionGoldHighlight(canvas, bmp, drawMatrix)
-            } else {
-                canvas.drawBitmap(bmp, drawMatrix, maskSilhouettePaint)
-            }
+            canvas.drawBitmap(bmp, drawMatrix, maskSilhouettePaint)
         }
 
         val shouldDrawDetectionBoxes = showDetectionBoxes && detections.isNotEmpty()
@@ -708,14 +697,5 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 )
             }
         }
-    }
-
-    private fun drawProductionGoldHighlight(canvas: Canvas, mask: Bitmap, matrix: Matrix) {
-        val layerId = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
-        canvas.drawBitmap(mask, matrix, maskSilhouettePaint)
-        productionHighlightPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), productionHighlightPaint)
-        productionHighlightPaint.xfermode = null
-        canvas.restoreToCount(layerId)
     }
 }

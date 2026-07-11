@@ -399,6 +399,14 @@ struct MeshRoomView: View {
             .onChange(of: showingFurnitureFit) { _, isOn in
                 meshRoomHandleShowingFurnitureFitChange(isOn: isOn)
             }
+            .onChange(of: furnitureFitSegmentationMode) { _, mode in
+                PaafektFullVideoSegmentationExitDiagnostics.logModeChange(
+                    viewer: "MeshRoomView",
+                    mode: mode,
+                    showingFurnitureFit: showingFurnitureFit,
+                    showFullVideoWithIdentifications: showFullVideoWithIdentifications
+                )
+            }
     }
 
     private var meshRoomAfterSelectionObserver: some View {
@@ -1164,18 +1172,16 @@ struct MeshRoomView: View {
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            fullVideoSegmentationDoneControl
+            PaafektFurnitureFitDonePersistentOverlay(
+                showingFurnitureFit: showingFurnitureFit,
+                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+                segmentationMode: furnitureFitSegmentationMode,
+                viewerLabel: "MeshRoomView",
+                onExitFullVideoSegmentation: activateSelectedFurnitureSegmentation,
+                onExitFurnitureFit: toggleMeshFurnitureFit
+            )
         }
         .zIndex(99998)
-    }
-
-    @ViewBuilder
-    private var fullVideoSegmentationDoneControl: some View {
-        if showingFurnitureFit,
-           showFullVideoWithIdentifications,
-           furnitureFitSegmentationMode == .segmentSelected {
-            PaafektSegmentationDoneButton(action: activateSelectedFurnitureSegmentation)
-        }
     }
 
     private func toggleMeshFurnitureFit() {

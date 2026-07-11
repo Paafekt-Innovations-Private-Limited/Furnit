@@ -761,6 +761,14 @@ struct SplatRoomView: View {
 
     private var splatRoomLifecycleStageLabels: some View {
         splatRoomLifecycleStageFurnitureFit
+            .onChange(of: furnitureFitSegmentationMode) { _, mode in
+                PaafektFullVideoSegmentationExitDiagnostics.logModeChange(
+                    viewer: "SplatRoomView",
+                    mode: mode,
+                    showingFurnitureFit: showingFurnitureFit,
+                    showFullVideoWithIdentifications: showFullVideoWithIdentifications
+                )
+            }
             .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
                 restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
             }
@@ -1274,18 +1282,16 @@ struct SplatRoomView: View {
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            fullVideoSegmentationDoneControl
+            PaafektFurnitureFitDonePersistentOverlay(
+                showingFurnitureFit: showingFurnitureFit,
+                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+                segmentationMode: furnitureFitSegmentationMode,
+                viewerLabel: "SplatRoomView",
+                onExitFullVideoSegmentation: activateSelectedFurnitureSegmentation,
+                onExitFurnitureFit: toggleFurnitureFit
+            )
         }
         .zIndex(99998)
-    }
-
-    @ViewBuilder
-    private var fullVideoSegmentationDoneControl: some View {
-        if showingFurnitureFit,
-           showFullVideoWithIdentifications,
-           furnitureFitSegmentationMode == .segmentSelected {
-            PaafektSegmentationDoneButton(action: activateSelectedFurnitureSegmentation)
-        }
     }
 
     @ViewBuilder

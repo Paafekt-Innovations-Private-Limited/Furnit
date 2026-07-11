@@ -129,6 +129,95 @@ struct PaafektSegmentationDoneButton: View {
     }
 }
 
+/// Top-trailing Done for Furniture Fit — default brain flow (segmentPrimary) and full-video segment mode.
+struct PaafektFurnitureFitDonePersistentOverlay: View {
+    let showingFurnitureFit: Bool
+    let showFullVideoWithIdentifications: Bool
+    let segmentationMode: FurnitureFitSegmentationMode
+    let viewerLabel: String
+    let onExitFullVideoSegmentation: () -> Void
+    let onExitFurnitureFit: () -> Void
+
+    private var isActive: Bool {
+        guard showingFurnitureFit else { return false }
+        if showFullVideoWithIdentifications {
+            return segmentationMode == .segmentSelected
+        }
+        return true
+    }
+
+    var body: some View {
+        Group {
+            if isActive {
+                PaafektSegmentationDoneButton {
+                    if showFullVideoWithIdentifications, segmentationMode == .segmentSelected {
+                        onExitFullVideoSegmentation()
+                    } else {
+                        onExitFurnitureFit()
+                    }
+                }
+            }
+        }
+        #if DEBUG
+        .onChange(of: isActive) { _, active in
+            logDebug(
+                "SEGMENT_DONE: persistent visible=\(active) fit=\(showingFurnitureFit) " +
+                "fullVideo=\(showFullVideoWithIdentifications) mode=\(segmentationMode) viewer=\(viewerLabel)"
+            )
+        }
+        #endif
+    }
+}
+
+/// Renders above UIKit `FurnitureFitUIView` (z ~9000). SwiftUI chrome at ~99998 can sit under the camera layer.
+struct PaafektFullVideoSegmentationExitLayer: View {
+    let isActive: Bool
+    let viewerLabel: String
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                if isActive {
+                    PaafektSegmentationDoneButton(action: onDone)
+                }
+            }
+            .padding(.horizontal, Theme.Space.lg)
+            .padding(.top, Theme.Space.sm)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .allowsHitTesting(isActive)
+        #if DEBUG
+        .onChange(of: isActive) { _, active in
+            logDebug("SEGMENT_DONE: overlay visible=\(active) viewer=\(viewerLabel)")
+        }
+        .onAppear {
+            if isActive {
+                logDebug("SEGMENT_DONE: overlay mounted visible=true viewer=\(viewerLabel)")
+            }
+        }
+        #endif
+    }
+}
+
+enum PaafektFullVideoSegmentationExitDiagnostics {
+    static func logModeChange(
+        viewer: String,
+        mode: FurnitureFitSegmentationMode,
+        showingFurnitureFit: Bool,
+        showFullVideoWithIdentifications: Bool
+    ) {
+        #if DEBUG
+        logDebug(
+            "SEGMENT_DONE: mode=\(mode) fit=\(showingFurnitureFit) " +
+            "fullVideo=\(showFullVideoWithIdentifications) viewer=\(viewer)"
+        )
+        #endif
+    }
+}
+
 // MARK: - Summoned toolbar (glass capsule + gold Fit/Capture)
 
 struct PaafektImmersiveSummonedToolbar<NavContent: View, HeroContent: View>: View {
@@ -282,10 +371,9 @@ struct PaafektImmersiveViewerChromeStack<
     @ViewBuilder let persistentOverlay: () -> PersistentOverlay
 
     var body: some View {
-        ZStack {
-            Color.clear
-                .allowsHitTesting(false)
-        }
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
         .overlay(alignment: .topLeading) {
             PaafektImmersiveFaintBackButton(action: onBack)
                 .opacity(chrome.isResting ? 1 : 0.92)

@@ -516,6 +516,14 @@ struct GLBRoomView: View {
             .onChange(of: showingFurnitureFit) { _, isOn in
                 glbRoomHandleShowingFurnitureFitChange(isOn: isOn)
             }
+            .onChange(of: furnitureFitSegmentationMode) { _, mode in
+                PaafektFullVideoSegmentationExitDiagnostics.logModeChange(
+                    viewer: "GLBRoomView",
+                    mode: mode,
+                    showingFurnitureFit: showingFurnitureFit,
+                    showFullVideoWithIdentifications: showFullVideoWithIdentifications
+                )
+            }
     }
 
     private var glbRoomAfterSelectionObserver: some View {
@@ -1259,18 +1267,16 @@ struct GLBRoomView: View {
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            fullVideoSegmentationDoneControl
+            PaafektFurnitureFitDonePersistentOverlay(
+                showingFurnitureFit: showingFurnitureFit,
+                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+                segmentationMode: furnitureFitSegmentationMode,
+                viewerLabel: "GLBRoomView",
+                onExitFullVideoSegmentation: activateSelectedFurnitureSegmentation,
+                onExitFurnitureFit: toggleGlbFurnitureFit
+            )
         }
         .zIndex(99998)
-    }
-
-    @ViewBuilder
-    private var fullVideoSegmentationDoneControl: some View {
-        if showingFurnitureFit,
-           showFullVideoWithIdentifications,
-           furnitureFitSegmentationMode == .segmentSelected {
-            PaafektSegmentationDoneButton(action: activateSelectedFurnitureSegmentation)
-        }
     }
 
     private var glbRoomBottomHeroChrome: some View {

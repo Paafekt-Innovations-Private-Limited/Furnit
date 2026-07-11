@@ -1394,6 +1394,14 @@ private struct DepthAnythingPreviewRoomView: View {
         .onChange(of: showingFurnitureFit) { _, isOn in
             handlePreviewShowingFurnitureFitChanged(isOn: isOn)
         }
+        .onChange(of: furnitureFitSegmentationMode) { _, mode in
+            PaafektFullVideoSegmentationExitDiagnostics.logModeChange(
+                viewer: "SinglePhotoRoomViewer",
+                mode: mode,
+                showingFurnitureFit: showingFurnitureFit,
+                showFullVideoWithIdentifications: showFullVideoWithIdentifications
+            )
+        }
         .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
             restorePreviewFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
         }
@@ -1525,21 +1533,19 @@ private struct DepthAnythingPreviewRoomView: View {
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            previewFullVideoSegmentationDoneControl
+            PaafektFurnitureFitDonePersistentOverlay(
+                showingFurnitureFit: showingFurnitureFit,
+                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+                segmentationMode: furnitureFitSegmentationMode,
+                viewerLabel: "SinglePhotoRoomViewer",
+                onExitFullVideoSegmentation: {
+                    furnitureFitSegmentationMode = .identifyOnly
+                    furnitureFitShowIdentifyLivePreview = true
+                },
+                onExitFurnitureFit: togglePreviewFurnitureFit
+            )
         }
         .zIndex(99_998)
-    }
-
-    @ViewBuilder
-    private var previewFullVideoSegmentationDoneControl: some View {
-        if showingFurnitureFit,
-           showFullVideoWithIdentifications,
-           furnitureFitSegmentationMode == .segmentSelected {
-            PaafektSegmentationDoneButton {
-                furnitureFitSegmentationMode = .identifyOnly
-                furnitureFitShowIdentifyLivePreview = true
-            }
-        }
     }
 
     private var selectedFurnitureChipTitle: String {

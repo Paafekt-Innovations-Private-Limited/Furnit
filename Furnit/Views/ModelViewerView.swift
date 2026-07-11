@@ -283,15 +283,6 @@ struct ModelViewerView: View {
         furnitureFitShowIdentifyLivePreview = true
     }
 
-    @ViewBuilder
-    private var fullVideoSegmentationDoneControl: some View {
-        if showingFurnitureFit,
-           showFullVideoWithIdentifications,
-           furnitureFitSegmentationMode == .segmentSelected {
-            PaafektSegmentationDoneButton(action: exitFullVideoSegmentation)
-        }
-    }
-
     private var segmentModeToggleChrome: some View {
         Group {
             if showingFurnitureFit && showFullVideoWithIdentifications,
@@ -449,7 +440,14 @@ struct ModelViewerView: View {
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            fullVideoSegmentationDoneControl
+            PaafektFurnitureFitDonePersistentOverlay(
+                showingFurnitureFit: showingFurnitureFit,
+                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+                segmentationMode: furnitureFitSegmentationMode,
+                viewerLabel: "ModelViewerView",
+                onExitFullVideoSegmentation: exitFullVideoSegmentation,
+                onExitFurnitureFit: toggleFurnitureFit
+            )
         }
         .zIndex(99998)
     }
@@ -487,20 +485,6 @@ struct ModelViewerView: View {
                 replayTeachingHints: $replayTeachingHints
             )
                 .zIndex(100_000)
-
-            if suppressBuiltInTopChrome {
-                VStack {
-                    HStack {
-                        Spacer()
-                        fullVideoSegmentationDoneControl
-                    }
-                    .padding(.horizontal, Theme.Space.lg)
-                    .padding(.top, Theme.Space.sm)
-                    Spacer()
-                }
-                .zIndex(100_001)
-                .allowsHitTesting(true)
-            }
         }
     }
 
@@ -538,6 +522,14 @@ struct ModelViewerView: View {
         modelViewerWithSessionObservers
             .onChange(of: showingFurnitureFit) { _, isOn in
                 modelViewerHandleShowingFurnitureFitChanged(isOn: isOn)
+            }
+            .onChange(of: furnitureFitSegmentationMode) { _, mode in
+                PaafektFullVideoSegmentationExitDiagnostics.logModeChange(
+                    viewer: "ModelViewerView",
+                    mode: mode,
+                    showingFurnitureFit: showingFurnitureFit,
+                    showFullVideoWithIdentifications: showFullVideoWithIdentifications
+                )
             }
             .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
                 restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)

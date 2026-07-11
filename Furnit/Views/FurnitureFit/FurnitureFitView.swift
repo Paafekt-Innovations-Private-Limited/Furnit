@@ -2036,16 +2036,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func maskUIImageForDisplay(cgImage: CGImage) -> UIImage {
-        #if DEBUG
-        if debugMode {
-            return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
-        }
-        #endif
-        if isFullVideoSelectedSegmentation,
-           let goldImage = FurnitureSegmentationHighlight.goldMaskImage(from: cgImage) {
-            return UIImage(cgImage: goldImage, scale: 1.0, orientation: .up)
-        }
-        return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+        UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
     }
 
     private func clearLiveDetectionOverlay(clearCandidates: Bool) {
