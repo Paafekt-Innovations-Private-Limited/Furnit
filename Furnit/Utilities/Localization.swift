@@ -389,6 +389,7 @@ enum L10n {
         static let displayAllHelpers = "roomViewer.displayAllHelpers".localized
         static let segmentFurnitureAction = "roomViewer.segmentFurnitureAction".localized
         static let stopSegmentationAction = "roomViewer.stopSegmentationAction".localized
+        static let segmentationDone = "roomViewer.segmentationDone".localized
         static let segmentFurnitureAccessibility = "roomViewer.segmentFurnitureAccessibility".localized
         static let snapshotGestureHintExplanation = "roomViewer.snapshotGestureHintExplanation".localized
         /// Short tip for the AR camera-sizing control in the room toolbar (user-facing, not technical).
@@ -440,6 +441,10 @@ enum L10n {
         }
         static func furnitureMetersShort(_ value: Float) -> String {
             String(format: "roomViewer.furnitureMetersShort".localized, locale: .current, value)
+        }
+
+        static func furnitureHeightEstimate(_ value: Float) -> String {
+            String(format: "roomViewer.furnitureHeightEstimate".localized, locale: .current, value)
         }
         static let wallWidthPlaceholder = "roomViewer.wallWidthPlaceholder".localized
         static let wallHeightPlaceholder = "roomViewer.wallHeightPlaceholder".localized

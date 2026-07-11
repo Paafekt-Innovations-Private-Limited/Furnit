@@ -417,6 +417,7 @@
 "roomViewer.displayAllHelpers" = "Display all helpers";
 "roomViewer.segmentFurnitureAction" = "Segment";
 "roomViewer.stopSegmentationAction" = "Stop";
+"roomViewer.segmentationDone" = "Done";
 "roomViewer.segmentFurnitureAccessibility" = "Segment selected furniture";
 "roomViewer.snapshotGestureHintExplanation" = "Tap 📷 to save";
 "roomViewer.arFurnitureSizingHint" = "For better size match";
@@ -446,6 +447,7 @@
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "Furniture height should be less than room height (%.2f m).";
 "roomViewer.roomMetersShort" = "Room: %.2f m";
 "roomViewer.furnitureMetersShort" = "Furn: %.2f m";
+"roomViewer.furnitureHeightEstimate" = "Furniture height ~ %.2f m";
 "roomViewer.wallWidthPlaceholder" = "Width";
 "roomViewer.wallHeightPlaceholder" = "Height";
 "roomViewer.saveErrorUnknown" = "Unknown error";

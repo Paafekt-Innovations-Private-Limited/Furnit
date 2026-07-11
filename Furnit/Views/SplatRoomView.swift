@@ -928,7 +928,16 @@ struct SplatRoomView: View {
         .paafektImmersiveRoomSummonTap(
             chrome: immersiveChrome,
             enabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
-            hideForCapture: isCapturingSnapshot
+            hideForCapture: isCapturingSnapshot,
+            onRestingTap: {
+                if showingFurnitureFit,
+                   showFullVideoWithIdentifications,
+                   furnitureFitSegmentationMode == .segmentSelected {
+                    activateSelectedFurnitureSegmentation()
+                } else {
+                    immersiveChrome.summon()
+                }
+            }
         )
     }
 
@@ -1262,19 +1271,29 @@ struct SplatRoomView: View {
                 }
             }
             .padding(.horizontal, Theme.Space.lg)
+        } restingAccessory: {
+            EmptyView()
+        } persistentOverlay: {
+            fullVideoSegmentationDoneControl
         }
         .zIndex(99998)
     }
 
     @ViewBuilder
+    private var fullVideoSegmentationDoneControl: some View {
+        if showingFurnitureFit,
+           showFullVideoWithIdentifications,
+           furnitureFitSegmentationMode == .segmentSelected {
+            PaafektSegmentationDoneButton(action: activateSelectedFurnitureSegmentation)
+        }
+    }
+
+    @ViewBuilder
     private var segmentButton: some View {
-        if showingFurnitureFit && showFullVideoWithIdentifications {
+        if showingFurnitureFit && showFullVideoWithIdentifications,
+           furnitureFitSegmentationMode != .segmentSelected {
             Button(action: activateSelectedFurnitureSegmentation) {
-                Text(
-                    furnitureFitSegmentationMode == .segmentSelected
-                        ? L10n.RoomViewer.stopSegmentationAction
-                        : L10n.RoomViewer.segmentFurnitureAction
-                )
+                Text(L10n.RoomViewer.segmentFurnitureAction)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -1282,14 +1301,14 @@ struct SplatRoomView: View {
                     .background(
                         Capsule().fill(
                             canSegmentSelectedFurniture
-                                ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                ? Color.orange
                                 : Color.black.opacity(0.45)
                         )
                     )
                     .shadow(radius: 4)
             }
             .buttonStyle(.plain)
-            .disabled(isLoading || (furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture))
+            .disabled(!canSegmentSelectedFurniture)
             .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
         }
     }
@@ -1871,19 +1890,18 @@ struct SplatRoomView: View {
     /// Furn / Room lines; optional “Tap to calibrate” hint only when [showTapHint] is true.
     private func furnitureMeasurementPillContent(showTapHint: Bool) -> some View {
         let displayH = detectedFurnitureHeightAR ?? 0
-        return VStack(spacing: 2) {
-            if let calibH = calibratedRoomHeight {
-                Text(L10n.RoomViewer.roomMetersShort(calibH)).font(.caption2).foregroundColor(.green)
-            }
-            Text(L10n.RoomViewer.furnitureMetersShort(realFurnitureHeight ?? displayH))
-                .font(.caption.bold())
-                .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+        return VStack(spacing: Theme.Space.sm) {
+            PaafektRoomMeasurementPill(
+                primaryText: L10n.RoomViewer.furnitureHeightEstimate(realFurnitureHeight ?? displayH),
+                secondaryText: calibratedRoomHeight.map { L10n.RoomViewer.roomMetersShort($0) },
+                primaryColor: realFurnitureHeight != nil ? Theme.Palette.success : Theme.Palette.textPrimary
+            )
             if showTapHint {
-                Text(L10n.RoomViewer.tapToCalibrate).font(.system(size: 9)).foregroundColor(.gray)
+                Text(L10n.RoomViewer.tapToCalibrate)
+                    .font(Theme.Typo.caption())
+                    .foregroundStyle(Theme.Palette.textSecondary)
             }
         }
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(Color.black.opacity(0.6)).cornerRadius(6)
     }
 
     private var shouldShowArFurnitureMeasurementPill: Bool {

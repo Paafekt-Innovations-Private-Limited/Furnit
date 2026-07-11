@@ -182,14 +182,10 @@ struct ModelViewerView: View {
         if showingFurnitureFit, let fh = furnitureFitEstimatedHeightM {
             VStack {
                 Spacer()
-                Text(String(format: "Furniture height ~ %.2f m", fh))
-                    .font(.caption.bold())
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.55))
-                    .cornerRadius(8)
-                    .padding(.bottom, 96)
+                PaafektRoomMeasurementPill(
+                    primaryText: L10n.RoomViewer.furnitureHeightEstimate(fh)
+                )
+                .padding(.bottom, 96)
             }
             .zIndex(9001)
             .allowsHitTesting(false)
@@ -216,7 +212,17 @@ struct ModelViewerView: View {
         .paafektImmersiveRoomSummonTap(
             chrome: immersiveChrome,
             enabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
-            hideForCapture: isCapturingSnapshot
+            hideForCapture: isCapturingSnapshot,
+            onRestingTap: {
+                if showingFurnitureFit,
+                   showFullVideoWithIdentifications,
+                   furnitureFitSegmentationMode == .segmentSelected {
+                    furnitureFitSegmentationMode = .identifyOnly
+                    furnitureFitShowIdentifyLivePreview = true
+                } else {
+                    immersiveChrome.summon()
+                }
+            }
         )
     }
 
@@ -272,24 +278,30 @@ struct ModelViewerView: View {
         .allowsHitTesting(true)
     }
 
+    private func exitFullVideoSegmentation() {
+        furnitureFitSegmentationMode = .identifyOnly
+        furnitureFitShowIdentifyLivePreview = true
+    }
+
+    @ViewBuilder
+    private var fullVideoSegmentationDoneControl: some View {
+        if showingFurnitureFit,
+           showFullVideoWithIdentifications,
+           furnitureFitSegmentationMode == .segmentSelected {
+            PaafektSegmentationDoneButton(action: exitFullVideoSegmentation)
+        }
+    }
+
     private var segmentModeToggleChrome: some View {
         Group {
-            if showingFurnitureFit && showFullVideoWithIdentifications {
+            if showingFurnitureFit && showFullVideoWithIdentifications,
+               furnitureFitSegmentationMode != .segmentSelected {
                 Button(action: {
-                    if furnitureFitSegmentationMode == .segmentSelected {
-                        furnitureFitSegmentationMode = .identifyOnly
-                        furnitureFitShowIdentifyLivePreview = true
-                    } else {
-                        guard canSegmentSelectedFurniture else { return }
-                        furnitureFitSegmentationMode = .segmentSelected
-                        dismissFullVideoFurnitureTapHint()
-                    }
+                    guard canSegmentSelectedFurniture else { return }
+                    furnitureFitSegmentationMode = .segmentSelected
+                    dismissFullVideoFurnitureTapHint()
                 }) {
-                    Text(
-                        furnitureFitSegmentationMode == .segmentSelected
-                            ? L10n.RoomViewer.stopSegmentationAction
-                            : L10n.RoomViewer.segmentFurnitureAction
-                    )
+                    Text(L10n.RoomViewer.segmentFurnitureAction)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 16)
@@ -297,13 +309,13 @@ struct ModelViewerView: View {
                         .background(
                             Capsule().fill(
                                 canSegmentSelectedFurniture
-                                    ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                    ? Color.orange
                                     : Color.black.opacity(0.45)
                             )
                         )
                         .shadow(radius: 4)
                 }
-                .disabled(furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture)
+                .disabled(!canSegmentSelectedFurniture)
                 .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
             }
         }
@@ -434,6 +446,10 @@ struct ModelViewerView: View {
                 }
             }
             .padding(.horizontal, Theme.Space.lg)
+        } restingAccessory: {
+            EmptyView()
+        } persistentOverlay: {
+            fullVideoSegmentationDoneControl
         }
         .zIndex(99998)
     }
@@ -471,6 +487,20 @@ struct ModelViewerView: View {
                 replayTeachingHints: $replayTeachingHints
             )
                 .zIndex(100_000)
+
+            if suppressBuiltInTopChrome {
+                VStack {
+                    HStack {
+                        Spacer()
+                        fullVideoSegmentationDoneControl
+                    }
+                    .padding(.horizontal, Theme.Space.lg)
+                    .padding(.top, Theme.Space.sm)
+                    Spacer()
+                }
+                .zIndex(100_001)
+                .allowsHitTesting(true)
+            }
         }
     }
 

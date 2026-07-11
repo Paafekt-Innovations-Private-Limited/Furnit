@@ -110,6 +110,25 @@ struct PaafektImmersiveRestingMeasurementPill: View {
     }
 }
 
+/// Always-on exit while full-video segmentation is active — independent of resting vs summoned chrome.
+struct PaafektSegmentationDoneButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(L10n.RoomViewer.segmentationDone)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.Palette.accentText)
+                .padding(.horizontal, Theme.Space.lg)
+                .frame(height: 44)
+                .background(Capsule().fill(Theme.Palette.accent))
+                .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.RoomViewer.segmentationDone)
+    }
+}
+
 // MARK: - Summoned toolbar (glass capsule + gold Fit/Capture)
 
 struct PaafektImmersiveSummonedToolbar<NavContent: View, HeroContent: View>: View {
@@ -187,13 +206,18 @@ struct PaafektImmersiveRoomSummonTapModifier: ViewModifier {
     @ObservedObject var chrome: PaafektViewerChromeController
     var enabled: Bool
     var hideForCapture: Bool
+    var onRestingTap: (() -> Void)?
 
     func body(content: Content) -> some View {
         if enabled, !hideForCapture {
             content.simultaneousGesture(
                 TapGesture().onEnded {
                     guard chrome.isResting else { return }
-                    chrome.summon()
+                    if let onRestingTap {
+                        onRestingTap()
+                    } else {
+                        chrome.summon()
+                    }
                 }
             )
         } else {
@@ -206,13 +230,15 @@ extension View {
     func paafektImmersiveRoomSummonTap(
         chrome: PaafektViewerChromeController,
         enabled: Bool = true,
-        hideForCapture: Bool = false
+        hideForCapture: Bool = false,
+        onRestingTap: (() -> Void)? = nil
     ) -> some View {
         modifier(
             PaafektImmersiveRoomSummonTapModifier(
                 chrome: chrome,
                 enabled: enabled,
-                hideForCapture: hideForCapture
+                hideForCapture: hideForCapture,
+                onRestingTap: onRestingTap
             )
         )
     }
@@ -238,7 +264,12 @@ struct PaafektImmersiveTapToggleLayer: View {
 
 // MARK: - Full immersive chrome stack
 
-struct PaafektImmersiveViewerChromeStack<SummonedToolbar: View, SummonedExtras: View>: View {
+struct PaafektImmersiveViewerChromeStack<
+    SummonedToolbar: View,
+    SummonedExtras: View,
+    RestingAccessory: View,
+    PersistentOverlay: View
+>: View {
     @ObservedObject var chrome: PaafektViewerChromeController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -247,6 +278,8 @@ struct PaafektImmersiveViewerChromeStack<SummonedToolbar: View, SummonedExtras: 
     var hideForCapture: Bool = false
     @ViewBuilder let summonedToolbar: () -> SummonedToolbar
     @ViewBuilder let summonedExtras: () -> SummonedExtras
+    @ViewBuilder let restingAccessory: () -> RestingAccessory
+    @ViewBuilder let persistentOverlay: () -> PersistentOverlay
 
     var body: some View {
         ZStack {
@@ -259,11 +292,21 @@ struct PaafektImmersiveViewerChromeStack<SummonedToolbar: View, SummonedExtras: 
                 .padding(.horizontal, Theme.Space.lg)
                 .padding(.top, Theme.Space.sm)
         }
+        .overlay(alignment: .topTrailing) {
+            persistentOverlay()
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.top, Theme.Space.sm)
+        }
         .overlay(alignment: .bottom) {
             VStack(spacing: Theme.Space.sm) {
                 if chrome.isSummoned {
                     summonedExtras()
                         .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
+                }
+                if chrome.isResting {
+                    restingAccessory()
+                        .frame(maxWidth: .infinity)
+                        .transition(.opacity)
                 }
                 if let measurementText, chrome.isResting {
                     PaafektImmersiveRestingMeasurementPill(text: measurementText)
@@ -287,5 +330,25 @@ struct PaafektImmersiveViewerChromeStack<SummonedToolbar: View, SummonedExtras: 
         }
         .opacity(hideForCapture ? 0 : 1)
         .allowsHitTesting(!hideForCapture)
+    }
+}
+
+extension PaafektImmersiveViewerChromeStack where RestingAccessory == EmptyView, PersistentOverlay == EmptyView {
+    init(
+        chrome: PaafektViewerChromeController,
+        onBack: @escaping () -> Void,
+        measurementText: String? = nil,
+        hideForCapture: Bool = false,
+        @ViewBuilder summonedToolbar: @escaping () -> SummonedToolbar,
+        @ViewBuilder summonedExtras: @escaping () -> SummonedExtras
+    ) {
+        self.chrome = chrome
+        self.onBack = onBack
+        self.measurementText = measurementText
+        self.hideForCapture = hideForCapture
+        self.summonedToolbar = summonedToolbar
+        self.summonedExtras = summonedExtras
+        self.restingAccessory = { EmptyView() }
+        self.persistentOverlay = { EmptyView() }
     }
 }

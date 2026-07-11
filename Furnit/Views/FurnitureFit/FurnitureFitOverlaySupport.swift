@@ -31,6 +31,10 @@ final class DetectionBBoxOverlayView: UIView {
     var items: [DetectionOverlayItem] = [] {
         didSet { setNeedsDisplay() }
     }
+    /// When false, only selected clusters render and labels are hidden (production full-video).
+    var showsDiagnosticLabels = false
+
+    private static let accentGold = UIColor(red: 201 / 255, green: 162 / 255, blue: 75 / 255, alpha: 1)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -55,15 +59,18 @@ final class DetectionBBoxOverlayView: UIView {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byTruncatingTail
         for item in items {
-            let strokeColor: UIColor = item.isSelected ? .systemYellow : UIColor.white.withAlphaComponent(0.88)
-            let fillColor = UIColor.black.withAlphaComponent(item.isSelected ? 0.55 : 0.38)
+            let strokeColor: UIColor = item.isSelected
+                ? Self.accentGold
+                : UIColor.white.withAlphaComponent(0.55)
             let lineWidth: CGFloat = item.isSelected ? 2.5 : 1.2
             let boxPath = UIBezierPath(roundedRect: item.rectInView, cornerRadius: 6)
-            fillColor.setFill()
             strokeColor.setStroke()
             boxPath.lineWidth = lineWidth
             boxPath.stroke()
 
+            guard showsDiagnosticLabels else { continue }
+
+            let fillColor = UIColor.black.withAlphaComponent(item.isSelected ? 0.55 : 0.38)
             let scoreText = String(format: "%.2f", item.confidence)
             let text = item.label.isEmpty ? "" : "\(item.label) \(scoreText)"
             guard !text.isEmpty else { continue }

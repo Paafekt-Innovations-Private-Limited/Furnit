@@ -288,7 +288,16 @@ struct MeshRoomView: View {
             .allowsHitTesting(!isLoading)
             .paafektImmersiveRoomSummonTap(
                 chrome: immersiveChrome,
-                enabled: !(showingFurnitureFit && showFullVideoWithIdentifications)
+                enabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+                onRestingTap: {
+                    if showingFurnitureFit,
+                       showFullVideoWithIdentifications,
+                       furnitureFitSegmentationMode == .segmentSelected {
+                        activateSelectedFurnitureSegmentation()
+                    } else {
+                        immersiveChrome.summon()
+                    }
+                }
             )
 
             meshRoomLoadingOverlay
@@ -479,23 +488,18 @@ struct MeshRoomView: View {
 
     private func furnitureMeasurementPillContent(showTapHint: Bool) -> some View {
         let displayHeight = detectedFurnitureHeightAR ?? 0
-        return VStack(spacing: 2) {
-            Text(L10n.RoomViewer.roomMetersShort(calibratedRoomHeight))
-                .font(.caption2)
-                .foregroundColor(roomCalibrationScaleFactor == 1.0 ? .white : .green)
-            Text(L10n.RoomViewer.furnitureMetersShort(realFurnitureHeight ?? displayHeight))
-                .font(.caption.bold())
-                .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+        return VStack(spacing: Theme.Space.sm) {
+            PaafektRoomMeasurementPill(
+                primaryText: L10n.RoomViewer.furnitureHeightEstimate(realFurnitureHeight ?? displayHeight),
+                secondaryText: L10n.RoomViewer.roomMetersShort(calibratedRoomHeight),
+                primaryColor: realFurnitureHeight != nil ? Theme.Palette.success : Theme.Palette.textPrimary
+            )
             if showTapHint {
                 Text(L10n.RoomViewer.tapToCalibrate)
-                    .font(.system(size: 9))
-                    .foregroundColor(.gray)
+                    .font(Theme.Typo.caption())
+                    .foregroundStyle(Theme.Palette.textSecondary)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.black.opacity(0.6))
-        .cornerRadius(6)
     }
 
     private var calibrationOverlayView: some View {
@@ -1157,8 +1161,21 @@ struct MeshRoomView: View {
                 }
             }
             .padding(.horizontal, Theme.Space.lg)
+        } restingAccessory: {
+            EmptyView()
+        } persistentOverlay: {
+            fullVideoSegmentationDoneControl
         }
         .zIndex(99998)
+    }
+
+    @ViewBuilder
+    private var fullVideoSegmentationDoneControl: some View {
+        if showingFurnitureFit,
+           showFullVideoWithIdentifications,
+           furnitureFitSegmentationMode == .segmentSelected {
+            PaafektSegmentationDoneButton(action: activateSelectedFurnitureSegmentation)
+        }
     }
 
     private func toggleMeshFurnitureFit() {
@@ -1345,13 +1362,10 @@ struct MeshRoomView: View {
 
     @ViewBuilder
     private var segmentButton: some View {
-        if showingFurnitureFit && showFullVideoWithIdentifications {
+        if showingFurnitureFit && showFullVideoWithIdentifications,
+           furnitureFitSegmentationMode != .segmentSelected {
             Button(action: activateSelectedFurnitureSegmentation) {
-                Text(
-                    furnitureFitSegmentationMode == .segmentSelected
-                        ? L10n.RoomViewer.stopSegmentationAction
-                        : L10n.RoomViewer.segmentFurnitureAction
-                )
+                Text(L10n.RoomViewer.segmentFurnitureAction)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -1359,14 +1373,14 @@ struct MeshRoomView: View {
                     .background(
                         Capsule().fill(
                             canSegmentSelectedFurniture
-                                ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                ? Color.orange
                                 : Color.black.opacity(0.45)
                         )
                     )
                     .shadow(radius: 4)
             }
             .buttonStyle(.plain)
-            .disabled(isLoading || (furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture))
+            .disabled(isLoading || !canSegmentSelectedFurniture)
             .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
         }
     }

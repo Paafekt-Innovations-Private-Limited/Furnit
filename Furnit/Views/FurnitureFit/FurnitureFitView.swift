@@ -1999,7 +1999,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         let pins = selectedPinsSnapshot()
-        detectionBBoxOverlayView.items = clusters.enumerated().map { clusterOffset, memberIndices in
+        var overlayItems = clusters.enumerated().map { clusterOffset, memberIndices in
             let clusterRect = clusterOffset < clusterBboxesInView.count ? clusterBboxesInView[clusterOffset] : .null
             let anySelected = memberIndices.contains { idx in
                 idx < candidates.count &&
@@ -2023,6 +2023,29 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 isSelected: anySelected
             )
         }
+        #if DEBUG
+        if !debugMode {
+            overlayItems = overlayItems.filter(\.isSelected)
+        }
+        detectionBBoxOverlayView.showsDiagnosticLabels = debugMode
+        #else
+        overlayItems = overlayItems.filter(\.isSelected)
+        detectionBBoxOverlayView.showsDiagnosticLabels = false
+        #endif
+        detectionBBoxOverlayView.items = overlayItems
+    }
+
+    private func maskUIImageForDisplay(cgImage: CGImage) -> UIImage {
+        #if DEBUG
+        if debugMode {
+            return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+        }
+        #endif
+        if isFullVideoSelectedSegmentation,
+           let goldImage = FurnitureSegmentationHighlight.goldMaskImage(from: cgImage) {
+            return UIImage(cgImage: goldImage, scale: 1.0, orientation: .up)
+        }
+        return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
     }
 
     private func clearLiveDetectionOverlay(clearCandidates: Bool) {
@@ -4069,6 +4092,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             )
         }
 
+        #if DEBUG
         if debugMode, let image = finalCGImage {
             let decoderOffsets = cached.originalDecoderIndices
             let affinityInCandidateSpace: Set<Int> = Set(
@@ -4087,6 +4111,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 origH: image.height
             ) ?? image
         }
+        #endif
 
         let bboxWidthPx = Int(max(1, primary.w))
         let bboxHeightPx = Int(max(1, primary.h))
@@ -4112,12 +4137,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 scaleX: 1,
                 scaleY: 1
             )
-            if let finalCGImage {
-                self.maskImageView.image = UIImage(cgImage: finalCGImage, scale: 1.0, orientation: .up)
-                self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: finalCGImage)
-            } else {
-                self.maskImageView.image = nil
-            }
+                if let finalCGImage {
+                    self.maskImageView.image = self.maskUIImageForDisplay(cgImage: finalCGImage)
+                    self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: finalCGImage)
+                } else {
+                    self.maskImageView.image = nil
+                }
             self.commitFurnitureSizeAfterSegmentationMaskApplied(
                 maskHasForeground: maskHasForeground,
                 primaryMetricResult: nil,
@@ -4458,6 +4483,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
+            #if DEBUG
             if debugMode, let image = finalCGImage {
                 let affinityInCandidateSpace: Set<Int>
                 if let groupIndices = cachedMaskResult?.affinityGroupIndices {
@@ -4478,6 +4504,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     origH: image.height
                 ) ?? image
             }
+            #endif
 
             let bboxWidthPx = Int(max(1, primary.w))
             let bboxHeightPx = Int(max(1, primary.h))
@@ -4504,7 +4531,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     scaleY: 1
                 )
                 if let finalCGImage {
-                    self.maskImageView.image = UIImage(cgImage: finalCGImage, scale: 1.0, orientation: .up)
+                    self.maskImageView.image = self.maskUIImageForDisplay(cgImage: finalCGImage)
                     self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: finalCGImage)
                 } else {
                     self.maskImageView.image = nil
@@ -5420,6 +5447,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             )
         }
 
+        #if DEBUG
         if debugMode, let image = finalCGImage {
             let affinityInCandidateSpace: Set<Int> = Set(
                 cachedResult.affinityGroupIndices.compactMap { unrankedIdx in
@@ -5437,6 +5465,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 origH: image.height
             ) ?? image
         }
+        #endif
 
         return PreparedOverlayMask(
             cgImage: finalCGImage,

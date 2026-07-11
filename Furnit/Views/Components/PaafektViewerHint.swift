@@ -127,6 +127,29 @@ struct PaafektHintChip: View {
     }
 }
 
+/// Glass measurement pill for room viewer chrome (dimensions, furniture height).
+struct PaafektRoomMeasurementPill: View {
+    let primaryText: String
+    var secondaryText: String? = nil
+    var primaryColor: Color = Theme.Palette.textSecondary
+
+    var body: some View {
+        VStack(spacing: 2) {
+            if let secondaryText {
+                Text(secondaryText)
+                    .font(Theme.Typo.caption())
+                    .foregroundStyle(Theme.Palette.success)
+            }
+            Text(primaryText)
+                .font(Theme.Typo.caption())
+                .foregroundStyle(primaryColor)
+        }
+        .padding(.horizontal, Theme.Space.md)
+        .padding(.vertical, Theme.Space.sm)
+        .paafektGlassCapsuleSurface()
+    }
+}
+
 // MARK: - Bottom scrim variant
 
 /// Soft bottom gradient scrim with a hint chip floated above the toolbar region.

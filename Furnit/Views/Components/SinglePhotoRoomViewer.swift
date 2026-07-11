@@ -1309,7 +1309,17 @@ private struct DepthAnythingPreviewRoomView: View {
         .paafektImmersiveRoomSummonTap(
             chrome: immersiveChrome,
             enabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
-            hideForCapture: isSavingRoom || isCapturingSnapshot
+            hideForCapture: isSavingRoom || isCapturingSnapshot,
+            onRestingTap: {
+                if showingFurnitureFit,
+                   showFullVideoWithIdentifications,
+                   furnitureFitSegmentationMode == .segmentSelected {
+                    furnitureFitSegmentationMode = .identifyOnly
+                    furnitureFitShowIdentifyLivePreview = true
+                } else {
+                    immersiveChrome.summon()
+                }
+            }
         )
     }
 
@@ -1512,8 +1522,24 @@ private struct DepthAnythingPreviewRoomView: View {
                 previewRoomIntelligencePlacementCardResetOnExit
             }
             .padding(.horizontal, Theme.Space.lg)
+        } restingAccessory: {
+            EmptyView()
+        } persistentOverlay: {
+            previewFullVideoSegmentationDoneControl
         }
         .zIndex(99_998)
+    }
+
+    @ViewBuilder
+    private var previewFullVideoSegmentationDoneControl: some View {
+        if showingFurnitureFit,
+           showFullVideoWithIdentifications,
+           furnitureFitSegmentationMode == .segmentSelected {
+            PaafektSegmentationDoneButton {
+                furnitureFitSegmentationMode = .identifyOnly
+                furnitureFitShowIdentifyLivePreview = true
+            }
+        }
     }
 
     private var selectedFurnitureChipTitle: String {
@@ -1526,21 +1552,13 @@ private struct DepthAnythingPreviewRoomView: View {
     @ViewBuilder
     private var previewSegmentModeToggleChrome: some View {
         Group {
-            if showingFurnitureFit && showFullVideoWithIdentifications {
+            if showingFurnitureFit && showFullVideoWithIdentifications,
+               furnitureFitSegmentationMode != .segmentSelected {
                 Button(action: {
-                    if furnitureFitSegmentationMode == .segmentSelected {
-                        furnitureFitSegmentationMode = .identifyOnly
-                        furnitureFitShowIdentifyLivePreview = true
-                    } else {
-                        guard canSegmentSelectedFurniture else { return }
-                        furnitureFitSegmentationMode = .segmentSelected
-                    }
+                    guard canSegmentSelectedFurniture else { return }
+                    furnitureFitSegmentationMode = .segmentSelected
                 }) {
-                    Text(
-                        furnitureFitSegmentationMode == .segmentSelected
-                            ? L10n.RoomViewer.stopSegmentationAction
-                            : L10n.RoomViewer.segmentFurnitureAction
-                    )
+                    Text(L10n.RoomViewer.segmentFurnitureAction)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -1548,13 +1566,13 @@ private struct DepthAnythingPreviewRoomView: View {
                     .background(
                         Capsule().fill(
                             canSegmentSelectedFurniture
-                                ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                ? Color.orange
                                 : Color.black.opacity(0.45)
                         )
                     )
                     .shadow(radius: 4)
                 }
-                .disabled(furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture)
+                .disabled(!canSegmentSelectedFurniture)
                 .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
             }
         }
