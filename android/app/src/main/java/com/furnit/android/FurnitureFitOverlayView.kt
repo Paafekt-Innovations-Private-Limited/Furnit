@@ -6,7 +6,7 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewConfiguration
-import com.furnit.android.utils.DebugLogger
+import com.furnit.android.theme.PaafektColors
 import com.furnit.android.utils.LogUtil
 import java.util.Locale
 import kotlin.math.max
@@ -71,7 +71,14 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val bboxCornerRadiusPx = 6f * density
 
-    private val maskPaint = Paint().apply {
+    private val productionHighlightPaint = Paint().apply {
+        color = PaafektColors.accent
+        alpha = 110
+        isAntiAlias = true
+        isFilterBitmap = true
+    }
+
+    private val maskSilhouettePaint = Paint().apply {
         isAntiAlias = true
         isFilterBitmap = true
     }
@@ -85,7 +92,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     private val selectedBoxPaint = Paint().apply {
-        color = Color.parseColor("#FFCC00")
+        color = PaafektColors.accent
         style = Paint.Style.STROKE
         strokeWidth = 2.5f * density
         isAntiAlias = true
@@ -649,10 +656,14 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 drawMatrix.postTranslate(translateX, translateY)
             }
 
-            canvas.drawBitmap(bmp, drawMatrix, maskPaint)
+            if (liveFrameAlignedOverlay && !BuildConfig.DEBUG) {
+                drawProductionGoldHighlight(canvas, bmp, drawMatrix)
+            } else {
+                canvas.drawBitmap(bmp, drawMatrix, maskSilhouettePaint)
+            }
         }
 
-        val shouldDrawDetectionBoxes = detections.isNotEmpty() && (showDetectionBoxes || DebugLogger.isDebugMode)
+        val shouldDrawDetectionBoxes = showDetectionBoxes && detections.isNotEmpty()
         if (shouldDrawDetectionBoxes) {
             val transform = currentDetectionTransform()
 
@@ -661,11 +672,13 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 val representative = representativeDetection(group) ?: continue
                 val isSelected = isClusterSelected(group)
                 val activeBoxPaint = if (isSelected) selectedBoxPaint else boxPaint
-                val activeTextBgPaint = if (isSelected) selectedTextBgPaint else textBgPaint
-                val activeTextPaint = if (isSelected) selectedTextPaint else textPaint
 
                 canvas.drawRoundRect(rect, bboxCornerRadiusPx, bboxCornerRadiusPx, activeBoxPaint)
 
+                if (!BuildConfig.DEBUG) continue
+
+                val activeTextBgPaint = if (isSelected) selectedTextBgPaint else textBgPaint
+                val activeTextPaint = if (isSelected) selectedTextPaint else textPaint
                 val scoreText = String.format(Locale.US, "%.2f", representative.confidence)
                 val label = clusterLabel(group, representative)
                 val text = if (label.isEmpty()) "" else "$label $scoreText"
@@ -695,5 +708,14 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 )
             }
         }
+    }
+
+    private fun drawProductionGoldHighlight(canvas: Canvas, mask: Bitmap, matrix: Matrix) {
+        val layerId = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+        canvas.drawBitmap(mask, matrix, maskSilhouettePaint)
+        productionHighlightPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), productionHighlightPaint)
+        productionHighlightPaint.xfermode = null
+        canvas.restoreToCount(layerId)
     }
 }
