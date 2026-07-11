@@ -69,7 +69,7 @@ The Settings image scan intentionally mirrors the RTMDet live path:
 
 ### Room viewer full-video smoke test
 
-1. Home → **Photo → 3D** → create or open a saved AI room.
+1. Home → **Photo → 3D** → pick photo (preview opens instantly) or open a **saved** AI room → tap **Save** on preview if testing first-save ML.
 2. Tap **brain** (bottom-left). Default `segmentPrimary` should auto-segment one primary item over the 3D room.
 3. Tap **text.viewfinder** while brain is active. Live camera preview + cluster boxes should appear.
 4. Tap two or more clusters, then tap **Segment**. Preview should hide; transparent cutouts should show over the 3D room.

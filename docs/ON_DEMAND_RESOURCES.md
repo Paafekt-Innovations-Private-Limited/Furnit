@@ -15,8 +15,10 @@ The app uses Apple's **On-Demand Resources (ODR)** to deliver large CoreML model
 | Depth Anything V2 Metric Indoor Small | `Furnit/Models/DepthAnything/` | Single-photo metric depth → USDZ room mesh |
 | GeoCalib Pinhole CNN | `Furnit/Models/GeoCalib/` | Camera focal length + gravity for Depth Anything sizing |
 
-Default **iOS room creation** = **GeoCalib + Depth Anything + RTMDet object anchor → USDZ** (see
-`CONTEXT.md`, `DepthAnythingRoomReconstructor.swift`, and `Furnit/diagrams/room-generation-flow.svg`).
+Default **iOS room creation** = **instant preview (no ML)** then **GeoCalib + Depth Anything +
+RTMDet object anchor → USDZ on first save** (see `CONTEXT.md`, `SinglePhotoRoomViewer.swift`,
+`DepthAnythingRoomReconstructor.swift`, and `Furnit/diagrams/room-generation-flow.svg`).
+Depth Anything and GeoCalib are bundled; RTMDet runs at save time and for Furniture Fit in viewers.
 No separate room-generation ODR tag is used by the active Swift path.
 
 ## How It Works
@@ -61,7 +63,7 @@ Key methods:
 - `releaseResources()` - Frees disk space and unloads model
 
 Shared by `ModelViewerView`, saved-room viewers, Settings image scan, and the one-shot object-anchor
-step in room generation.
+step in room generation (**first save only**; preview skips RTMDet for room measurement).
 
 ### 3. Depth Anything + GeoCalib (bundled)
 
@@ -81,7 +83,8 @@ if Bundle.main.url(forResource: modelName, withExtension: modelExtension) != nil
 
 ### 5. UI
 
-**Depth Anything** (`SinglePhotoRoomViewer.swift`): Generation progress overlay; no separate large-model ODR for depth/GeoCalib when bundled.
+**Depth Anything** (`SinglePhotoRoomViewer.swift`): Instant preview overlay during exploration; save
+progress overlay when first-save ML runs. No separate large-model ODR for depth/GeoCalib when bundled.
 
 **RTMDet**: Model loads in the background when any room view appears. Required for Furniture Fit brain overlay and chair-anchor depth calibration.
 

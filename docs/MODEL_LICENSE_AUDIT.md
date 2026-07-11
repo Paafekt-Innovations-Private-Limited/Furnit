@@ -143,7 +143,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 |------|--------|--------|
 | M-LSD | Scripts only (`scripts/mlsd_*.py`) | Repo grep |
 | Whisper | Zero references | Repo grep |
-| Apple SHARP | Doc mention only | `docs/UI_AUDIT.md` |
+| Apple SHARP | Doc mention only (historical) | was `docs/UI_AUDIT.md`; splats now MetalSplatter |
 | ExecuTorch / NCNN / LiteRT | Gitignored / legacy | `android/README.md` |
 
 ---

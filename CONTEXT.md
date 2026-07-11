@@ -47,7 +47,22 @@ Current behavior:
 ### Room Generation — GeoCalib + Depth Anything + RTMDet Anchor (default)
 
 The active iOS single-photo room-generation backend is **Depth Anything V2 Metric Indoor + GeoCalib
-+ RTMDet object-anchor measurement**.
++ RTMDet object-anchor measurement**, split into **two phases**:
+
+1. **Instant preview (no ML)** — `makeDepthAnythingPreviewDestination` in `SinglePhotoRoomViewer.swift`
+   downsamples the photo, writes a JPEG sidecar, and opens `DepthAnythingPreviewRoomView` with
+   placeholder dimensions (W=2 m, H=aspect×W, D=3 m). No GeoCalib, Depth Anything, RTMDet, or USDZ
+   export runs during creation (`[DepthAnythingRoom][PreviewFast]` log).
+2. **First save (full ML)** — tapping Save calls `DepthAnythingRoomReconstructor.reconstructWithResult`,
+   which runs the parallel inference stack below, exports USDZ, and copies the room into saved rooms
+   with measured W×H×D in `.usdz.meta`.
+
+**Alternate manual path:** orange manual setup card → boundary editor → `SinglePhotoRoomReconstructor`
++ `SyntheticDepthEstimator` (CIFilter placeholder depth, not MiDaS) → `MeshRoomView`. No GeoCalib or
+Depth Anything on this path.
+
+**Saved PLY splats:** `SplatRoomView` → `GaussianSplatView` renders via **MetalSplatter + SplatIO**
+(spz-swift). SparkJS was removed; no WebGL splat bundle ships.
 
 Important files:
 
@@ -56,23 +71,25 @@ Important files:
 - `Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage` — bundled Apache-licensed metric indoor depth model.
 - `Furnit/Models/GeoCalib/GeoCalibPinholeCNN.mlpackage` — bundled GeoCalib perspective-field CNN (LM refinement in Swift).
 - `Furnit/Services/OnDevice/RTMDetImageInference.swift` — one-shot object-anchor bbox used by the room measurement path.
-- `Furnit/Views/Components/SinglePhotoRoomViewer.swift` — dispatches generation, opens USDZ preview, saves rooms + camera sidecars.
+- `Furnit/Views/Components/SinglePhotoRoomViewer.swift` — preview dispatch (`PreviewFast`), save
+  (`reconstructWithResult`), camera sidecars.
 - `Furnit/Views/ModelViewerView.swift` / `Furnit/Views/Components/RealityKitView.swift` — RealityKit USDZ preview and camera framing.
 - `Furnit/Utilities/RealityKitBoundaryManager.swift` — front-facing camera for `.depthAnythingImageDepthMeters` rooms.
 - `scripts/run_geocalib.py`, `scripts/geocalib_write_sidecar.py`, `scripts/export_geocalib_to_coreml.py` — GeoCalib export and offline validation.
 - `scripts/depthanything_measure_room.py` — Python reference for metric depth + mesh export.
 
-Pipeline order (one measurement grid):
+Pipeline order (one measurement grid, **on first save only**):
 
 1. **Full working frame** (e.g. 1200×1600 after downsample) — same grid for everything.
 2. **Parallel inference** — GeoCalib focal/gravity, Depth Anything metric depth, and RTMDet object anchor run from the same image.
-3. **Metric calibration** — compare GeoCalib, sidecar/EXIF/ARKit capture metadata, and object-anchor measurements to resolve focal and depth scale.
+3. **Metric calibration** — compare GeoCalib, sidecar/EXIF/ARKit capture metadata, and object-anchor measurements to resolve focal and depth scale. **ARKit capture gravity and camera height override GeoCalib** when present. Vanishing-point gravity refiner (`VanishingPointGravity`) is a stub (`vps=0`, unimplemented).
 4. **Unproject together** — a shared point grid feeds room extent, single-view height/width, object masks, and final W×H×D.
 5. **Mesh + export** — build a textured mesh from the calibrated depth grid, export USDZ, persist camera sidecars and metadata.
 
 Current behavior:
 
-- Default export is **USDZ** with texture UVs; preview/save UX in `DepthAnythingPreviewRoomView`.
+- **Preview** is a flat photo plane in `DepthAnythingPreviewRoomView` with placeholder dims; brain/segment can load RTMDet separately for Furniture Fit.
+- **Save** produces **USDZ** with texture UVs and measured W×H×D.
 - Room W×H×D exposed by the room viewer controls and stored in `.usdz.meta` come from the measurement grid, not mesh bounds or wall-rect frustum math.
 - Saved rooms use `roomCoordinateFrame=depth_anything_image_depth_meters`.
 - The old model-backed splat generation service/model path is removed from the active iOS Swift code.
@@ -105,7 +122,7 @@ Current contract:
 ## Current Android Architecture
 
 Android room generation uses an optimized **flat full-photo GLB** preview path (GeoCalib + Depth Anything parity path in progress).
-iOS uses **GeoCalib + Depth Anything + RTMDet object anchor → USDZ** instead.
+iOS uses **instant preview (no ML)** then **GeoCalib + Depth Anything + RTMDet object anchor → USDZ on first save**.
 
 Current Android room-creation behavior:
 

@@ -234,15 +234,23 @@
 - **GeoCalib** Pinhole CNN (`GeoCalibPinholeCNN.mlpackage`) — focal length + gravity from full frame (letterbox 320², `fx = fy` in working pixels); LM refinement in Swift.
 - **Depth Anything V2 Metric Indoor Small** (`DepthAnythingV2MetricIndoorSmall.mlpackage`) — per-pixel metric depth on the same working grid.
 
-**Method:**
+**Method (two-phase):**
+
+**Phase 1 — Instant preview (no ML):**
+1. Downsample photo, write JPEG + camera sidecar.
+2. `PreviewFast` opens `DepthAnythingPreviewRoomView` with placeholder dims (W=2 m, H=aspect×W, D=3 m).
+
+**Phase 2 — First save (full ML):**
 1. Downsample working frame (e.g. 1200×1600).
-2. GeoCalib on letterboxed full frame → square-pixel focal in working grid.
+2. GeoCalib on letterboxed full frame → square-pixel focal in working grid (ARKit capture gravity/height override when present).
 3. Depth Anything `scaleFit`, strip letterbox padding, upsample depth to working resolution.
 4. RTMDet chair anchor (COCO cls 56, ~1.15 m) scales depth when EXIF agrees focal is correct.
 5. Room W×H×D from **depth-unprojected point spread** (p5–p95), not mesh bounds.
 6. Proportional-XY relief mesh + texture → **USDZ** export.
 
-**Verdict:** Current iOS shipping path. Combines learned metric depth with learned intrinsics; chair anchor fixes residual scale drift without tape-measure claims.
+Vanishing-point gravity refiner (`VanishingPointGravity`) is stubbed (`vps=0`); GeoCalib + ARKit are the active gravity sources.
+
+**Verdict:** Current iOS shipping path. Preview is instant; metric inference runs only on save.
 
 ---
 

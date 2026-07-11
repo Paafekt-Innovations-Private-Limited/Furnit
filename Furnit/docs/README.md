@@ -6,23 +6,28 @@ iOS (Swift) app documentation and architecture diagrams.
 Real SVG flow diagrams (open in any browser / Xcode preview):
 
 - [`room-generation-flow.svg`](../diagrams/room-generation-flow.svg) — default
-  **Photo → 3D** flow: home toolbar → photo capture or library image → camera metadata sidecar →
-  GeoCalib + Depth Anything + RTMDet object anchor → measurement grid → textured USDZ →
-  room viewer (`ModelViewerView`, `GLBRoomView`, `MeshRoomView`, or saved PLY in `SplatRoomView`)
-  with top measurement/gesture controls and inline brain segmentation.
+  **Photo → 3D** flow (two-phase): home toolbar → photo capture or library image → camera metadata
+  sidecar → **instant preview** (`PreviewFast`, no ML, placeholder dims) in
+  `DepthAnythingPreviewRoomView` → **first save** runs GeoCalib + Depth Anything + RTMDet object
+  anchor → measurement grid → textured USDZ → saved room in `ModelViewerView` (or reopen from home).
+  Other viewers: `GLBRoomView` (GLB), `MeshRoomView` (manual path), `SplatRoomView` (saved PLY via
+  MetalSplatter + SplatIO).
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance segmentation
   ("brain") in room viewers: top controls expose ruler/pinch/tap helpers, brain default
   auto-segments primary, **text.viewfinder** toggles full-video identify/segment modes, transparent
   cutouts composite over the 3D room, and Core ML raw-head decode → confidence-first NMS →
   mask affinity → pixel-union cutout.
 
-Room generation (default): **GeoCalib + Depth Anything + RTMDet object anchor → USDZ**. The active
-Swift path is `SinglePhotoRoomViewer.swift` → `CameraExifSidecar.swift` →
-`DepthAnythingRoomReconstructor.swift` → `USDZModel` / room viewer.
+Room generation (default AI path): **instant preview (no ML)** then **GeoCalib + Depth Anything +
+RTMDet object anchor → USDZ on first save**. Swift entry points: `SinglePhotoRoomViewer.swift`
+(`makeDepthAnythingPreviewDestination` for preview; `reconstructWithResult` on save) →
+`CameraExifSidecar.swift` → `DepthAnythingRoomReconstructor.swift` → `USDZModel` /
+`ModelViewerView`.
 
 ## Room viewer smoke test
 
-1. Home → **Photo → 3D** → capture or pick a room photo → AI generation → save/open room.
+1. Home → **Photo → 3D** → capture or pick a room photo → AI path opens preview instantly → tap
+   **Save** to run metric generation → room appears in home list.
 2. Tap **brain** (bottom-left). Default mode should auto-segment the highest-confidence item over the 3D room.
 3. Use the top controls for ruler/pinch/tap guidance, then tap **text.viewfinder** while brain is active. Live camera preview should appear with cluster boxes.
 4. Tap two or more furniture clusters.

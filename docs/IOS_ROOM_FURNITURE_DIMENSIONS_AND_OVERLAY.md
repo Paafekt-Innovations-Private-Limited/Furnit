@@ -3,14 +3,22 @@
 This document explains **how room dimensions, furniture dimensions, fitment ratios, and mask overlay scale relate** in the **Depth Anything USDZ** room + Furniture Fit flow. It is written so **non-specialists** can follow the ideas, with a **technical section** for engineers matching console logs to code.
 
 Saved PLY / depth-raycast room viewers may still show different bound logs; the **default** iOS room
-path stores dimensions from **GeoCalib + Depth Anything + RTMDet object-anchor** inference (see
-`DepthAnythingRoomReconstructor.swift`).
+path stores dimensions from **GeoCalib + Depth Anything + RTMDet object-anchor** inference on
+**first save** (see `DepthAnythingRoomReconstructor.reconstructWithResult`). The instant AI preview
+uses placeholder dims (W=2 m, H=aspect×W, D=3 m) until save.
 
 ---
 
 ## Lay summary
 
-### Room size on Depth Anything USDZ rooms
+### Preview vs saved AI room dimensions
+
+| Stage | When | W×H×D source |
+|-------|------|--------------|
+| **Preview** | Immediately after photo pick (AI path) | Placeholder: W=2 m, H=aspect×W, D=3 m (`PreviewFast` in `SinglePhotoRoomViewer.swift`) |
+| **Saved USDZ** | After user taps Save | Measured from GeoCalib + Depth Anything + RTMDet (`reconstructWithResult`) → `.usdz.meta` |
+
+### Room size on Depth Anything USDZ rooms (saved)
 
 For rooms created from a single photo (default path):
 

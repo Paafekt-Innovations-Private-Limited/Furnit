@@ -9,14 +9,14 @@
 
 ## App Store Connect
 - App Privacy answers must cover phone-number authentication, local account storage, on-device room/furniture processing, and any Firebase analytics/crash usage that is enabled in the release build.
-- Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device **GeoCalib + Depth Anything + RTMDet object anchor → USDZ**.
+- Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device: **instant preview (no ML)** then **GeoCalib + Depth Anything + RTMDet object anchor → USDZ on first save**.
 - Confirm the export compliance answer remains correct for the shipped build.
 - Ensure screenshots and app description do not claim unfinished or hidden functionality.
 
 ## Reviewer Notes
 - Provide the reviewer phone-login test path and any OTP instructions.
 - Mention that `Delete Account` is available in `Settings > Account`.
-- Mention that iOS room generation and furniture detection run on device after the required models are available. Network access is used for account authentication and On-Demand Resource model download.
+- Mention that iOS room preview opens instantly on device; metric room generation (GeoCalib + Depth Anything + RTMDet) runs on first save. Furniture detection in viewers may download RTMDet via On-Demand Resources. Network access is used for account authentication and ODR model download.
 - Call out the motion permission only where the reviewer will actually encounter it.
 
 ## Pre-Submission QA

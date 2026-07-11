@@ -199,12 +199,12 @@ flowchart TD
 - **Screenshot:** Not captured.
 
 #### D. Depth Anything result (`DepthAnythingPreviewRoomView` → save → `ModelViewerView`)
-- **Purpose:** Fast preview, full metric generation on save, USDZ in RealityKit.
+- **Purpose:** Instant flat-photo preview (no ML); full GeoCalib + Depth Anything + RTMDet metric generation on first save; saved rooms open in RealityKit USDZ viewer.
 - **Layout:** Full-bleed 3D; top nav with back, measurement pill, brain/segment/snapshot controls; bottom hints; Furniture Fit sheet.
 - **Screenshot:** Not captured.
 
 #### E. 3D splat viewer (`SplatRoomView`)
-- **Purpose:** Gaussian splat rooms (SHARP / saved PLY).
+- **Purpose:** Saved PLY Gaussian splat rooms (MetalSplatter + SplatIO; SparkJS removed).
 - **Layout:** Gray background + Metal splat; similar toolbar cluster as USDZ viewer; D-pad / joystick overlays; furniture chips.
 - **Screenshot:** Not captured.
 

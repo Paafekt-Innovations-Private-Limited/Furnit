@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1160" viewBox="0 0 900 1160" font-family="-apple-system, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1420" viewBox="0 0 900 1420" font-family="-apple-system, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L8,3 L0,6 Z" fill="#5b6470"/>
@@ -6,6 +6,7 @@
     <style>
       .title{font-size:24px;font-weight:700;fill:#1c1c1e}
       .sub{font-size:13px;fill:#6b7280}
+      .phase{font-size:14px;font-weight:700;fill:#374151}
       .box{rx:12;ry:12;stroke-width:1.5}
       .bt{font-size:15px;font-weight:600}
       .bs{font-size:11.5px}
@@ -15,17 +16,19 @@
       .data{fill:#f4f4f5;stroke:#a1a1aa}
       .io{fill:#f3eafe;stroke:#8b5cf6}
       .disp{fill:#fdeede;stroke:#f59e0b}
+      .preview{fill:#fff7ed;stroke:#f59e0b;stroke-dasharray:6 4}
       .edge{stroke:#5b6470;stroke-width:1.6;fill:none}
       .legtxt{font-size:12px;fill:#374151}
     </style>
   </defs>
 
   <text x="32" y="40" class="title">Photo → 3D Room — iOS (Swift)</text>
-  <text x="32" y="62" class="sub">Home toolbar Photo → 3D → SinglePhotoRoomView → DepthAnythingRoomReconstructor → USDZ → room viewer controls + inline brain.</text>
+  <text x="32" y="62" class="sub">Two-phase AI path: instant preview (no ML) on create · GeoCalib + Depth Anything + RTMDet on first save → USDZ.</text>
 
   <rect x="570" y="78" width="14" height="14" rx="3" class="ane"/><text x="590" y="90" class="legtxt">Core ML</text>
   <rect x="652" y="78" width="14" height="14" rx="3" class="cpu"/><text x="672" y="90" class="legtxt">CPU math</text>
   <rect x="740" y="78" width="14" height="14" rx="3" class="io"/><text x="760" y="90" class="legtxt">file/export</text>
+  <rect x="48" y="78" width="14" height="14" rx="3" class="preview"/><text x="68" y="90" class="legtxt">preview (no ML)</text>
 
   <g>
     <rect x="270" y="112" width="360" height="56" class="box cam"/>
@@ -40,74 +43,100 @@
     <text x="450" y="247" text-anchor="middle" class="bs">fixed orientation · downsample working frame</text>
     <text x="450" y="265" text-anchor="middle" class="bs">CameraExifSidecar + EXIF / ARKit capture values</text>
   </g>
-  <path class="edge" d="M450,278 L450,318" marker-end="url(#arrow)"/>
+  <path class="edge" d="M450,278 L450,308" marker-end="url(#arrow)"/>
+
+  <text x="48" y="328" class="phase">Phase 1 — Instant preview (no ML)</text>
+  <rect x="48" y="338" width="804" height="196" rx="14" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="8 5"/>
 
   <g>
-    <rect x="48" y="318" width="246" height="86" class="box ane"/>
-    <text x="171" y="342" text-anchor="middle" class="bt">GeoCalib</text>
-    <text x="171" y="361" text-anchor="middle" class="bs">focal estimate + gravity</text>
-    <text x="171" y="379" text-anchor="middle" class="bs">LM solver validates/clamps</text>
+    <rect x="270" y="358" width="360" height="72" class="box preview"/>
+    <text x="450" y="382" text-anchor="middle" class="bt">PreviewFast</text>
+    <text x="450" y="401" text-anchor="middle" class="bs">skip GeoCalib · Depth Anything · RTMDet · USDZ export</text>
+    <text x="450" y="419" text-anchor="middle" class="bs">placeholder dims: W=2 m · H=aspect×W · D=3 m</text>
   </g>
-  <g>
-    <rect x="327" y="318" width="246" height="86" class="box ane"/>
-    <text x="450" y="342" text-anchor="middle" class="bt">Depth Anything</text>
-    <text x="450" y="361" text-anchor="middle" class="bs">metric indoor depth grid</text>
-    <text x="450" y="379" text-anchor="middle" class="bs">same working image grid</text>
-  </g>
-  <g>
-    <rect x="606" y="318" width="246" height="86" class="box ane"/>
-    <text x="729" y="342" text-anchor="middle" class="bt">RTMDet anchor</text>
-    <text x="729" y="361" text-anchor="middle" class="bs">object bbox for scale/mask</text>
-    <text x="729" y="379" text-anchor="middle" class="bs">runs once, no live overlay</text>
-  </g>
-  <path class="edge" d="M171,404 C171,440 450,430 450,468" marker-end="url(#arrow)"/>
-  <path class="edge" d="M450,404 L450,468" marker-end="url(#arrow)"/>
-  <path class="edge" d="M729,404 C729,440 450,430 450,468" marker-end="url(#arrow)"/>
+  <path class="edge" d="M450,430 L450,468" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="270" y="468" width="360" height="86" class="box data"/>
-    <text x="450" y="492" text-anchor="middle" class="bt">Join measurement grid</text>
-    <text x="450" y="511" text-anchor="middle" class="bs">merge camera metadata + calibration values</text>
-    <text x="450" y="529" text-anchor="middle" class="bs">resolve focal, depth scale, camera-height prior</text>
+    <rect x="270" y="468" width="360" height="56" class="box disp"/>
+    <text x="450" y="491" text-anchor="middle" class="bt">DepthAnythingPreviewRoomView</text>
+    <text x="450" y="510" text-anchor="middle" class="bs">flat photo plane · explore · brain/segment · tap Save to run ML</text>
   </g>
-  <path class="edge" d="M450,554 L450,594" marker-end="url(#arrow)"/>
+
+  <path class="edge" d="M450,534 L450,574" marker-end="url(#arrow)"/>
+  <text x="450" y="562" text-anchor="middle" class="bs" fill="#6b7280">User taps Save</text>
+
+  <text x="48" y="598" class="phase">Phase 2 — First save (full ML stack)</text>
+  <rect x="48" y="608" width="804" height="648" rx="14" fill="none" stroke="#1ea64a" stroke-width="1.2"/>
 
   <g>
-    <rect x="270" y="594" width="360" height="86" class="box cpu"/>
-    <text x="450" y="618" text-anchor="middle" class="bt">Measure room dimensions</text>
-    <text x="450" y="637" text-anchor="middle" class="bs">unproject depth once into point grid</text>
-    <text x="450" y="655" text-anchor="middle" class="bs">RoomExtent + RoomHeight + width/depth checks</text>
+    <rect x="48" y="628" width="246" height="86" class="box ane"/>
+    <text x="171" y="652" text-anchor="middle" class="bt">GeoCalib</text>
+    <text x="171" y="671" text-anchor="middle" class="bs">focal estimate + gravity</text>
+    <text x="171" y="689" text-anchor="middle" class="bs">ARKit capture overrides gravity when present</text>
   </g>
-  <path class="edge" d="M450,680 L450,720" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="327" y="628" width="246" height="86" class="box ane"/>
+    <text x="450" y="652" text-anchor="middle" class="bt">Depth Anything</text>
+    <text x="450" y="671" text-anchor="middle" class="bs">metric indoor depth grid</text>
+    <text x="450" y="689" text-anchor="middle" class="bs">same working image grid</text>
+  </g>
+  <g>
+    <rect x="606" y="628" width="246" height="86" class="box ane"/>
+    <text x="729" y="652" text-anchor="middle" class="bt">RTMDet anchor</text>
+    <text x="729" y="671" text-anchor="middle" class="bs">object bbox for scale/mask</text>
+    <text x="729" y="689" text-anchor="middle" class="bs">one-shot on save (not preview)</text>
+  </g>
+  <path class="edge" d="M171,714 C171,750 450,740 450,778" marker-end="url(#arrow)"/>
+  <path class="edge" d="M450,714 L450,778" marker-end="url(#arrow)"/>
+  <path class="edge" d="M729,714 C729,750 450,740 450,778" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="270" y="720" width="360" height="72" class="box cpu"/>
-    <text x="450" y="744" text-anchor="middle" class="bt">Build textured mesh</text>
-    <text x="450" y="763" text-anchor="middle" class="bs">depth grid → vertices/triangles</text>
-    <text x="450" y="781" text-anchor="middle" class="bs">photo becomes the room texture</text>
+    <rect x="270" y="778" width="360" height="72" class="box data"/>
+    <text x="450" y="802" text-anchor="middle" class="bt">Join measurement grid</text>
+    <text x="450" y="821" text-anchor="middle" class="bs">merge camera metadata + calibration values</text>
+    <text x="450" y="839" text-anchor="middle" class="bs">resolve focal, depth scale, camera-height prior</text>
   </g>
-  <path class="edge" d="M450,792 L450,832" marker-end="url(#arrow)"/>
+  <path class="edge" d="M450,850 L450,890" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="270" y="832" width="360" height="72" class="box io"/>
-    <text x="450" y="856" text-anchor="middle" class="bt">Export and persist USDZ</text>
-    <text x="450" y="875" text-anchor="middle" class="bs">USDZ + camera sidecar + derived metadata</text>
-    <text x="450" y="893" text-anchor="middle" class="bs">coordinate frame: depthAnythingImageDepthMeters</text>
+    <rect x="270" y="890" width="360" height="72" class="box cpu"/>
+    <text x="450" y="914" text-anchor="middle" class="bt">Measure room dimensions</text>
+    <text x="450" y="933" text-anchor="middle" class="bs">unproject depth once into point grid</text>
+    <text x="450" y="951" text-anchor="middle" class="bs">RoomExtent + RoomHeight + width/depth checks</text>
   </g>
-  <path class="edge" d="M450,904 L450,944" marker-end="url(#arrow)"/>
+  <path class="edge" d="M450,962 L450,1002" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="270" y="944" width="360" height="72" class="box disp"/>
-    <text x="450" y="968" text-anchor="middle" class="bt">Open room viewer</text>
-    <text x="450" y="987" text-anchor="middle" class="bs">DepthAnythingPreviewRoomView → ModelViewerView / GLBRoomView / MeshRoomView</text>
-    <text x="450" y="1005" text-anchor="middle" class="bs">measurement/gesture controls · brain auto-segments primary · viewfinder toggles full-video multi-select</text>
+    <rect x="270" y="1002" width="360" height="56" class="box cpu"/>
+    <text x="450" y="1025" text-anchor="middle" class="bt">Build textured mesh</text>
+    <text x="450" y="1044" text-anchor="middle" class="bs">depth grid → vertices/triangles · photo texture</text>
+  </g>
+  <path class="edge" d="M450,1058 L450,1098" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="1098" width="360" height="56" class="box io"/>
+    <text x="450" y="1121" text-anchor="middle" class="bt">Export and persist USDZ</text>
+    <text x="450" y="1140" text-anchor="middle" class="bs">USDZ + camera sidecar + measured W×H×D metadata</text>
+  </g>
+  <path class="edge" d="M450,1154 L450,1188" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="1188" width="360" height="56" class="box disp"/>
+    <text x="450" y="1211" text-anchor="middle" class="bt">Saved room → ModelViewerView</text>
+    <text x="450" y="1230" text-anchor="middle" class="bs">RealityKit USDZ · measured dims in .usdz.meta</text>
   </g>
 
   <g>
-    <rect x="78" y="1040" width="744" height="58" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
-    <text x="96" y="1063" class="bt">User-facing progress copy</text>
-    <text x="96" y="1083" class="bs">Uses existing generic localized strings: "Generating 3D Model" / "Creating your 3D room...". Backend names stay out of the UI.</text>
+    <rect x="78" y="1270" width="744" height="58" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
+    <text x="96" y="1293" class="bt">Alternate: manual setup path</text>
+    <text x="96" y="1313" class="bs">Orange manual card → boundary editor → SinglePhotoRoomReconstructor + SyntheticDepthEstimator (CIFilter placeholder) → MeshRoomView (no GeoCalib/DAV2).</text>
   </g>
 
-  <text x="32" y="1130" class="sub">See also: rtmdet-swift-flow.svg for inline brain / full-video FurnitureFit segmentation in room viewers.</text>
+  <g>
+    <rect x="78" y="1340" width="744" height="58" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
+    <text x="96" y="1363" class="bt">User-facing progress copy (save only)</text>
+    <text x="96" y="1383" class="bs">"Measuring room…" / "Generating 3D Model" / "Saving room…". Backend names stay out of the UI.</text>
+  </g>
+
+  <text x="32" y="1410" class="sub">See also: rtmdet-swift-flow.svg for inline brain / full-video FurnitureFit in room viewers. Saved PLY splats open in SplatRoomView (MetalSplatter + SplatIO).</text>
 </svg>
