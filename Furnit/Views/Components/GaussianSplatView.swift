@@ -2305,7 +2305,7 @@ private func logSphericalHarmonicsSanityCheck(points: [SplatPoint], plyFileName:
     }
     logDebug("🔬 [GaussianSplatView][SH sanity] \(plyFileName): file SH degree≈\(degreeLabel) — \(parts.joined(separator: " | "))")
     logDebug("🔬 [GaussianSplatView][SH sanity] \(positiveDCCount)/\(sampleCount) sampled splats have any SH0 component >0 (negative SH0 is normal for dark surfaces; coarse hint only). For SH1+ PLYs, compare view-dependent colour vs WebGL if needed.")
-    logDebug("🔬 [GaussianSplatView][SH sanity] Pass criteria vs WebGL/SparkJS: neutral walls within ~±10% brightness; colored view-dependent gradients oriented identically.")
+    logDebug("🔬 [GaussianSplatView][SH sanity] Neutral walls within ~±10% brightness; colored view-dependent gradients oriented consistently across viewpoints.")
 }
 #endif
 

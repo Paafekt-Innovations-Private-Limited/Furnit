@@ -11,10 +11,9 @@
 | 1 | **Depth Anything V2 Metric Indoor Small — training data** | **AMBIGUOUS — needs lawyer** | Metric Small weights are **Apache-2.0** per upstream README, but fine-tuning uses **Hypersim** (**CC-BY-SA 3.0**). Share-Alike may affect redistribution of derived weights; not resolved in any model card we found. |
 | 2 | **GeoCalib pinhole weights — training data** | **AMBIGUOUS — needs lawyer** | Code + release weights have **no separate NC terms**, but training uses **OpenPano** (HDRMAPS + Poly Haven CC0 + Laval HDR). **HDRMAPS** and **Laval** commercial terms were **not found** in primary sources reviewed. |
 | 3 | **In-app `licenses.phase1Notice`** | **Product / legal mismatch — needs lawyer** | App UI states **“non-commercial use only”** (iOS `LicensesView`, Android `LicensesActivity`). This is a **product decision**, not a model license — but it **conflicts** with shipping commercially while models above may permit commercial use. |
-| 4 | **SparkJS bundle in repo** | **Compliance gap — fix before ship** | Upstream is **MIT** ([sparkjsdev/spark](https://github.com/sparkjsdev/spark/blob/main/LICENSE)), but Furnit bundles `spark.module.js` **without a LICENSE file** in-tree. Not “unlicensed,” but attribution is incomplete. |
-| 5 | **HF license tag missing** | **Documentation gap** | Hugging Face API returns `"license": null` for `depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf` (queried 2026-07-11). Resolved for **Small** via GitHub README; still document in diligence. |
+| 4 | **HF license tag missing** | **Documentation gap** | Hugging Face API returns `"license": null` for `depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf` (queried 2026-07-11). Resolved for **Small** via GitHub README; still document in diligence. |
 
-**Not blockers (confirmed):** Inria 3DGS **not** in ship path; MiDaS **removed**; MetalSplatter / Three.js / ONNX Runtime / RTMDet code **permissive** with attribution.
+**Not blockers (confirmed):** Inria 3DGS **not** in ship path; MiDaS **removed**; SparkJS **removed** (iOS + Android, 2026-07-11); MetalSplatter / Three.js / ONNX Runtime / RTMDet code **permissive** with attribution.
 
 ---
 
@@ -40,7 +39,7 @@ Each model has **three separate licenses that can differ** — check all three; 
 | Yes | Three.js r170 | WebView GLB/Mesh | WebView GLB |
 | Yes | Filament via SceneView 2.0.3 | — | Native GLB |
 | Yes | ONNX Runtime 1.24.2 | — | Inference runtime |
-| Bundled, inactive | SparkJS (`spark.module.js`) | Legacy WebView | Legacy assets |
+| Removed | SparkJS (`spark.module.js`) | **Removed** — splats use MetalSplatter | **Removed** — unused legacy bundle |
 | No | M-LSD, MiDaS, Whisper, SHARP, ExecuTorch, NCNN, Inria 3DGS code | — | — |
 
 Splat rooms: user/imported PLY (`_3dgs.ply`). Renderer = **MetalSplatter (MIT)**. `scripts/depthanything_to_splat.py` uses INRIA-style PLY layout only; **no** Inria training code in repo (grep 2026-07-11).
@@ -116,14 +115,15 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 ---
 
-### 5. SparkJS (legacy bundle)
+### 5. SparkJS (legacy bundle) — **removed both platforms**
 
 | Layer | License | Commercial | Attribution | Primary source | Date |
 |-------|---------|------------|-------------|----------------|------|
-| **Upstream @sparkjsdev/spark** | MIT | YES | Copyright notice required | https://github.com/sparkjsdev/spark/blob/main/LICENSE — *Copyright © 2025 WORLD LABS TECHNOLOGIES, INC.* | 2026-07-11 |
-| **Furnit bundle** | **No LICENSE file in repo** | Use allowed if upstream MIT honored | **Missing in-tree** | `Furnit/Resources/WebViewVendor/spark/spark.module.js`, `android/.../vendor/spark/` | 2026-07-11 |
+| **Upstream @sparkjsdev/spark** | MIT | YES | N/A — not shipped | https://github.com/sparkjsdev/spark/blob/main/LICENSE | 2026-07-11 |
+| **Furnit iOS** | **Removed** | N/A | **Cleared** | Deleted `Furnit/Resources/WebViewVendor/spark/` | 2026-07-11 |
+| **Furnit Android** | **Removed** | N/A | **Cleared** | Deleted `android/app/src/main/assets/vendor/spark/` | 2026-07-11 |
 
-**Verdict:** **Not unlicensed** — add MIT notice to acknowledgements or remove inactive bundle.
+**Verdict:** **Cleared** — inactive bundle removed; splats use MetalSplatter (iOS). No SparkJS in ship path on either platform.
 
 ---
 
@@ -161,7 +161,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | Draco | — | Apache-2.0 (typical) | YES | NOTICE | Google Draco (loader support only; Android GLB avoids Draco compression) | **No** | — |
 | Firebase | 12.11.0 (iOS SPM) | Apache-2.0 | Per Google ToS | Yes | Firebase SDK | **Yes** | 2026-07-11 |
 
-**Attribution gaps to close:** ONNX Runtime, Filament/SceneView, spz-swift, SparkJS (if kept).
+**Attribution gaps to close:** ONNX Runtime, Filament/SceneView, spz-swift.
 
 ---
 
@@ -211,4 +211,4 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 - [ ] New SPM / Gradle ML dependency
 - [ ] M-LSD, Whisper, SHARP, or ExecuTorch promoted on-device
 - [ ] `phase1Notice` removed or commercial terms published
-- [ ] SparkJS bundle removed or LICENSE added
+- [x] SparkJS bundle removed — iOS + Android (2026-07-11)
