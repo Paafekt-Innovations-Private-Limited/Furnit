@@ -76,7 +76,8 @@ struct PaafektImmersiveFaintBackButton: View {
     }
 }
 
-struct PaafektImmersiveGoldSummonButton: View {
+/// Secondary summon affordance — quieter than the persistent Fit FAB (glass disk, bottom-leading).
+struct PaafektImmersiveQuietSummonButton: View {
     let action: () -> Void
 
     var body: some View {
@@ -85,14 +86,47 @@ struct PaafektImmersiveGoldSummonButton: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 22, height: 22)
-                .foregroundStyle(Theme.Palette.accentText)
-                .frame(width: 46, height: 46)
-                .background(Circle().fill(Theme.Palette.accent))
-                .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+                .frame(width: 18, height: 18)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Theme.Palette.viewerCapsuleFill.opacity(0.72)))
+                .overlay(Circle().stroke(Theme.Palette.hairline.opacity(0.6), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(L10n.RoomViewer.immersiveShowControls)
+    }
+}
+
+/// Tier-0 persistent Fit action — always visible, bottom-trailing, above room and camera overlays.
+struct PaafektImmersiveFitFAB: View {
+    var isActive: Bool = false
+    var isDisabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Space.sm) {
+                Image("PaafektIconAI")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+                Text(L10n.RoomViewer.immersiveFitShort)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Theme.Palette.accentText)
+            .padding(.horizontal, Theme.Space.lg)
+            .frame(height: 44)
+            .background(
+                Capsule().fill(isActive ? Theme.Palette.accentPressed : Theme.Palette.accent)
+            )
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+            .opacity(isDisabled ? 0.5 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(L10n.RoomViewer.heroFitFurniture)
     }
 }
 
@@ -218,7 +252,7 @@ enum PaafektFullVideoSegmentationExitDiagnostics {
     }
 }
 
-// MARK: - Summoned toolbar (glass capsule + gold Fit/Capture)
+// MARK: - Summoned toolbar (glass capsule + Capture; Fit is persistent FAB)
 
 struct PaafektImmersiveSummonedToolbar<NavContent: View, HeroContent: View>: View {
     @ObservedObject var chrome: PaafektViewerChromeController
@@ -363,6 +397,9 @@ struct PaafektImmersiveViewerChromeStack<
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let onBack: () -> Void
+    let onFit: () -> Void
+    var fitActive: Bool = false
+    var fitDisabled: Bool = false
     var measurementText: String? = nil
     var hideForCapture: Bool = false
     @ViewBuilder let summonedToolbar: () -> SummonedToolbar
@@ -371,53 +408,65 @@ struct PaafektImmersiveViewerChromeStack<
     @ViewBuilder let persistentOverlay: () -> PersistentOverlay
 
     var body: some View {
-        Color.clear
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(false)
-        .overlay(alignment: .topLeading) {
-            PaafektImmersiveFaintBackButton(action: onBack)
-                .opacity(chrome.isResting ? 1 : 0.92)
-                .padding(.horizontal, Theme.Space.lg)
-                .padding(.top, Theme.Space.sm)
-        }
-        .overlay(alignment: .topTrailing) {
-            persistentOverlay()
-                .padding(.horizontal, Theme.Space.lg)
-                .padding(.top, Theme.Space.sm)
-        }
-        .overlay(alignment: .bottom) {
-            VStack(spacing: Theme.Space.sm) {
-                if chrome.isSummoned {
-                    summonedExtras()
-                        .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
+        ZStack(alignment: .bottomTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+                .overlay(alignment: .topLeading) {
+                    PaafektImmersiveFaintBackButton(action: onBack)
+                        .opacity(chrome.isResting ? 1 : 0.92)
+                        .padding(.horizontal, Theme.Space.lg)
+                        .padding(.top, Theme.Space.sm)
                 }
-                if chrome.isResting {
-                    restingAccessory()
-                        .frame(maxWidth: .infinity)
-                        .transition(.opacity)
+                .overlay(alignment: .topTrailing) {
+                    persistentOverlay()
+                        .padding(.horizontal, Theme.Space.lg)
+                        .padding(.top, Theme.Space.sm)
                 }
-                if let measurementText, chrome.isResting {
-                    PaafektImmersiveRestingMeasurementPill(text: measurementText)
-                        .transition(.opacity)
-                }
-                HStack {
-                    Spacer(minLength: 0)
+                .overlay(alignment: .bottomLeading) {
                     if chrome.isResting {
-                        PaafektImmersiveGoldSummonButton { chrome.summon() }
+                        PaafektImmersiveQuietSummonButton { chrome.summon() }
+                            .padding(.horizontal, Theme.Space.lg)
+                            .padding(.bottom, Theme.Space.lg)
                             .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
                     }
                 }
-                if chrome.isSummoned {
-                    summonedToolbar()
-                        .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
+                .overlay(alignment: .bottom) {
+                    VStack(spacing: Theme.Space.sm) {
+                        if chrome.isSummoned {
+                            summonedExtras()
+                                .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
+                        }
+                        if chrome.isResting {
+                            restingAccessory()
+                                .frame(maxWidth: .infinity)
+                                .transition(.opacity)
+                        }
+                        if let measurementText, chrome.isResting {
+                            PaafektImmersiveRestingMeasurementPill(text: measurementText)
+                                .transition(.opacity)
+                        }
+                        if chrome.isSummoned {
+                            summonedToolbar()
+                                .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
+                        }
+                    }
+                    .padding(.horizontal, Theme.Space.lg)
+                    .padding(.bottom, Theme.Space.lg)
+                    .padding(.trailing, 88)
+                    .animation(PaafektImmersiveChromeMotion.animation(reduceMotion: reduceMotion), value: chrome.phase)
                 }
-            }
+                .opacity(hideForCapture ? 0 : 1)
+                .allowsHitTesting(!hideForCapture)
+
+            PaafektImmersiveFitFAB(
+                isActive: fitActive,
+                isDisabled: fitDisabled,
+                action: onFit
+            )
             .padding(.horizontal, Theme.Space.lg)
             .padding(.bottom, Theme.Space.lg)
-            .animation(PaafektImmersiveChromeMotion.animation(reduceMotion: reduceMotion), value: chrome.phase)
         }
-        .opacity(hideForCapture ? 0 : 1)
-        .allowsHitTesting(!hideForCapture)
     }
 }
 
@@ -425,6 +474,9 @@ extension PaafektImmersiveViewerChromeStack where RestingAccessory == EmptyView,
     init(
         chrome: PaafektViewerChromeController,
         onBack: @escaping () -> Void,
+        onFit: @escaping () -> Void,
+        fitActive: Bool = false,
+        fitDisabled: Bool = false,
         measurementText: String? = nil,
         hideForCapture: Bool = false,
         @ViewBuilder summonedToolbar: @escaping () -> SummonedToolbar,
@@ -432,6 +484,9 @@ extension PaafektImmersiveViewerChromeStack where RestingAccessory == EmptyView,
     ) {
         self.chrome = chrome
         self.onBack = onBack
+        self.onFit = onFit
+        self.fitActive = fitActive
+        self.fitDisabled = fitDisabled
         self.measurementText = measurementText
         self.hideForCapture = hideForCapture
         self.summonedToolbar = summonedToolbar

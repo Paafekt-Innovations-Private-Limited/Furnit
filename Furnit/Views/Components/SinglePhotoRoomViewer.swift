@@ -1451,6 +1451,12 @@ private struct DepthAnythingPreviewRoomView: View {
         PaafektImmersiveViewerChromeStack(
             chrome: immersiveChrome,
             onBack: handleBackTap,
+            onFit: {
+                immersiveChrome.noteChromeInteraction()
+                togglePreviewFurnitureFit()
+            },
+            fitActive: showingFurnitureFit,
+            fitDisabled: isSavingRoom,
             measurementText: previewRestingMeasurementPillText,
             hideForCapture: isSavingRoom || isCapturingSnapshot
         ) {
@@ -1504,24 +1510,13 @@ private struct DepthAnythingPreviewRoomView: View {
                     .disabled(isSavingRoom)
                 }
             } heroContent: {
-                HStack(spacing: Theme.Space.sm) {
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconAI",
-                        title: L10n.RoomViewer.immersiveFitShort,
-                        isActive: showingFurnitureFit,
-                        isDisabled: isSavingRoom
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        togglePreviewFurnitureFit()
-                    }
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconSnapshot",
-                        title: L10n.RoomViewer.immersiveCaptureShort,
-                        isDisabled: isSavingRoom || isCapturingSnapshot
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        savePreviewSnapshot()
-                    }
+                PaafektImmersiveCompactHeroAction(
+                    assetName: "PaafektIconSnapshot",
+                    title: L10n.RoomViewer.immersiveCaptureShort,
+                    isDisabled: isSavingRoom || isCapturingSnapshot
+                ) {
+                    immersiveChrome.noteChromeInteraction()
+                    savePreviewSnapshot()
                 }
             }
         } summonedExtras: {

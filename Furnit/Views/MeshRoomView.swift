@@ -1054,6 +1054,12 @@ struct MeshRoomView: View {
                     dismiss()
                 }
             },
+            onFit: {
+                immersiveChrome.noteChromeInteraction()
+                toggleMeshFurnitureFit()
+            },
+            fitActive: showingFurnitureFit,
+            fitDisabled: false,
             measurementText: meshRestingMeasurementPillText,
             hideForCapture: false
         ) {
@@ -1138,24 +1144,13 @@ struct MeshRoomView: View {
                     .disabled(isLoading || isSavingRoom)
                 }
             } heroContent: {
-                HStack(spacing: Theme.Space.sm) {
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconAI",
-                        title: L10n.RoomViewer.immersiveFitShort,
-                        isActive: showingFurnitureFit,
-                        isDisabled: isLoading
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        toggleMeshFurnitureFit()
-                    }
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconSnapshot",
-                        title: L10n.RoomViewer.immersiveCaptureShort,
-                        isDisabled: isLoading
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        takeScreenshot()
-                    }
+                PaafektImmersiveCompactHeroAction(
+                    assetName: "PaafektIconSnapshot",
+                    title: L10n.RoomViewer.immersiveCaptureShort,
+                    isDisabled: isLoading
+                ) {
+                    immersiveChrome.noteChromeInteraction()
+                    takeScreenshot()
                 }
             }
         } summonedExtras: {

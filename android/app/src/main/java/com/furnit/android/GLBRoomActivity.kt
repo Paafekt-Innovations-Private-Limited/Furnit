@@ -104,6 +104,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var windowInsetsController: WindowInsetsControllerCompat
     private var immersiveBackButton: View? = null
     private var immersiveSummonButton: View? = null
+    private var immersiveFitFab: LinearLayout? = null
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveTapDetector: GestureDetector
     private lateinit var brainDetectionOverlay: FrameLayout
@@ -299,6 +300,17 @@ class GLBRoomActivity : AppCompatActivity() {
             ),
         )
 
+        val fitFab = PaafektViewerToolbar.createPersistentFitFab(
+            this@GLBRoomActivity,
+            getString(R.string.room_viewer_immersive_fit_short),
+        ) {
+            immersiveChrome.noteChromeInteraction()
+            toggleInlineBrainSegmentation()
+        }
+        immersiveFitFab = fitFab
+        fitFab.elevation = 40f
+        rootLayout.addView(fitFab)
+
         immersiveChrome.onPhaseChanged = { refreshImmersiveChromeVisibility() }
         refreshImmersiveChromeVisibility(animate = false)
 
@@ -420,6 +432,12 @@ class GLBRoomActivity : AppCompatActivity() {
                 immersiveBackButton?.layoutParams = lp
             }
         }
+        immersiveFitFab?.layoutParams?.let { lp ->
+            if (lp is FrameLayout.LayoutParams) {
+                lp.bottomMargin = bars.bottom + PaafektSpace.lg(this)
+                immersiveFitFab?.layoutParams = lp
+            }
+        }
         immersiveSummonButton?.layoutParams?.let { lp ->
             if (lp is FrameLayout.LayoutParams) {
                 lp.bottomMargin = bars.bottom + PaafektSpace.lg(this)
@@ -478,14 +496,17 @@ class GLBRoomActivity : AppCompatActivity() {
                 },
             )
 
-            val summonGold = PaafektViewerToolbar.createGoldSummonButton(
+            val summonQuiet = PaafektViewerToolbar.createQuietSummonButton(
                 this@GLBRoomActivity,
                 getString(R.string.room_viewer_immersive_show_controls),
             ) {
                 immersiveChrome.summon()
             }
-            immersiveSummonButton = summonGold
-            addView(summonGold)
+            immersiveSummonButton = summonQuiet
+            addView(
+                summonQuiet,
+                PaafektViewerToolbar.quietSummonButtonLayoutParams(this@GLBRoomActivity),
+            )
         }
     }
 
@@ -511,11 +532,13 @@ class GLBRoomActivity : AppCompatActivity() {
         if (::immersiveRestingChrome.isInitialized) {
             immersiveRestingChrome.elevation = 36f
         }
+        immersiveFitFab?.elevation = 40f
         brainSegmentationDoneButton?.elevation = 39f
         rootLayout.bringChildToFront(bottomControls)
         if (::immersiveRestingChrome.isInitialized) {
             rootLayout.bringChildToFront(immersiveRestingChrome)
         }
+        immersiveFitFab?.let { rootLayout.bringChildToFront(it) }
         brainSegmentationDoneButton?.let { rootLayout.bringChildToFront(it) }
         if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
             rootLayout.bringChildToFront(brainProgressOverlay)
@@ -556,7 +579,7 @@ class GLBRoomActivity : AppCompatActivity() {
         val toolbar = summonedToolbar ?: return
         val brainActive = ::brainDetectionOverlay.isInitialized &&
             brainDetectionOverlay.visibility == View.VISIBLE
-        toolbar.setFitActive(brainActive)
+        immersiveFitFab?.let { PaafektViewerToolbar.setPersistentFitFabActive(it, brainActive) }
         toolbar.setFullVideoVisible(brainActive)
         toolbar.setFullVideoActive(inlineBrainFullVideoEnabled)
         toolbar.setArSizingVisible(brainActive)
@@ -599,10 +622,6 @@ class GLBRoomActivity : AppCompatActivity() {
             onArSizing = {
                 immersiveChrome.noteChromeInteraction()
                 toggleInlineBrainArAssistedSizing()
-            },
-            onFit = {
-                immersiveChrome.noteChromeInteraction()
-                toggleInlineBrainSegmentation()
             },
             onCapture = {
                 immersiveChrome.noteChromeInteraction()
@@ -1132,7 +1151,7 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun setBrainButtonActive(active: Boolean) {
-        summonedToolbar?.setFitActive(active)
+        immersiveFitFab?.let { PaafektViewerToolbar.setPersistentFitFabActive(it, active) }
     }
 
     private fun createLoadingOverlay(): FrameLayout {

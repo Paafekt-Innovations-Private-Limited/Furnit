@@ -1163,6 +1163,12 @@ struct SplatRoomView: View {
         PaafektImmersiveViewerChromeStack(
             chrome: immersiveChrome,
             onBack: handleSplatRoomBackTap,
+            onFit: {
+                immersiveChrome.noteChromeInteraction()
+                toggleFurnitureFit()
+            },
+            fitActive: showingFurnitureFit,
+            fitDisabled: isLoading,
             measurementText: splatRestingMeasurementPillText,
             hideForCapture: isCapturingSnapshot
         ) {
@@ -1248,24 +1254,13 @@ struct SplatRoomView: View {
                     }
                 }
             } heroContent: {
-                HStack(spacing: Theme.Space.sm) {
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconAI",
-                        title: L10n.RoomViewer.immersiveFitShort,
-                        isActive: showingFurnitureFit,
-                        isDisabled: isLoading
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        toggleFurnitureFit()
-                    }
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconSnapshot",
-                        title: L10n.RoomViewer.immersiveCaptureShort,
-                        isDisabled: isLoading
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        takeScreenshot()
-                    }
+                PaafektImmersiveCompactHeroAction(
+                    assetName: "PaafektIconSnapshot",
+                    title: L10n.RoomViewer.immersiveCaptureShort,
+                    isDisabled: isLoading
+                ) {
+                    immersiveChrome.noteChromeInteraction()
+                    takeScreenshot()
                 }
             }
         } summonedExtras: {

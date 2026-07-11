@@ -1176,6 +1176,12 @@ struct GLBRoomView: View {
                     dismiss()
                 }
             },
+            onFit: {
+                immersiveChrome.noteChromeInteraction()
+                toggleGlbFurnitureFit()
+            },
+            fitActive: showingFurnitureFit,
+            fitDisabled: isLoading,
             measurementText: glbRestingMeasurementPillText,
             hideForCapture: false
         ) {
@@ -1233,24 +1239,13 @@ struct GLBRoomView: View {
                     }
                 }
             } heroContent: {
-                HStack(spacing: Theme.Space.sm) {
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconAI",
-                        title: L10n.RoomViewer.immersiveFitShort,
-                        isActive: showingFurnitureFit,
-                        isDisabled: isLoading
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        toggleGlbFurnitureFit()
-                    }
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconSnapshot",
-                        title: L10n.RoomViewer.immersiveCaptureShort,
-                        isDisabled: isLoading
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        takeScreenshot()
-                    }
+                PaafektImmersiveCompactHeroAction(
+                    assetName: "PaafektIconSnapshot",
+                    title: L10n.RoomViewer.immersiveCaptureShort,
+                    isDisabled: isLoading
+                ) {
+                    immersiveChrome.noteChromeInteraction()
+                    takeScreenshot()
                 }
             }
         } summonedExtras: {

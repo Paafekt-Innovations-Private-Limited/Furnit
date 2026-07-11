@@ -315,18 +315,33 @@ struct ModelViewerView: View {
     private var modelViewerBottomHeroChrome: some View {
         VStack {
             Spacer()
-            ZStack(alignment: .bottom) {
-                VStack(spacing: 10) {
-                    segmentModeToggleChrome
-                    viewerHeroActionsBar
+            ZStack(alignment: .bottomTrailing) {
+                ZStack(alignment: .bottom) {
+                    VStack(spacing: 10) {
+                        segmentModeToggleChrome
+                        PaafektViewerCaptureHeroButton(
+                            isDisabled: isCapturingSnapshot,
+                            action: saveFurnitureFitSnapshot
+                        )
+                    }
+                    roomIntelligencePlacementCardResetOnExit
+                        .padding(.bottom, 56)
                 }
-                roomIntelligencePlacementCardResetOnExit
-                    .padding(.bottom, 56)
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.bottom, 20)
+                .padding(.trailing, 88)
+                .opacity(isCapturingSnapshot ? 0 : 1)
+                .allowsHitTesting(!isCapturingSnapshot)
+
+                PaafektImmersiveFitFAB(
+                    isActive: showingFurnitureFit,
+                    isDisabled: isCapturingSnapshot,
+                    action: toggleFurnitureFit
+                )
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, Theme.Space.lg)
-            .padding(.bottom, 20)
         }
-        .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(99998)
         .allowsHitTesting(true)
     }
@@ -352,6 +367,12 @@ struct ModelViewerView: View {
                     presentationMode.wrappedValue.dismiss()
                 }
             },
+            onFit: {
+                immersiveChrome.noteChromeInteraction()
+                toggleFurnitureFit()
+            },
+            fitActive: showingFurnitureFit,
+            fitDisabled: isCapturingSnapshot,
             measurementText: modelViewerRestingMeasurementPillText,
             hideForCapture: isCapturingSnapshot
         ) {
@@ -409,24 +430,13 @@ struct ModelViewerView: View {
                     }
                 }
             } heroContent: {
-                HStack(spacing: Theme.Space.sm) {
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconAI",
-                        title: L10n.RoomViewer.immersiveFitShort,
-                        isActive: showingFurnitureFit,
-                        isDisabled: isCapturingSnapshot
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        toggleFurnitureFit()
-                    }
-                    PaafektImmersiveCompactHeroAction(
-                        assetName: "PaafektIconSnapshot",
-                        title: L10n.RoomViewer.immersiveCaptureShort,
-                        isDisabled: isCapturingSnapshot
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        saveFurnitureFitSnapshot()
-                    }
+                PaafektImmersiveCompactHeroAction(
+                    assetName: "PaafektIconSnapshot",
+                    title: L10n.RoomViewer.immersiveCaptureShort,
+                    isDisabled: isCapturingSnapshot
+                ) {
+                    immersiveChrome.noteChromeInteraction()
+                    saveFurnitureFitSnapshot()
                 }
             }
         } summonedExtras: {
@@ -450,15 +460,6 @@ struct ModelViewerView: View {
             )
         }
         .zIndex(99998)
-    }
-
-    private var viewerHeroActionsBar: some View {
-        PaafektViewerHeroActionsBar(
-            fitActive: showingFurnitureFit,
-            captureDisabled: isCapturingSnapshot,
-            onFit: toggleFurnitureFit,
-            onCapture: saveFurnitureFitSnapshot
-        )
     }
 
     private var modelViewerInteractiveStack: some View {

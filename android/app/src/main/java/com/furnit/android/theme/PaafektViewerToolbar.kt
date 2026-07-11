@@ -130,9 +130,100 @@ object PaafektViewerToolbar {
     }
 
     /**
+     * Resting summon affordance — quieter glass disk (bottom-leading). Fit FAB owns bottom-trailing gold.
+     */
+    fun createQuietSummonButton(
+        context: Context,
+        contentDescription: CharSequence,
+        onClick: () -> Unit,
+    ): FrameLayout {
+        val size = dp(context, 38)
+        val iconSize = dp(context, 18)
+        return FrameLayout(context).apply {
+            layoutParams = quietSummonButtonLayoutParams(context)
+            background = PaafektDrawables.toolbarCircle()
+            alpha = 0.92f
+            ViewCompat.setElevation(this, dp(context, 4).toFloat())
+
+            addView(
+                ImageView(context).apply {
+                    setImageResource(R.drawable.ic_chevron_up)
+                    imageTintList = ColorStateList.valueOf(PaafektColors.textSecondary)
+                    imageTintMode = PorterDuff.Mode.SRC_IN
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER),
+            )
+
+            minimumWidth = size
+            minimumHeight = size
+            this.contentDescription = contentDescription
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+        }
+    }
+
+    /** Bottom-leading placement for quiet summon. */
+    fun quietSummonButtonLayoutParams(
+        context: Context,
+        systemBarBottomInset: Int = 0,
+    ): FrameLayout.LayoutParams {
+        return FrameLayout.LayoutParams(dp(context, 38), dp(context, 38)).apply {
+            gravity = Gravity.START or Gravity.BOTTOM
+            bottomMargin = systemBarBottomInset + PaafektSpace.lg(context)
+            marginStart = PaafektSpace.lg(context)
+        }
+    }
+
+    /**
+     * Tier-0 persistent Fit FAB — always visible bottom-trailing (matches iOS `PaafektImmersiveFitFAB`).
+     */
+    fun createPersistentFitFab(
+        context: Context,
+        label: CharSequence,
+        onClick: () -> Unit,
+    ): LinearLayout {
+        return PaafektHintViews.createHeroButton(
+            context,
+            R.drawable.ic_ai,
+            label,
+            isActive = false,
+            onClick = onClick,
+        ).apply {
+            layoutParams = persistentFitFabLayoutParams(context)
+            tag = false
+        }
+    }
+
+    fun setPersistentFitFabActive(button: LinearLayout, active: Boolean) {
+        if (button.tag == active) return
+        button.tag = active
+        button.background = PaafektDrawables.heroButton(active)
+    }
+
+    /** Bottom-trailing placement for persistent Fit FAB. */
+    fun persistentFitFabLayoutParams(
+        context: Context,
+        systemBarBottomInset: Int = 0,
+    ): FrameLayout.LayoutParams {
+        return FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.END or Gravity.BOTTOM
+            bottomMargin = systemBarBottomInset + PaafektSpace.lg(context)
+            marginEnd = PaafektSpace.lg(context)
+        }
+    }
+
+    /**
      * Resting summon affordance — mirrors iOS `PaafektImmersiveGoldSummonButton`:
      * 46dp gold disk, 22dp PaafektIconChevronUp (PNG template), dark glyph, drop shadow.
+     * @deprecated Use [createQuietSummonButton]; gold anchor is the persistent Fit FAB.
      */
+    @Deprecated("Use createQuietSummonButton; Fit FAB is the gold anchor")
     fun createGoldSummonButton(
         context: Context,
         contentDescription: CharSequence,
@@ -196,14 +287,9 @@ object PaafektViewerToolbar {
  */
 class ImmersiveSummonedToolbarHolder(
     val root: FrameLayout,
-    val fitButton: LinearLayout,
     private val fullVideoButton: ImageButton?,
     private val arSizingButton: ImageButton?,
 ) {
-    fun setFitActive(active: Boolean) {
-        PaafektHintViews.setCompactHeroActive(fitButton, active)
-    }
-
     fun setFullVideoVisible(visible: Boolean) {
         fullVideoButton?.visibility = if (visible) View.VISIBLE else View.GONE
     }
@@ -240,7 +326,6 @@ object PaafektImmersiveSummonedToolbar {
         onDisplayAllHelpers: () -> Unit,
         onFullVideo: () -> Unit,
         onArSizing: () -> Unit,
-        onFit: () -> Unit,
         onCapture: () -> Unit,
         includeFurnitureFitExtras: Boolean = true,
         onPreviewSave: (() -> Unit)? = null,
@@ -370,18 +455,6 @@ object PaafektImmersiveSummonedToolbar {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val fitButton = PaafektHintViews.createCompactHeroAction(
-            context,
-            R.drawable.ic_ai,
-            context.getString(R.string.room_viewer_immersive_fit_short),
-            onClick = onFit,
-        ).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { marginEnd = PaafektSpace.sm(context) }
-        }
-        heroRow.addView(fitButton)
 
         val captureButton = PaafektHintViews.createCompactHeroAction(
             context,
@@ -395,7 +468,7 @@ object PaafektImmersiveSummonedToolbar {
         column.addView(capsule)
         outer.addView(column)
 
-        return ImmersiveSummonedToolbarHolder(outer, fitButton, fullVideoButton, arSizingButton)
+        return ImmersiveSummonedToolbarHolder(outer, fullVideoButton, arSizingButton)
     }
 
     private fun dp(context: Context, value: Int): Int =

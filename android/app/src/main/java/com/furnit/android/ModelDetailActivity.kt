@@ -82,7 +82,7 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var viewerRootLayout: FrameLayout
     private lateinit var hintController: PaafektHintController
     private lateinit var firstRunCoachController: PaafektFirstRunCoachMarkController
-    private var heroFitButton: LinearLayout? = null
+    private var immersiveFitFab: LinearLayout? = null
     private var heroFitAction: () -> Unit = {}
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveRestingChrome: FrameLayout
@@ -255,6 +255,17 @@ class ModelDetailActivity : AppCompatActivity() {
             ),
         )
 
+        val fitFab = PaafektViewerToolbar.createPersistentFitFab(
+            this@ModelDetailActivity,
+            getString(R.string.room_viewer_immersive_fit_short),
+        ) {
+            immersiveChrome.noteChromeInteraction()
+            heroFitAction()
+        }
+        immersiveFitFab = fitFab
+        fitFab.elevation = 40f
+        viewerRootLayout.addView(fitFab)
+
         immersiveTapDetector = GestureDetector(
             this,
             object : GestureDetector.SimpleOnGestureListener() {
@@ -312,13 +323,16 @@ class ModelDetailActivity : AppCompatActivity() {
                 },
             )
 
-            val summonGold = PaafektViewerToolbar.createGoldSummonButton(
+            val summonQuiet = PaafektViewerToolbar.createQuietSummonButton(
                 this@ModelDetailActivity,
                 getString(R.string.room_viewer_immersive_show_controls),
             ) {
                 immersiveChrome.summon()
             }
-            addView(summonGold)
+            addView(
+                summonQuiet,
+                PaafektViewerToolbar.quietSummonButtonLayoutParams(this@ModelDetailActivity),
+            )
             installRestingChromeTouchPassthrough(this)
         }
     }
@@ -384,6 +398,8 @@ class ModelDetailActivity : AppCompatActivity() {
             animate = animate,
         )
         summonedBottomChrome.elevation = 40f
+        immersiveFitFab?.elevation = 41f
+        immersiveFitFab?.let { viewerRootLayout.bringChildToFront(it) }
     }
 
     private fun recenterCamera() {
@@ -461,10 +477,6 @@ class ModelDetailActivity : AppCompatActivity() {
             },
             onFullVideo = {},
             onArSizing = {},
-            onFit = {
-                immersiveChrome.noteChromeInteraction()
-                heroFitAction()
-            },
             onCapture = {
                 immersiveChrome.noteChromeInteraction()
                 Toast.makeText(this, getString(R.string.model_detail_taking_screenshot), Toast.LENGTH_SHORT).show()
@@ -473,7 +485,6 @@ class ModelDetailActivity : AppCompatActivity() {
             includeFurnitureFitExtras = false,
         )
         summonedToolbar = holder
-        heroFitButton = holder.fitButton
         bottomContainer.addView(
             holder.root,
             FrameLayout.LayoutParams(

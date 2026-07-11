@@ -73,7 +73,21 @@ struct PaafektViewerHeroButton: View {
     }
 }
 
-/// Side-by-side hero actions anchored above the home indicator.
+/// Capture-only hero action for legacy / summoned toolbars (Fit uses persistent FAB).
+struct PaafektViewerCaptureHeroButton: View {
+    var isDisabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        PaafektViewerHeroButton(
+            assetName: "PaafektIconSnapshot",
+            title: L10n.RoomViewer.heroCapture,
+            isDisabled: isDisabled,
+            action: action
+        )
+    }
+}
+/// Side-by-side hero actions anchored above the home indicator (legacy embedded chrome).
 struct PaafektViewerHeroActionsBar: View {
     var fitActive: Bool = false
     var fitDisabled: Bool = false
