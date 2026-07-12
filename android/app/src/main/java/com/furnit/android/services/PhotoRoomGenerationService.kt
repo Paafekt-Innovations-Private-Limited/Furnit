@@ -14,8 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Generic Android photo-to-room generation path.
  *
- * Runs Depth Anything metric measurement during flat-photo GLB generation (Swift parity without GeoCalib).
- * GeoCalib ONNX export can refine calibration further when available.
+ * Runs the Swift-parity Depth Anything room measurement pipeline during flat-photo GLB generation.
  */
 class PhotoRoomGenerationService private constructor(private val context: Context) {
 

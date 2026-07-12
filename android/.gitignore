@@ -1,3 +1,4 @@
-# The top-level repo ignores *.onnx by default. This ONNX is an Android runtime
-# asset for the photo-to-room pipeline and should be versioned like RTMDet.
+# The top-level repo ignores *.onnx by default. Depth Anything is versioned; GeoCalib
+# (~111MB) is exported locally — see room_generation/README.md.
 !app/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
+app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx

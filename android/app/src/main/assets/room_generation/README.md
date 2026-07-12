@@ -9,12 +9,17 @@ This folder mirrors the Swift photo-to-3D-room asset contract:
 Packaged Android assets:
 
 - `depth_anything/depth_anything_v2_metric_indoor_small.onnx`
+- `geocalib/geocalib_pinhole_cnn.onnx`
 - `../rtmdet-ins-m-raw.onnx`
 
-Expected Android export still missing:
+Export GeoCalib ONNX (if refreshing the bundle):
 
-- `geocalib/geocalib_pinhole_cnn.onnx`
+```bash
+python3 scripts/export_geocalib_to_coreml.py --export-onnx --skip-coreml
+cp Furnit/Models/GeoCalib/geocalib-pinhole-cnn.onnx \
+   android/app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
+```
 
-The Swift tree currently has GeoCalib as a Core ML package and raw checkpoint files only. Do not copy those Core ML files into Android assets; export an ONNX or TFLite version before wiring Android to the full Swift-parity reconstruction path.
+Do not copy Core ML packages into Android assets.
 
 AI photo rooms use `GlbGenerator.generateFlatPhotoGlb` (single full-photo plane with JPEG texture). Manual rooms use the five-plane cuboid exporter in `GlbGenerator.generateGlb`.
