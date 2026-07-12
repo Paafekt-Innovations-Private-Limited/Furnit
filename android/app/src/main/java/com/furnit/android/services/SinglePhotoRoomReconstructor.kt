@@ -6,6 +6,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.net.Uri
+import com.furnit.android.RoomDefaults
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.models.RoomStructure
@@ -29,10 +31,10 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
     companion object {
         private const val TAG = "RoomReconstructor"
 
-        // Default room dimensions in meters
-        const val DEFAULT_WIDTH = 4.0f
-        const val DEFAULT_DEPTH = 4.5f
-        const val DEFAULT_HEIGHT = 2.8f
+        // Default room dimensions in meters (Swift / Depth Anything fallback parity)
+        const val DEFAULT_WIDTH = RoomDefaults.DEFAULT_WIDTH_M
+        const val DEFAULT_DEPTH = RoomDefaults.DEFAULT_DEPTH_M
+        const val DEFAULT_HEIGHT = RoomDefaults.DEFAULT_HEIGHT_M
     }
 
     data class RoomDimensions(
@@ -56,6 +58,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         dimensions: RoomDimensions = RoomDimensions(),
         callback: ProgressCallback,
         flatPhotoMesh: Boolean = false,
+        sourcePhotoUri: Uri? = null,
     ) {
         LogUtil.d(TAG, "Starting room reconstruction...")
         LogUtil.d(TAG, "  Boundaries: floor=${boundaries.floorY}, ceiling=${boundaries.ceilingY}")
@@ -65,6 +68,22 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         Thread {
             try {
                 callback.onProgress(0.1f, "Preparing image...")
+
+                if (flatPhotoMesh) {
+                    callback.onProgress(0.15f, "Measuring room...")
+                    val measured = DepthAnythingRoomMeasurer.measure(context, image, sourcePhotoUri)
+                    if (measured.measured) {
+                        dimensions.width = measured.width
+                        dimensions.height = measured.height
+                        dimensions.depth = measured.depth
+                        LogUtil.i(
+                            TAG,
+                            "Depth Anything room dims W=${dimensions.width} H=${dimensions.height} D=${dimensions.depth}",
+                        )
+                    } else {
+                        LogUtil.w(TAG, "Depth Anything measurement unavailable; using defaults")
+                    }
+                }
 
                 callback.onProgress(0.3f, "Extracting textures...")
                 val frontWallTexture: Bitmap
@@ -97,7 +116,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     ceilingTexture,
                     leftWallTexture,
                     rightWallTexture,
-                    flatPhotoMesh
+                    flatPhotoMesh,
+                    sourcePhoto = if (flatPhotoMesh) image else null,
                 )
 
                 callback.onProgress(0.9f, "Finalizing...")
@@ -220,6 +240,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         leftWall: Bitmap,
         rightWall: Bitmap,
         flatPhotoMesh: Boolean = false,
+        sourcePhoto: Bitmap? = null,
     ): File {
         // Create room in preview directory (NOT in rooms folder yet)
         // Room will be moved to rooms folder when user clicks Save in preview
@@ -234,6 +255,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
 
         // Save front wall texture for thumbnail
         saveTexture(frontWall, File(roomFolder, "front_wall.png"))
+        sourcePhoto?.let { saveTexture(it, File(roomFolder, "source_photo.jpg"), Bitmap.CompressFormat.JPEG) }
 
         // Generate GLB file using GlbGenerator
         val glbFile = File(roomFolder, "room.glb")
@@ -280,10 +302,14 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         return if (success) glbFile else File(roomFolder, "front_wall.png")
     }
 
-    private fun saveTexture(bitmap: Bitmap, file: File) {
+    private fun saveTexture(
+        bitmap: Bitmap,
+        file: File,
+        format: Bitmap.CompressFormat = Bitmap.CompressFormat.PNG,
+    ) {
         try {
             FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+                bitmap.compress(format, if (format == Bitmap.CompressFormat.JPEG) 92 else 90, out)
             }
             LogUtil.d(TAG, "Saved texture: ${file.name}")
         } catch (e: Exception) {

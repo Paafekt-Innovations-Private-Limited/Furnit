@@ -10,7 +10,7 @@ object RoomDefaults {
     private const val KEY_ROOM_DEPTH_M = "default_room_depth_m"
 
     const val DEFAULT_WIDTH_M = 4.0f
-    const val DEFAULT_HEIGHT_M = 3.0f
+    const val DEFAULT_HEIGHT_M = 2.8f
     const val DEFAULT_DEPTH_M = 4.5f
 
     fun prefs(context: Context): SharedPreferences =

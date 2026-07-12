@@ -46,6 +46,7 @@ import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.theme.PaafektSpace
 import com.furnit.android.theme.PaafektViewerToolbar
 import com.furnit.android.utils.RoomBoundaryManager
+import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.RoomSceneLighting
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.CubeNode
@@ -95,6 +96,10 @@ class ModelDetailActivity : AppCompatActivity() {
     private var isPreviewMode = false
     /** True while showing an on-disk GLB preview that has not been saved to the library yet. */
     private var unsavedPreviewActive = false
+    private var roomWidth: Float = RoomDefaults.DEFAULT_WIDTH_M
+    private var roomHeight: Float = RoomDefaults.DEFAULT_HEIGHT_M
+    private var roomDepth: Float = RoomDefaults.DEFAULT_DEPTH_M
+    private var isFlatPhotoRoomMesh: Boolean = false
     private lateinit var previewBackCallback: OnBackPressedCallback
 
     private var glbPath: String? = null
@@ -168,6 +173,10 @@ class ModelDetailActivity : AppCompatActivity() {
             unsavedPreviewActive = true
             previewBackCallback.isEnabled = true
             glbPath = directGlbPath
+            roomWidth = intent.getFloatExtra("ROOM_WIDTH", RoomDefaults.widthMeters(this))
+            roomHeight = intent.getFloatExtra("ROOM_HEIGHT", RoomDefaults.heightMeters(this))
+            roomDepth = intent.getFloatExtra("ROOM_DEPTH", RoomDefaults.depthMeters(this))
+            isFlatPhotoRoomMesh = intent.getBooleanExtra("FLAT_PHOTO_ROOM", true)
             modelTitle.text = getString(R.string.model_detail_preview)
             LogUtil.d(TAG, "Preview mode - GLB path: $directGlbPath")
 
@@ -237,6 +246,17 @@ class ModelDetailActivity : AppCompatActivity() {
             }
 
             loadModel(model.assetPath, model.roomWidth, model.roomHeight, model.roomDepth)
+            roomWidth = model.roomWidth ?: RoomDefaults.widthMeters(this)
+            roomHeight = model.roomHeight ?: RoomDefaults.heightMeters(this)
+            roomDepth = model.roomDepth ?: RoomDefaults.depthMeters(this)
+            val roomFolder = java.io.File(model.assetPath).let { file ->
+                if (file.isFile) file.parentFile else file
+            }
+            val metadata = roomFolder?.let { RoomFolderMetadata.readFromFolder(it) }
+            isFlatPhotoRoomMesh = metadata?.type == "photo" ||
+                metadata?.roomDimsApproach == "depth_anything_metric" ||
+                (model.roomDepth ?: 1f) < 0.05f
+            refreshMeasurementPill()
         }
     }
 
@@ -311,6 +331,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 setTextColor(PaafektColors.textSecondary)
                 setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
                 background = PaafektDrawables.hintChip()
+                visibility = if (shouldHideRoomMeasurementChrome()) View.GONE else View.VISIBLE
             }
             addView(
                 measurementPillView,
@@ -380,13 +401,25 @@ class ModelDetailActivity : AppCompatActivity() {
         return false
     }
 
+    private fun shouldHideRoomMeasurementChrome(): Boolean = isPreviewMode || unsavedPreviewActive
+
     private fun restingMeasurementPillText(): String {
-        return String.format(
-            Locale.US,
-            "%.1f m × %.1f m",
-            RoomDefaults.widthMeters(this),
-            RoomDefaults.depthMeters(this),
-        )
+        val text = com.furnit.android.services.RoomMeasurementDisplay.restingPillText(
+            width = roomWidth,
+            height = roomHeight,
+            depth = roomDepth,
+            emphasizeHeight = isFlatPhotoRoomMesh,
+        ) { heightMeters ->
+            getString(R.string.approximate_room_height, heightMeters)
+        }
+        return text ?: getString(R.string.approximate_room_height, roomHeight)
+    }
+
+    private fun refreshMeasurementPill() {
+        measurementPillView?.let { pill ->
+            pill.text = restingMeasurementPillText()
+            pill.visibility = if (shouldHideRoomMeasurementChrome()) View.GONE else View.VISIBLE
+        }
     }
 
     private fun refreshImmersiveChromeVisibility(animate: Boolean = true) {
@@ -421,10 +454,16 @@ class ModelDetailActivity : AppCompatActivity() {
     }
 
     private fun showRoomDimensionsHint() {
+        if (shouldHideRoomMeasurementChrome()) return
+        val heightLabel = if (isFlatPhotoRoomMesh) {
+            getString(R.string.room_dimensions_whd_near_accurate, roomWidth, roomHeight, roomDepth)
+        } else {
+            getString(R.string.approximate_room_height, roomHeight)
+        }
         hintController.showText(
             this,
             R.drawable.ic_ruler,
-            getString(R.string.approximate_room_height, RoomDefaults.heightMeters(this)),
+            heightLabel,
             topMarginDp = 52,
         )
     }

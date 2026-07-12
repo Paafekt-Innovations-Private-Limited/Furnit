@@ -1188,6 +1188,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
             putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
             putExtra("ROOM_DEPTH", result.roomDepth)
+            putExtra(GLBRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
             putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, result.previewOnly)
             putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, result.photoOrientation)
             putExtra("ROOM_FOLDER", result.roomFolder.absolutePath)

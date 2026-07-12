@@ -14,10 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Generic Android photo-to-room generation path.
  *
- * Android now keeps the Swift-parity room-generation asset layout under
- * assets/room_generation. Until GeoCalib has an Android export and the full
- * metric reconstruction path is wired, this service keeps room creation on the
- * existing textured-GLB path and avoids the removed licensed model stack.
+ * Runs Depth Anything metric measurement during flat-photo GLB generation (Swift parity without GeoCalib).
+ * GeoCalib ONNX export can refine calibration further when available.
  */
 class PhotoRoomGenerationService private constructor(private val context: Context) {
 
@@ -116,6 +114,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
                 }
             },
             flatPhotoMesh = true,
+            sourcePhotoUri = sourcePhotoUri,
         )
 
         return GenerationHandle(this, token)
@@ -272,7 +271,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
                 roomWidth = roomWidth,
                 roomHeight = roomHeight,
                 roomDepth = roomDepth,
-                roomDimsApproach = "photo-glb",
+                roomDimsApproach = "depth_anything_metric",
                 roomSceneWidth = roomWidth,
                 roomSceneHeight = roomHeight,
                 roomSceneDepth = roomDepth,

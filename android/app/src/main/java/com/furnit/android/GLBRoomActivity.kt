@@ -55,7 +55,9 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import com.furnit.android.models.ModelManager
+import com.furnit.android.services.DepthAnythingRoomMeasurer
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.services.RoomMeasurementDisplay
 import com.furnit.android.services.SegmentationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -92,6 +94,7 @@ class GLBRoomActivity : AppCompatActivity() {
         const val EXTRA_ROOM_ID = "room_id"
         const val EXTRA_ROOM_WIDTH = "room_width"
         const val EXTRA_ROOM_HEIGHT = "room_height"
+        const val EXTRA_ROOM_DEPTH = "room_depth"
         const val EXTRA_IS_PREVIEW = "is_preview"
         const val EXTRA_PHOTO_ORIENTATION = "photo_orientation"
     }
@@ -136,10 +139,14 @@ class GLBRoomActivity : AppCompatActivity() {
     private var isPreviewMode: Boolean = false
     private var photoOrientation: String = "portrait"
 
-    // Room dimensions
     private var roomWidth: Float = 4.0f
     private var roomHeight: Float = 3.0f
     private var roomDepth: Float = 4.5f
+    private var isFlatPhotoRoomMesh: Boolean = false
+    private var hasCalculatedRoomMeasurements: Boolean = false
+    private var roomDimsApproach: String? = null
+    private var measurementPillView: TextView? = null
+    @Volatile private var isMeasuringRoomDimensions: Boolean = false
 
     private enum class InlineBrainMode {
         DEFAULT_SEGMENT,
@@ -174,8 +181,9 @@ class GLBRoomActivity : AppCompatActivity() {
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
         roomWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, RoomDefaults.widthMeters(this))
         roomHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, RoomDefaults.heightMeters(this))
-        roomDepth = intent.getFloatExtra("ROOM_DEPTH", RoomDefaults.depthMeters(this))
+        roomDepth = intent.getFloatExtra(EXTRA_ROOM_DEPTH, RoomDefaults.depthMeters(this))
         photoOrientation = intent.getStringExtra(EXTRA_PHOTO_ORIENTATION) ?: "portrait"
+        loadRoomMetadataFromFolder()
 
         // Lock orientation based on room's photo orientation (no auto-rotate)
         requestedOrientation = if (photoOrientation == "landscape") {
@@ -393,6 +401,9 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // Load the WebGL viewer
         loadWebGLViewer()
+        if (!isPreviewMode) {
+            warmRoomMeasurementInBackgroundIfNeeded()
+        }
     }
 
     /** WebView fills the window; system-bar insets pad chrome overlays only. */
@@ -492,6 +503,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 background = PaafektDrawables.hintChip()
                 visibility = if (isPreviewMode) View.GONE else View.VISIBLE
             }
+            measurementPillView = measurementPill
             addView(
                 measurementPill,
                 FrameLayout.LayoutParams(
@@ -517,13 +529,126 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun isFlatPhotoRoom(): Boolean = roomDepth < 0.05f
+    private fun isFlatPhotoRoom(): Boolean = isFlatPhotoRoomMesh
 
     private fun restingMeasurementPillText(): String {
-        return if (isFlatPhotoRoom()) {
-            getString(R.string.approximate_room_height, roomHeight)
-        } else {
-            String.format(Locale.US, "%.1f m × %.1f m", roomWidth, roomDepth)
+        val text = RoomMeasurementDisplay.restingPillText(
+            width = roomWidth,
+            height = roomHeight,
+            depth = roomDepth,
+            emphasizeHeight = isFlatPhotoRoomMesh,
+        ) { heightMeters ->
+            getString(R.string.approximate_room_height, heightMeters)
+        }
+        return text ?: getString(R.string.approximate_room_height, roomHeight)
+    }
+
+    private fun refreshMeasurementPill() {
+        measurementPillView?.text = restingMeasurementPillText()
+    }
+
+    private fun loadRoomMetadataFromFolder() {
+        val folder = glbPath?.let { File(it).parentFile } ?: return
+        val snapshot = RoomFolderMetadata.readFromFolder(folder) ?: return
+        snapshot.roomWidth?.let { roomWidth = it }
+        snapshot.roomHeight?.let { roomHeight = it }
+        snapshot.roomDepth?.let { roomDepth = it }
+        roomDimsApproach = snapshot.roomDimsApproach
+        isFlatPhotoRoomMesh = snapshot.type == "photo" ||
+            snapshot.roomDimsApproach == "depth_anything_metric" ||
+            roomDepth < 0.05f
+        hasCalculatedRoomMeasurements = snapshot.roomDimsApproach == "depth_anything_metric"
+    }
+
+    private fun warmRoomMeasurementInBackgroundIfNeeded() {
+        if (isPreviewMode || hasCalculatedRoomMeasurements || isMeasuringRoomDimensions) return
+        val sourcePhoto = resolveSourcePhotoFile() ?: return
+        lifecycleScope.launch {
+            isMeasuringRoomDimensions = true
+            val measured = withContext(Dispatchers.Default) {
+                DepthAnythingRoomMeasurer.measureFromFile(this@GLBRoomActivity, sourcePhoto)
+            }
+            isMeasuringRoomDimensions = false
+            if (measured.measured) {
+                applyMeasuredDimensions(measured, persist = true)
+            }
+        }
+    }
+
+    private fun resolveSourcePhotoFile(): File? {
+        val folder = glbPath?.let { File(it).parentFile } ?: return null
+        listOf("source_photo.jpg", "source_photo.png", "front_wall.png").forEach { name ->
+            val candidate = File(folder, name)
+            if (candidate.exists() && candidate.length() > 0L) return candidate
+        }
+        return null
+    }
+
+    private fun applyMeasuredDimensions(measured: DepthAnythingRoomMeasurer.Result, persist: Boolean) {
+        roomWidth = measured.width
+        roomHeight = measured.height
+        roomDepth = measured.depth
+        hasCalculatedRoomMeasurements = measured.measured
+        roomDimsApproach = measured.source
+        isFlatPhotoRoomMesh = true
+        refreshMeasurementPill()
+        if (persist) {
+            persistMeasuredDimensionsToFolder(measured)
+        }
+    }
+
+    private fun persistMeasuredDimensionsToFolder(measured: DepthAnythingRoomMeasurer.Result) {
+        val folder = glbPath?.let { File(it).parentFile } ?: return
+        val existing = RoomFolderMetadata.readFromFolder(folder)
+        val snapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
+            folder,
+            (existing ?: RoomFolderMetadata.Snapshot()).copy(
+                roomWidth = measured.width,
+                roomHeight = measured.height,
+                roomDepth = measured.depth,
+                roomDimsApproach = measured.source,
+                roomSceneWidth = measured.width,
+                roomSceneHeight = measured.height,
+                roomSceneDepth = measured.depth,
+            ),
+        )
+        RoomFolderMetadata.writeToFolder(folder, snapshot)
+        val metadataFile = File(folder, "metadata.txt")
+        if (metadataFile.exists()) {
+            val lines = metadataFile.readLines().mapNotNull { line ->
+                when {
+                    line.startsWith("roomWidth=") -> "roomWidth=${measured.width}"
+                    line.startsWith("roomHeight=") -> "roomHeight=${measured.height}"
+                    line.startsWith("roomDepth=") -> "roomDepth=${measured.depth}"
+                    else -> line
+                }
+            }.toMutableList()
+            if (lines.none { it.startsWith("roomDepth=") }) {
+                lines += "roomDepth=${measured.depth}"
+            }
+            metadataFile.writeText(lines.joinToString("\n") + "\n")
+        }
+    }
+
+    private fun startAsyncRoomMeasurementForRuler(onComplete: () -> Unit) {
+        if (isMeasuringRoomDimensions) return
+        val sourcePhoto = resolveSourcePhotoFile()
+        if (sourcePhoto == null) {
+            onComplete()
+            return
+        }
+        lifecycleScope.launch {
+            isMeasuringRoomDimensions = true
+            loadingOverlay.visibility = View.VISIBLE
+            val measured = withContext(Dispatchers.Default) {
+                DepthAnythingRoomMeasurer.measureFromFile(this@GLBRoomActivity, sourcePhoto)
+            }
+            isMeasuringRoomDimensions = false
+            loadingOverlay.visibility = View.GONE
+            if (measured.measured) {
+                applyMeasuredDimensions(measured, persist = true)
+            }
+            onComplete()
         }
     }
 
@@ -580,17 +705,24 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun showRoomDimensionsHint() {
         if (isPreviewMode) return
-        val heightLabel = if (isFlatPhotoRoom()) {
-            getString(R.string.room_dimensions_whd_near_accurate, roomWidth, roomHeight, roomDepth)
-        } else {
-            getString(R.string.approximate_room_height, roomHeight)
+        val showHint = {
+            val heightLabel = if (isFlatPhotoRoom()) {
+                getString(R.string.room_dimensions_whd_near_accurate, roomWidth, roomHeight, roomDepth)
+            } else {
+                getString(R.string.approximate_room_height, roomHeight)
+            }
+            hintController.showText(
+                this,
+                R.drawable.ic_ruler,
+                heightLabel,
+                topMarginDp = 52,
+            )
         }
-        hintController.showText(
-            this,
-            R.drawable.ic_ruler,
-            heightLabel,
-            topMarginDp = 52,
-        )
+        if (hasCalculatedRoomMeasurements) {
+            showHint()
+            return
+        }
+        startAsyncRoomMeasurementForRuler(onComplete = showHint)
     }
 
     private fun updateSummonedToolbarState() {
@@ -1763,9 +1895,10 @@ class GLBRoomActivity : AppCompatActivity() {
                 val createdAtMillis = System.currentTimeMillis()
                 metadata.append("name=$name\n")
                 metadata.append("created=$createdAtMillis\n")
-                metadata.append("type=manual\n")
+                metadata.append("type=photo\n")
                 metadata.append("roomWidth=$roomWidth\n")
                 metadata.append("roomHeight=$roomHeight\n")
+                metadata.append("roomDepth=$roomDepth\n")
                 metadata.append("photoOrientation=$photoOrientation\n")
                 metadataFile.writeText(metadata.toString())
                 val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
@@ -1773,11 +1906,17 @@ class GLBRoomActivity : AppCompatActivity() {
                     RoomFolderMetadata.Snapshot(
                         name = name,
                         createdAt = createdAtMillis,
-                        type = "manual",
+                        type = "photo",
                         photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
                         photoWideAngle = false,
                         roomWidth = roomWidth,
                         roomHeight = roomHeight,
+                        roomDepth = roomDepth,
+                        roomDimsApproach = roomDimsApproach ?: "depth_anything_metric",
+                        roomSceneWidth = roomWidth,
+                        roomSceneHeight = roomHeight,
+                        roomSceneDepth = roomDepth,
+                        previewOnly = false,
                     ),
                 )
                 RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
