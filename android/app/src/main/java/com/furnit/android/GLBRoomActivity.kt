@@ -16,6 +16,7 @@ import com.furnit.android.utils.CrashReporter
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektSavingRoomOverlay
 import com.furnit.android.theme.PaafektSnackbar
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
@@ -60,6 +61,9 @@ import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.services.RoomMeasurementDisplay
 import com.furnit.android.services.SegmentationResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -147,6 +151,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private var roomDimsApproach: String? = null
     private var measurementPillView: TextView? = null
     @Volatile private var isMeasuringRoomDimensions: Boolean = false
+    private var saveRoomJob: Job? = null
 
     private enum class InlineBrainMode {
         DEFAULT_SEGMENT,
@@ -1872,6 +1877,14 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun saveProgressSubtitle(progress: Float): String {
+        return when {
+            progress < 0.58f -> getString(R.string.room_viewer_measuring_room)
+            progress < 0.85f -> getString(R.string.generation_progress_generating_3d_model)
+            else -> getString(R.string.room_viewer_saving_room_ellipsis)
+        }
+    }
+
     private fun saveRoom(name: String) {
         val path = glbPath ?: return
         if (!ModelManager.isRoomNameAvailable(this, name)) {
@@ -1879,64 +1892,102 @@ class GLBRoomActivity : AppCompatActivity() {
             return
         }
 
-        try {
-            val glbFile = File(path)
-            val previewRoomFolder = glbFile.parentFile
+        val overlay = PaafektSavingRoomOverlay.show(rootLayout)
+        overlay.setTitle(getString(R.string.room_viewer_saving_room))
+        overlay.setProgress(0.02f, getString(R.string.room_viewer_measuring_room))
 
-            if (previewRoomFolder != null) {
-                val roomsDir = File(filesDir, "rooms")
-                roomsDir.mkdirs()
+        saveRoomJob?.cancel()
+        saveRoomJob = lifecycleScope.launch {
+            try {
+                delay(220)
 
-                val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
-                previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
+                val glbFile = File(path)
+                val previewRoomFolder = glbFile.parentFile
+                    ?: throw IllegalStateException("Missing room folder")
 
-                val metadataFile = File(savedRoomFolder, "metadata.txt")
-                val metadata = StringBuilder()
-                val createdAtMillis = System.currentTimeMillis()
-                metadata.append("name=$name\n")
-                metadata.append("created=$createdAtMillis\n")
-                metadata.append("type=photo\n")
-                metadata.append("roomWidth=$roomWidth\n")
-                metadata.append("roomHeight=$roomHeight\n")
-                metadata.append("roomDepth=$roomDepth\n")
-                metadata.append("photoOrientation=$photoOrientation\n")
-                metadataFile.writeText(metadata.toString())
-                val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
-                    savedRoomFolder,
-                    RoomFolderMetadata.Snapshot(
-                        name = name,
-                        createdAt = createdAtMillis,
-                        type = "photo",
-                        photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
-                        photoWideAngle = false,
-                        roomWidth = roomWidth,
-                        roomHeight = roomHeight,
-                        roomDepth = roomDepth,
-                        roomDimsApproach = roomDimsApproach ?: "depth_anything_metric",
-                        roomSceneWidth = roomWidth,
-                        roomSceneHeight = roomHeight,
-                        roomSceneDepth = roomDepth,
-                        previewOnly = false,
-                    ),
-                )
-                RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
+                val sourcePhoto = resolveSourcePhotoFile()
+                if (sourcePhoto != null) {
+                    val progressJob = launch {
+                        var progress = 0.05f
+                        while (progress < 0.85f && isActive) {
+                            overlay.setProgress(progress, saveProgressSubtitle(progress))
+                            delay(100)
+                            progress += 0.02f
+                        }
+                    }
+                    val measured = withContext(Dispatchers.Default) {
+                        DepthAnythingRoomMeasurer.measureFromFile(this@GLBRoomActivity, sourcePhoto)
+                    }
+                    progressJob.cancel()
+                    if (measured.measured) {
+                        applyMeasuredDimensions(measured, persist = false)
+                    }
+                    overlay.setProgress(0.88f, getString(R.string.room_viewer_saving_room_ellipsis))
+                } else {
+                    overlay.setProgress(0.35f, getString(R.string.room_viewer_saving_room_ellipsis))
+                }
 
-                previewRoomFolder.parentFile?.deleteRecursively()
+                withContext(Dispatchers.IO) {
+                    val roomsDir = File(filesDir, "rooms").apply { mkdirs() }
+                    val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
+                    previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
+
+                    val createdAtMillis = System.currentTimeMillis()
+                    val metadataFile = File(savedRoomFolder, "metadata.txt")
+                    val metadata = StringBuilder()
+                    metadata.append("name=$name\n")
+                    metadata.append("created=$createdAtMillis\n")
+                    metadata.append("type=photo\n")
+                    metadata.append("roomWidth=$roomWidth\n")
+                    metadata.append("roomHeight=$roomHeight\n")
+                    metadata.append("roomDepth=$roomDepth\n")
+                    metadata.append("photoOrientation=$photoOrientation\n")
+                    metadataFile.writeText(metadata.toString())
+                    val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
+                        savedRoomFolder,
+                        RoomFolderMetadata.Snapshot(
+                            name = name,
+                            createdAt = createdAtMillis,
+                            type = "photo",
+                            photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                            photoWideAngle = false,
+                            roomWidth = roomWidth,
+                            roomHeight = roomHeight,
+                            roomDepth = roomDepth,
+                            roomDimsApproach = roomDimsApproach ?: "depth_anything_metric",
+                            roomSceneWidth = roomWidth,
+                            roomSceneHeight = roomHeight,
+                            roomSceneDepth = roomDepth,
+                            previewOnly = false,
+                        ),
+                    )
+                    RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
+                    previewRoomFolder.parentFile?.deleteRecursively()
+                }
+
+                overlay.setProgress(1f, getString(R.string.room_viewer_saving_room_ellipsis))
+                delay(280)
+                PaafektSavingRoomOverlay.hide(rootLayout)
 
                 PaafektSnackbar.showRoomSaved(rootLayout, name)
-                LogUtil.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
+                LogUtil.d(TAG, "Room saved: $name")
 
                 rootLayout.postDelayed({
-                    val intent = Intent(this, ContentActivity::class.java)
+                    val intent = Intent(this@GLBRoomActivity, ContentActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
                     startActivity(intent)
                     finish()
                 }, 1200)
+            } catch (e: Exception) {
+                PaafektSavingRoomOverlay.hide(rootLayout)
+                LogUtil.e(TAG, "Failed to save room", e)
+                Toast.makeText(
+                    this@GLBRoomActivity,
+                    getString(R.string.glb_room_error, e.message ?: ""),
+                    Toast.LENGTH_SHORT,
+                ).show()
+                CrashReporter.report(this@GLBRoomActivity, e, "GLB room — save room")
             }
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to save room", e)
-            Toast.makeText(this, getString(R.string.glb_room_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
-            CrashReporter.report(this, e, "GLB room — save room")
         }
     }
 
@@ -2053,6 +2104,7 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        saveRoomJob?.cancel()
         immersiveChrome.destroy()
         stopInlineBrainSegmentation()
         furnitureFitManager?.close()

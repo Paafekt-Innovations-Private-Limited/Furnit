@@ -249,6 +249,10 @@
     <string name="room_viewer_room_name_placeholder">e.g. Living Room</string>
     <string name="room_viewer_room_name">Room Name</string>
     <string name="room_viewer_save_success">\'%s\' saved to your rooms</string>
+    <string name="room_viewer_saving_room">Saving Room</string>
+    <string name="room_viewer_measuring_room">Measuring room…</string>
+    <string name="room_viewer_saving_room_ellipsis">Saving Room…</string>
+    <string name="generation_progress_generating_3d_model">Generating 3D Model</string>
     <string name="room_preview_leave_title">Leave without saving?</string>
     <string name="room_preview_leave_message">Your room has not been saved yet. If you go back now, you will lose this preview.</string>
     <string name="room_preview_leave_stay">Stay</string>

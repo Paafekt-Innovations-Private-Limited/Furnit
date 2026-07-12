@@ -37,7 +37,9 @@ import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektImmersiveChromeController
 import com.furnit.android.theme.PaafektImmersiveSummonedToolbar
 import com.furnit.android.theme.ImmersiveSummonedToolbarHolder
+import com.furnit.android.theme.PaafektSavingRoomOverlay
 import com.furnit.android.theme.PaafektSnackbar
+import com.furnit.android.services.DepthAnythingRoomMeasurer
 import com.furnit.android.models.ModelManager
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
@@ -51,7 +53,12 @@ import com.furnit.android.utils.RoomSceneLighting
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.ModelNode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -103,6 +110,7 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var previewBackCallback: OnBackPressedCallback
 
     private var glbPath: String? = null
+    private var saveRoomJob: Job? = null
     private var currentModelId: String? = null
     private var currentModelNode: ModelNode? = null
 
@@ -570,6 +578,23 @@ class ModelDetailActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun saveProgressSubtitle(progress: Float): String {
+        return when {
+            progress < 0.58f -> getString(R.string.room_viewer_measuring_room)
+            progress < 0.85f -> getString(R.string.generation_progress_generating_3d_model)
+            else -> getString(R.string.room_viewer_saving_room_ellipsis)
+        }
+    }
+
+    private fun resolveSourcePhotoFile(): File? {
+        val folder = glbPath?.let { File(it).parentFile } ?: return null
+        listOf("source_photo.jpg", "source_photo.png", "front_wall.png").forEach { name ->
+            val candidate = File(folder, name)
+            if (candidate.exists() && candidate.length() > 0L) return candidate
+        }
+        return null
+    }
+
     private fun saveRoom(name: String) {
         val path = glbPath
         if (path == null) {
@@ -581,43 +606,87 @@ class ModelDetailActivity : AppCompatActivity() {
             return
         }
 
-        try {
-            val glbFile = File(path)
-            val previewRoomFolder = glbFile.parentFile
+        val overlay = PaafektSavingRoomOverlay.show(viewerRootLayout)
+        overlay.setTitle(getString(R.string.room_viewer_saving_room))
+        overlay.setProgress(0.02f, getString(R.string.room_viewer_measuring_room))
 
-            if (previewRoomFolder != null) {
-                // Move room from preview directory to rooms directory
-                val roomsDir = File(filesDir, "rooms")
-                roomsDir.mkdirs()
+        saveRoomJob?.cancel()
+        saveRoomJob = lifecycleScope.launch {
+            try {
+                delay(220)
 
-                val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
+                val glbFile = File(path)
+                val previewRoomFolder = glbFile.parentFile
+                    ?: throw IllegalStateException("Missing room folder")
 
-                // Copy all files from preview to rooms folder
-                previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
+                val sourcePhoto = resolveSourcePhotoFile()
+                if (sourcePhoto != null && isFlatPhotoRoomMesh) {
+                    val progressJob = launch {
+                        var progress = 0.05f
+                        while (progress < 0.85f && isActive) {
+                            overlay.setProgress(progress, saveProgressSubtitle(progress))
+                            delay(100)
+                            progress += 0.02f
+                        }
+                    }
+                    val measured = withContext(Dispatchers.Default) {
+                        DepthAnythingRoomMeasurer.measureFromFile(this@ModelDetailActivity, sourcePhoto)
+                    }
+                    progressJob.cancel()
+                    if (measured.measured) {
+                        roomWidth = measured.width
+                        roomHeight = measured.height
+                        roomDepth = measured.depth
+                    }
+                    overlay.setProgress(0.88f, getString(R.string.room_viewer_saving_room_ellipsis))
+                } else {
+                    overlay.setProgress(0.35f, getString(R.string.room_viewer_saving_room_ellipsis))
+                }
 
-                // Update metadata with user's name in the saved location
-                val metadataFile = File(savedRoomFolder, "metadata.txt")
-                metadataFile.writeText("name=$name\ncreated=${System.currentTimeMillis()}\ntype=manual")
+                withContext(Dispatchers.IO) {
+                    val roomsDir = File(filesDir, "rooms").apply { mkdirs() }
+                    val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
+                    previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
 
-                // Clean up preview directory
-                previewRoomFolder.parentFile?.deleteRecursively()
+                    val createdAtMillis = System.currentTimeMillis()
+                    val metadataFile = File(savedRoomFolder, "metadata.txt")
+                    metadataFile.writeText(
+                        buildString {
+                            append("name=$name\n")
+                            append("created=$createdAtMillis\n")
+                            append("type=manual\n")
+                            append("roomWidth=$roomWidth\n")
+                            append("roomHeight=$roomHeight\n")
+                            append("roomDepth=$roomDepth\n")
+                        },
+                    )
+
+                    previewRoomFolder.parentFile?.deleteRecursively()
+                }
+
+                overlay.setProgress(1f, getString(R.string.room_viewer_saving_room_ellipsis))
+                delay(280)
+                PaafektSavingRoomOverlay.hide(viewerRootLayout)
 
                 PaafektSnackbar.showRoomSaved(viewerRootLayout, name)
-                LogUtil.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
+                LogUtil.d(TAG, "Room saved: $name")
 
                 viewerRootLayout.postDelayed({
-                    val intent = Intent(this, ContentActivity::class.java)
+                    val intent = Intent(this@ModelDetailActivity, ContentActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
                     startActivity(intent)
                     finish()
                 }, 1200)
-            } else {
-                Toast.makeText(this, getString(R.string.model_detail_failed_save), Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                PaafektSavingRoomOverlay.hide(viewerRootLayout)
+                LogUtil.e(TAG, "Failed to save room", e)
+                Toast.makeText(
+                    this@ModelDetailActivity,
+                    getString(R.string.photo_room_error_load, e.message ?: ""),
+                    Toast.LENGTH_SHORT,
+                ).show()
+                CrashReporter.report(this@ModelDetailActivity, e, "Model detail — save room")
             }
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to save room", e)
-            Toast.makeText(this, getString(R.string.photo_room_error_load, e.message ?: ""), Toast.LENGTH_SHORT).show()
-            CrashReporter.report(this, e, "Model detail — save room")
         }
     }
 
@@ -939,6 +1008,7 @@ class ModelDetailActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        saveRoomJob?.cancel()
         immersiveChrome.destroy()
         super.onDestroy()
     }
