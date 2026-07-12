@@ -484,6 +484,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 setTextColor(PaafektColors.textSecondary)
                 setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
                 background = PaafektDrawables.hintChip()
+                visibility = if (isPreviewMode) View.GONE else View.VISIBLE
             }
             addView(
                 measurementPill,
@@ -572,6 +573,7 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun showRoomDimensionsHint() {
+        if (isPreviewMode) return
         val heightLabel = if (isFlatPhotoRoom()) {
             getString(R.string.room_dimensions_whd_near_accurate, roomWidth, roomHeight, roomDepth)
         } else {
