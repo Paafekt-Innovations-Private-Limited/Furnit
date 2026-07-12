@@ -5,7 +5,14 @@ import SwiftUI
 extension String {
     /// Returns the localized version of this string key
     var localized: String {
-        NSLocalizedString(self, comment: "")
+        let value = NSLocalizedString(self, comment: "")
+        if value != self { return value }
+        if let englishBundlePath = Bundle.main.path(forResource: "en", ofType: "lproj"),
+           let englishBundle = Bundle(path: englishBundlePath) {
+            let english = englishBundle.localizedString(forKey: self, value: "", table: nil)
+            if !english.isEmpty { return english }
+        }
+        return value
     }
 
     /// Returns the localized version with format arguments

@@ -444,6 +444,12 @@ class GLBRoomActivity : AppCompatActivity() {
                 immersiveSummonButton?.layoutParams = lp
             }
         }
+        brainSegmentationDoneButton?.layoutParams?.let { lp ->
+            if (lp is FrameLayout.LayoutParams) {
+                lp.topMargin = bars.top + PaafektSpace.sm(this)
+                brainSegmentationDoneButton?.layoutParams = lp
+            }
+        }
     }
 
     private fun notifyWebViewViewportChanged() {
@@ -824,8 +830,16 @@ class GLBRoomActivity : AppCompatActivity() {
                 cornerRadius = dpToPx(24).toFloat()
                 setColor(PaafektColors.accent)
             }
-            setOnClickListener { toggleInlineBrainSegmentMode() }
+            setOnClickListener { onSegmentationDonePressed() }
             contentDescription = getString(R.string.room_viewer_segmentation_done)
+        }
+    }
+
+    private fun onSegmentationDonePressed() {
+        if (inlineBrainFullVideoEnabled && inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED) {
+            toggleInlineBrainSegmentMode()
+        } else {
+            stopInlineBrainSegmentation()
         }
     }
 
@@ -953,10 +967,13 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun updateSegmentationDoneButton() {
         val button = brainSegmentationDoneButton ?: return
-        val segmenting = inlineBrainFullVideoEnabled &&
-            brainDetectionOverlay.visibility == View.VISIBLE &&
-            inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED
-        button.visibility = if (segmenting) View.VISIBLE else View.GONE
+        val overlayVisible = ::brainDetectionOverlay.isInitialized &&
+            brainDetectionOverlay.visibility == View.VISIBLE
+        val isActive = overlayVisible && (
+            !inlineBrainFullVideoEnabled ||
+                inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED
+            )
+        button.visibility = if (isActive) View.VISIBLE else View.GONE
     }
 
     private fun detectionIoU(first: DetectionResult, second: DetectionResult): Float {
@@ -1472,12 +1489,14 @@ class GLBRoomActivity : AppCompatActivity() {
         function applyBackCenterCamera(boxWorld) {
             const depth = Math.max(boxWorld.max.z - boxWorld.min.z, 0.1);
             const insetFromBack = Math.max(depth * backCenterInsetFraction(depth), 0.05);
+            const roomHeight = Math.max(boxWorld.max.y - boxWorld.min.y, 0.1);
             const centerY = (boxWorld.min.y + boxWorld.max.y) * 0.5;
+            const lookAtY = centerY - roomHeight * 0.06;
             const cameraZ = boxWorld.max.z - insetFromBack;
             const targetZ = boxWorld.min.z;
 
-            camera.position.set(0, centerY + 0.4, cameraZ);
-            controls.target.set(0, centerY, targetZ);
+            camera.position.set(0, lookAtY + Math.max(roomHeight * 0.14, 0.35), cameraZ);
+            controls.target.set(0, lookAtY, targetZ);
             camera.lookAt(controls.target);
             controls.update();
 
@@ -1504,11 +1523,13 @@ class GLBRoomActivity : AppCompatActivity() {
             const planeWidth = flatPhotoWidth;
             const planeHeight = flatPhotoHeight;
             const standoff = depthAnythingImagePlaneStandoff(planeWidth, planeHeight);
-            const camY = planeHeight * 0.5;
+            // Bias look slightly below wall center so cover framing leaves headroom under the top edge.
+            const lookAtY = planeHeight * 0.43;
+            const camY = lookAtY + Math.max(planeHeight * 0.05, 0.08);
             // glTF plane normal is +Z; WebGL/Three.js must view from +Z (SceneKit preview parity).
             // Camera on −Z shows the back face and the photo appears horizontally mirrored.
             camera.position.set(0, camY, standoff);
-            controls.target.set(0, camY, 0);
+            controls.target.set(0, lookAtY, 0);
             camera.lookAt(controls.target);
             controls.update();
             initialCameraPosition = camera.position.clone();
