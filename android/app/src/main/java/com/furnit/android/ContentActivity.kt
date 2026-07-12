@@ -24,10 +24,6 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.Toast
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.furnit.android.services.PhotoRoomGenerationService
-import com.furnit.android.services.RoomGenerationUiState
 import androidx.appcompat.app.AlertDialog
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
@@ -41,8 +37,6 @@ class ContentActivity : AppCompatActivity() {
     private lateinit var roomsContainer: LinearLayout
     private lateinit var statsText: TextView
     private lateinit var totalSizeText: TextView
-    private lateinit var roomGenerationProgressBar: FrameLayout
-    private lateinit var roomGenerationProgressLabel: TextView
 
     // Paafekt design tokens
     private val backgroundColor = PaafektColors.background
@@ -86,12 +80,6 @@ class ContentActivity : AppCompatActivity() {
         // Refresh models when returning to this activity
         modelManager.refresh()
         refreshRoomsList()
-        syncRoomGenerationProgressBarFromState()
-    }
-
-    override fun onDestroy() {
-        RoomGenerationUiState.setListener(null)
-        super.onDestroy()
     }
 
     private fun navigateToLogin() {
@@ -243,84 +231,8 @@ class ContentActivity : AppCompatActivity() {
         scrollView.addView(layout)
         setContentView(scrollView)
 
-        val contentRoot = findViewById<FrameLayout>(android.R.id.content)
-        roomGenerationProgressBar = createRoomGenerationProgressBar()
-        contentRoot.addView(
-            roomGenerationProgressBar,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM,
-            ),
-        )
-        RoomGenerationUiState.setListener { syncRoomGenerationProgressBarFromState() }
-
         // Initial load
         refreshRoomsList()
-    }
-
-    private fun createRoomGenerationProgressBar(): FrameLayout {
-        val density = resources.displayMetrics.density
-        return FrameLayout(this).apply {
-            visibility = View.GONE
-            setBackgroundColor(Color.parseColor("#5E35B1"))
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                elevation = 28f * density
-            }
-            val row = LinearLayout(this@ContentActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14))
-            }
-            ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
-                val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-                row.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14) + nav.bottom)
-                insets
-            }
-            roomGenerationProgressLabel = TextView(this@ContentActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                textSize = 13f
-                setTextColor(Color.WHITE)
-                maxLines = 2
-            }
-            row.addView(roomGenerationProgressLabel)
-            val stopGlobal = TextView(this@ContentActivity).apply {
-                text = "⏹"
-                textSize = 11f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(4).toFloat()
-                    setColor(Color.parseColor("#E53935"))
-                }
-                contentDescription = getString(R.string.single_photo_ai_stop)
-                setOnClickListener { onRoomGenerationStopClicked() }
-            }
-            row.addView(stopGlobal)
-            addView(row)
-        }
-    }
-
-    private fun syncRoomGenerationProgressBarFromState() {
-        if (!::roomGenerationProgressBar.isInitialized) return
-        val s = RoomGenerationUiState
-        if (!s.isGenerating) {
-            roomGenerationProgressBar.visibility = View.GONE
-            return
-        }
-        roomGenerationProgressBar.visibility = View.VISIBLE
-        roomGenerationProgressLabel.text = s.statusLine
-        (roomGenerationProgressBar.parent as? ViewGroup)?.bringChildToFront(roomGenerationProgressBar)
-        ViewCompat.requestApplyInsets(roomGenerationProgressBar)
-    }
-
-    private fun onRoomGenerationStopClicked() {
-        PhotoRoomGenerationService.getInstance(this).cancelGeneration()
-        RoomGenerationUiState.clear()
-        syncRoomGenerationProgressBarFromState()
-        Toast.makeText(this, getString(R.string.home_room_generation_stopped), Toast.LENGTH_SHORT).show()
     }
 
     private fun createIconButton(icon: String): TextView {

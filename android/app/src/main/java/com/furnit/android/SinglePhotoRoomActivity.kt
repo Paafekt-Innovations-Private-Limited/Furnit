@@ -1,9 +1,6 @@
 package com.furnit.android
 
 import android.Manifest
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -22,9 +19,6 @@ import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.*
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,18 +26,16 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.services.PhotoRoomGenerationService
-import com.furnit.android.services.RoomGenerationUiState
+import com.furnit.android.theme.PaafektBuildingRoomOverlay
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
 import android.content.res.ColorStateList
@@ -68,18 +60,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private lateinit var rootLayout: FrameLayout
     private lateinit var initialView: LinearLayout
     private lateinit var methodPickerView: LinearLayout
-    private lateinit var progressOverlay: FrameLayout
-    /** Bottom bar when AI job is active and the full-screen progress modal is hidden. */
-    private lateinit var globalAiProgressBar: FrameLayout
-    private lateinit var globalAiProgressLabel: TextView
-    private lateinit var progressRing: CircularProgressIndicator
-    private lateinit var progressText: TextView
-    private lateinit var progressPercent: TextView
-    private lateinit var runInBackgroundButton: MaterialButton
-    /** Host of the ring — subtle pulse animation. */
-    private var progressRingHost: View? = null
-    private var progressOverlayPulse: AnimatorSet? = null
-    private var phaseStripViews: Array<TextView> = emptyArray()
+    private var buildingRoomOverlay: PaafektBuildingRoomOverlay? = null
     private lateinit var selectedImageView: ImageView
     private lateinit var singleImageOverlayView: FurnitureFitOverlayView
     private lateinit var singleImageScanStatusView: TextView
@@ -96,10 +77,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var aiGenerationHandle: PhotoRoomGenerationService.GenerationHandle? = null
     private var aiGenerationResult: PhotoRoomGenerationService.GenerationResult? = null
     private var aiGenerationRunning = false
-    /** Set when user taps AI Room while generation is running - callback will show overlay and open on complete. */
-    private var aiRoomOverlayRequested = false
-    /** After "Run in background", AI option line shows percent; otherwise only friendly text (no %). */
-    private var aiOptionShowPercent = false
     /** Bumped on cancel/restart so stale generation callbacks are ignored and folders deleted. */
     private var aiSessionId: Int = 0
     private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
@@ -207,34 +184,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         methodPickerView.visibility = View.GONE
         rootLayout.addView(methodPickerView)
 
-        // Full-screen modal first; global bar added last so it stays on top (progress + Stop always visible).
-        progressOverlay = createProgressOverlay()
-        progressOverlay.visibility = View.GONE
-        rootLayout.addView(progressOverlay)
-
         setContentView(rootLayout)
-
-        // Sibling of rootLayout under android.R.id.content so the strip stays above both
-        // Create 3D Room and method-picker full-screen views (not buried under them).
-        val contentRoot = findViewById<FrameLayout>(android.R.id.content)
-        globalAiProgressBar = createGlobalAiProgressBar()
-        contentRoot.addView(
-            globalAiProgressBar,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM,
-            ),
-        )
 
         onBackPressedDispatcher.addCallback(
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (progressOverlay.visibility == View.VISIBLE) {
-                        aiRoomOverlayRequested = false
-                        hideProgressOverlay()
-                        updateAIOptionProgress(lastAIGenerationProgress, lastAIGenerationRawMessage)
+                    if (buildingRoomOverlay != null) {
                         return
                     }
                     if (methodPickerView.visibility == View.VISIBLE) {
@@ -248,21 +204,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         )
     }
 
-    override fun onResume() {
-        super.onResume()
-        refreshGlobalAiProgressUi()
-    }
-
     override fun onDestroy() {
         if (furnitureFitInitialized) {
             furnitureFitManager.close()
         }
         super.onDestroy()
-    }
-
-    /** Keeps the bottom strip visible and on top after navigation or window insets change. */
-    private fun refreshGlobalAiProgressUi() {
-        updateGlobalAiProgressOverlay()
     }
 
     private fun showMethodPickerBackConfirmation() {
@@ -827,13 +773,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 "Orientation from sampled bitmap ${bitmap.width}x${bitmap.height}: ${detectedOrientation.value}",
             )
             updateOrientationIndicator()
-            DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, starting background room generation")
-
-            methodPickerView.post {
-                if (requestId == imageLoadRequestId && selectedBitmap === bitmap && !isDestroyed) {
-                    startAIGenerationInBackground(bitmap)
-                }
-            }
+            DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}")
         }
     }
 
@@ -857,7 +797,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun showMethodPicker() {
         initialView.visibility = View.GONE
         methodPickerView.visibility = View.VISIBLE
-        rootLayout.post { refreshGlobalAiProgressUi() }
     }
 
     private fun resetSingleImageOverlay() {
@@ -947,50 +886,18 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun updateAiStopButtonVisibility() {
-        // Stop controls live on the full-screen progress overlay (iOS parity — not on method picker).
+        // iOS parity — no stop / run-in-background controls on generation overlay.
     }
 
-    private fun onAIStopClicked() {
-        if (!aiGenerationRunning && aiGenerationResult == null) return
-        DebugLogger.d("SinglePhotoRoom", "AI Stop tapped")
-        hideProgressOverlay()
-        aiRoomOverlayRequested = false
+    /** Start AI generation when user taps AI Room (Swift parity — not on photo select). */
+    private fun startAIGenerationInBackground(bitmap: Bitmap) {
         aiGenerationHandle?.cancel()
         aiGenerationHandle = null
-        aiGenerationResult?.let { deleteGeneratedRoomFolderUnconditional(it) }
+        deleteGeneratedRoomFolder(aiGenerationResult)
         aiGenerationResult = null
-        aiGenerationRunning = false
-        aiOptionShowPercent = false
-        lastAIGenerationRawMessage = ""
-        lastAIGenerationProgress = 0f
-        lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
-        aiSessionId++
         PhotoRoomGenerationService.getInstance(this).cancelGeneration()
-        RoomGenerationUiState.clear()
-        aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
-        updateAiStopButtonVisibility()
-        updateGlobalAiProgressOverlay()
-    }
-
-    /** After "Run in background", copy the generated room to Home (not preview-only). */
-    private fun promoteGeneratedRoomToLibrary(
-        result: PhotoRoomGenerationService.GenerationResult,
-    ): PhotoRoomGenerationService.GenerationResult {
-        return try {
-            val promoted = PhotoRoomGenerationService.getInstance(this).promoteToLibrary(result)
-            LogUtil.i("SinglePhotoRoom", "Promoted generated room to Home list: ${promoted.roomFolder.absolutePath}")
-            promoted
-        } catch (e: Exception) {
-            DebugLogger.eDebugMode("SinglePhotoRoom", "promoteGeneratedRoomToLibrary failed", e)
-            result
-        }
-    }
-
-    /** Start AI generation in background when photo is selected. Cancel on Manual/Back/Change. */
-    private fun startAIGenerationInBackground(bitmap: Bitmap) {
-        cancelAndReleaseAI()
+        aiSessionId++
         val session = aiSessionId
-        aiGenerationResult = null
         aiGenerationRunning = true
         val generationService = PhotoRoomGenerationService.getInstance(this)
         val orientationForMetadata = metadataOrientationStringForViewer()
@@ -1002,11 +909,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     if (session != aiSessionId) return@runOnUiThread
                     logProgress0("SinglePhotoRoomActivity.kt:onProgress", "callback", mapOf(
                         "progress" to progress, "message" to message, "aiGenerationRunning" to aiGenerationRunning,
-                        "aiRoomOverlayRequested" to aiRoomOverlayRequested
                     ))
-                    if (aiGenerationRunning) {
+                    if (aiGenerationRunning && !isDestroyed) {
                         updateAIOptionProgress(progress, message)
-                        if (aiRoomOverlayRequested && !isDestroyed) updateProgressOverlay(progress, message)
                     }
                     if (!isDestroyed) updateAiStopButtonVisibility()
                 }
@@ -1021,25 +926,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     var finalResult = result
                     aiGenerationRunning = false
                     aiGenerationHandle = null
-                    if (aiOptionShowPercent) {
-                        finalResult = promoteGeneratedRoomToLibrary(result)
-                    }
                     aiGenerationResult = finalResult
                     if (!isDestroyed) {
                         updateAIOptionProgress(1f, getString(R.string.detector_model_ready))
                         hideProgressOverlay()
-                        if (aiRoomOverlayRequested) {
-                            aiRoomOverlayRequested = false
-                            openGeneratedRoomWithResult(finalResult)
-                        }
+                        openGeneratedRoomWithResult(finalResult)
                         updateAiStopButtonVisibility()
-                    } else {
-                        lastAIGenerationProgress = 1f
-                        lastAIGenerationRawMessage = getString(R.string.detector_model_ready)
-                        lastAIGenerationMessage = toFriendlyMessage(1f, getString(R.string.detector_model_ready))
-                        updateGlobalAiProgressOverlay()
                     }
-                    DebugLogger.d("SinglePhotoRoom", "AI generation completed in background")
+                    DebugLogger.d("SinglePhotoRoom", "AI generation completed")
                 }
             }
             override fun onError(message: String) {
@@ -1049,8 +943,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         aiGenerationRunning = false
                         aiGenerationResult = null
                         aiGenerationHandle = null
-                        aiRoomOverlayRequested = false
-                        aiOptionShowPercent = false
                         lastAIGenerationRawMessage = ""
                         lastAIGenerationProgress = 0f
                         lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
@@ -1059,14 +951,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                             aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
                             updateAiStopButtonVisibility()
                         }
-                        updateGlobalAiProgressOverlay()
                         return@runOnUiThread
                     }
                     aiGenerationRunning = false
                     aiGenerationResult = null
                     aiGenerationHandle = null
-                    aiRoomOverlayRequested = false
-                    aiOptionShowPercent = false
                     if (!isDestroyed) {
                         updateAIOptionProgress(0f, "Failed")
                         hideProgressOverlay()
@@ -1078,8 +967,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                             "Single photo room — AI generation",
                         )
                         updateAiStopButtonVisibility()
-                    } else {
-                        RoomGenerationUiState.clear()
                     }
                 }
             }
@@ -1089,7 +976,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             sourcePhotoUri = selectedImageUri,
         )
         updateAiStopButtonVisibility()
-        updateGlobalAiProgressOverlay()
     }
 
     /** Cancel AI generation and delete any preview room folder on disk. */
@@ -1099,17 +985,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         deleteGeneratedRoomFolder(aiGenerationResult)
         aiGenerationResult = null
         aiGenerationRunning = false
-        aiRoomOverlayRequested = false
-        aiOptionShowPercent = false
         lastAIGenerationRawMessage = ""
         aiSessionId++
         hideProgressOverlay()
         aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
         PhotoRoomGenerationService.getInstance(this).cancelGeneration()
-        RoomGenerationUiState.clear()
         DebugLogger.d("SinglePhotoRoom", "AI cancelled (session=$aiSessionId)")
         updateAiStopButtonVisibility()
-        updateGlobalAiProgressOverlay()
     }
 
     private var aiOptionSubtitleView: TextView? = null
@@ -1122,27 +1004,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun updateAIOptionProgress(progress: Float, message: String) {
         lastAIGenerationProgress = progress
         lastAIGenerationRawMessage = message
-        val friendly = toFriendlyMessage(progress, message)
-        lastAIGenerationMessage = friendly
-        if (!isDestroyed && methodPickerView.visibility != View.VISIBLE) {
-            val idle = getString(R.string.photo_room_ai_powered)
-            aiOptionSubtitleView?.text = when {
-                progress >= 1f -> getString(R.string.ai_progress_ready_tap_to_view)
-                aiGenerationRunning || aiOptionShowPercent -> "$friendly (${(progress * 100).toInt()}%)"
-                else -> idle
-            }
-        } else if (!isDestroyed) {
+        lastAIGenerationMessage = toFriendlyMessage(progress, message)
+        buildingRoomOverlay?.setProgress(progress, lastAIGenerationMessage)
+        if (!isDestroyed && methodPickerView.visibility == View.VISIBLE) {
             aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
         }
-        updateGlobalAiProgressOverlay()
-    }
-
-    /** Dismiss full-screen progress; keep generation running and show percent on the AI Room row. */
-    private fun onRunInBackgroundClicked() {
-        aiRoomOverlayRequested = false
-        aiOptionShowPercent = true
-        hideProgressOverlay()
-        updateAIOptionProgress(lastAIGenerationProgress, lastAIGenerationRawMessage)
     }
 
     private fun onAIRoomSelected() {
@@ -1152,7 +1018,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             return
         }
 
-        // Use result from background generation if already done
         val result = aiGenerationResult
         if (result != null) {
             DebugLogger.d("SinglePhotoRoom", "Using cached AI result")
@@ -1160,25 +1025,16 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             return
         }
 
-        // Generation still running: show overlay with current progress (don't reset to 0%)
         if (aiGenerationRunning) {
-            logProgress0("SinglePhotoRoomActivity.kt:onAIRoomSelected", "gen running, show overlay", mapOf(
-                "lastProgress" to lastAIGenerationProgress, "lastMessage" to lastAIGenerationMessage
-            ))
-            aiRoomOverlayRequested = true
             showProgressOverlay(preserveProgress = true)
             return
         }
 
-        // Not running and no result (failed or cancelled): start fresh
-        logProgress0("SinglePhotoRoomActivity.kt:onAIRoomSelected", "start fresh", mapOf())
         lastAIGenerationProgress = 0f
         lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
         lastAIGenerationRawMessage = ""
-        aiOptionShowPercent = false
-        startAIGenerationInBackground(selectedBitmap!!)
-        aiRoomOverlayRequested = true
         showProgressOverlay(preserveProgress = false)
+        startAIGenerationInBackground(selectedBitmap!!)
     }
 
     private fun openGeneratedRoomWithResult(result: PhotoRoomGenerationService.GenerationResult) {
@@ -1257,265 +1113,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun phasePillDrawable(active: Boolean): GradientDrawable {
-        val density = resources.displayMetrics.density
-        val strokeW = (1.5f * density).toInt().coerceAtLeast(1)
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 999f
-            if (active) {
-                setColor(PaafektColors.accent)
-            } else {
-                setColor(PaafektColors.surface)
-                setStroke(strokeW, PaafektColors.hairline)
-            }
-        }
-    }
-
-    private fun setPhaseStripForPercent(percent: Int) {
-        if (phaseStripViews.isEmpty()) return
-        val activeIdx = when {
-            percent < 26 -> 0
-            percent < 88 -> 1
-            else -> 2
-        }
-        phaseStripViews.forEachIndexed { index, textView ->
-            val active = index == activeIdx
-            textView.background = phasePillDrawable(active)
-            textView.setTextColor(if (active) PaafektColors.accentText else PaafektColors.textSecondary)
-        }
-    }
-
-    private fun startProgressOverlayPulse() {
-        val host = progressRingHost ?: return
-        progressOverlayPulse?.cancel()
-        val scaleX = ObjectAnimator.ofFloat(host, View.SCALE_X, 1f, 1.045f).apply {
-            duration = 1400
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-        val scaleY = ObjectAnimator.ofFloat(host, View.SCALE_Y, 1f, 1.045f).apply {
-            duration = 1400
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-        progressOverlayPulse = AnimatorSet().apply {
-            playTogether(scaleX, scaleY)
-            start()
-        }
-    }
-
-    private fun stopProgressOverlayPulse() {
-        progressOverlayPulse?.cancel()
-        progressOverlayPulse = null
-        progressRingHost?.apply {
-            scaleX = 1f
-            scaleY = 1f
-        }
-    }
-
-    private fun createProgressOverlay(): FrameLayout {
-        val density = resources.displayMetrics.density
-        val padH = (40 * density).toInt()
-        val padVTop = (44 * density).toInt()
-        val padVBottom = (48 * density).toInt()
-        val ringSize = (196 * density).toInt()
-
-        val screenH = resources.displayMetrics.heightPixels
-        val screenW = resources.displayMetrics.widthPixels
-        val marginOuter = (20 * density).toInt()
-        val maxPanelHeight = (screenH * 0.88f).toInt().coerceAtLeast((280 * density).toInt())
-
-        return FrameLayout(this).apply {
-            setBackgroundColor(Color.argb(204, 0x0E, 0x0F, 0x12))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            clipChildren = false
-
-            val content = LinearLayout(this@SinglePhotoRoomActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(padH, padVTop, padH, padVBottom)
-                background = PaafektDrawables.secondaryButton().apply {
-                    cornerRadius = 28f * density
-                }
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    elevation = 14f * density
-                }
-
-                addView(TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.photo_room_ai_generation)
-                    textSize = 14f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(PaafektColors.accent)
-                    gravity = Gravity.CENTER
-                })
-
-                addView(TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.photo_room_building_room)
-                    textSize = 17f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(PaafektColors.textPrimary)
-                    gravity = Gravity.CENTER
-                    setPadding(0, (6 * density).toInt(), 0, 0)
-                })
-
-                addView(TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.photo_room_building_room_subtext)
-                    textSize = 13f
-                    setTextColor(PaafektColors.textSecondary)
-                    gravity = Gravity.CENTER
-                    setPadding(0, (8 * density).toInt(), 0, 0)
-                })
-
-                val ringFrame = FrameLayout(this@SinglePhotoRoomActivity).apply {
-                    layoutParams = LinearLayout.LayoutParams(ringSize, ringSize).apply {
-                        gravity = Gravity.CENTER_HORIZONTAL
-                        topMargin = (18 * density).toInt()
-                    }
-                }
-                progressRingHost = ringFrame
-
-                progressRing = CircularProgressIndicator(this@SinglePhotoRoomActivity).apply {
-                    max = 100
-                    isIndeterminate = false
-                    indicatorSize = ringSize
-                    trackThickness = (9 * density).toInt()
-                    setIndicatorColor(PaafektColors.accent)
-                    setTrackColor(PaafektColors.surfaceHi)
-                    layoutParams = FrameLayout.LayoutParams(ringSize, ringSize).apply {
-                        gravity = Gravity.CENTER
-                    }
-                    setProgress(0, false)
-                }
-                ringFrame.addView(progressRing)
-
-                progressPercent = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "0%"
-                    textSize = 36f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(PaafektColors.textPrimary)
-                    gravity = Gravity.CENTER
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    ).apply { gravity = Gravity.CENTER }
-                }
-                ringFrame.addView(progressPercent)
-                addView(ringFrame)
-
-                val phaseStrip = LinearLayout(this@SinglePhotoRoomActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { topMargin = (22 * density).toInt() }
-                }
-                val phaseNames = listOf(
-                    "Prepare",
-                    "Build",
-                    getString(R.string.single_photo_phase_finalize),
-                )
-                phaseStripViews = Array(phaseNames.size) { index ->
-                    TextView(this@SinglePhotoRoomActivity).apply {
-                        text = phaseNames[index]
-                        textSize = 11f
-                        setTypeface(null, Typeface.BOLD)
-                        setPadding(
-                            (14 * density).toInt(),
-                            (8 * density).toInt(),
-                            (14 * density).toInt(),
-                            (8 * density).toInt(),
-                        )
-                        layoutParams = LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            if (index < phaseNames.lastIndex) {
-                                marginEnd = (8 * density).toInt()
-                            }
-                        }
-                        background = phasePillDrawable(false)
-                        setTextColor(PaafektColors.textSecondary)
-                    }.also { phaseStrip.addView(it) }
-                }
-                setPhaseStripForPercent(0)
-                addView(phaseStrip)
-
-                progressText = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.photo_room_creating)
-                    textSize = 16f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(PaafektColors.textPrimary)
-                    gravity = Gravity.CENTER
-                    setPadding(0, (20 * density).toInt(), 0, (10 * density).toInt())
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    )
-                }
-                addView(progressText)
-
-                runInBackgroundButton = MaterialButton(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.single_photo_run_in_background)
-                    textSize = 14f
-                    setTextColor(PaafektColors.accentText)
-                    setBackgroundColor(PaafektColors.accent)
-                    setOnClickListener { onRunInBackgroundClicked() }
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ).apply {
-                        topMargin = (16 * density).toInt()
-                    }
-                }
-                addView(runInBackgroundButton)
-
-                addView(TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.single_photo_progress_overlay_background_hint)
-                    textSize = 12f
-                    setTextColor(PaafektColors.textSecondary)
-                    gravity = Gravity.CENTER
-                    setLineSpacing(3f * density, 1f)
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ).apply {
-                        topMargin = (12 * density).toInt()
-                        bottomMargin = (16 * density).toInt()
-                    }
-                })
-            }
-
-            // Card was taller than many phones — bottom text was cut off. Scroll so "background" is always reachable.
-            val scrollView = ScrollView(this@SinglePhotoRoomActivity).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    screenW - 2 * marginOuter,
-                    maxPanelHeight,
-                ).apply {
-                    gravity = Gravity.CENTER
-                    setMargins(marginOuter, (24 * density).toInt(), marginOuter, (24 * density).toInt())
-                }
-                isFillViewport = false
-                isVerticalScrollBarEnabled = true
-                scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
-            }
-            scrollView.addView(
-                content,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-            addView(scrollView)
-        }
-    }
-
     // #region agent log
     private fun logProgress0(location: String, message: String, data: Map<String, Any?>) {
         val payload = JSONObject().apply {
@@ -1533,128 +1130,22 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     // #endregion
 
     private fun showProgressOverlay(preserveProgress: Boolean = false) {
-        val displayProgress: Float
-        val displayMessage: String
-        if (preserveProgress && lastAIGenerationProgress > 0f) {
-            displayProgress = lastAIGenerationProgress
-            displayMessage = lastAIGenerationMessage
-            logProgress0("SinglePhotoRoomActivity.kt:showProgressOverlay", "preserveProgress=true", mapOf(
-                "preserveProgress" to true, "lastProgress" to lastAIGenerationProgress, "lastMessage" to lastAIGenerationMessage
-            ))
+        val displayProgress = if (preserveProgress && lastAIGenerationProgress > 0f) {
+            lastAIGenerationProgress
         } else {
-            displayProgress = 0f
-            displayMessage = getString(R.string.ai_progress_getting_started)
-            logProgress0("SinglePhotoRoomActivity.kt:showProgressOverlay", "reset to 0%", mapOf(
-                "preserveProgress" to preserveProgress, "reason" to if (preserveProgress) "lastProgress was 0" else "fresh start"
-            ))
+            0f
         }
-        progressOverlay.visibility = View.VISIBLE
-        val pct = (displayProgress * 100).toInt().coerceIn(0, 100)
-        progressRing.setProgress(pct, false)
-        progressPercent.text = "$pct%"
-        progressText.text = displayMessage
-        setPhaseStripForPercent(pct)
-        startProgressOverlayPulse()
-        updateGlobalAiProgressOverlay()
+        val displayMessage = if (preserveProgress && lastAIGenerationProgress > 0f) {
+            lastAIGenerationMessage
+        } else {
+            getString(R.string.ai_progress_getting_started)
+        }
+        buildingRoomOverlay = PaafektBuildingRoomOverlay.show(rootLayout)
+        buildingRoomOverlay?.setProgress(displayProgress, displayMessage)
     }
 
     private fun hideProgressOverlay() {
-        stopProgressOverlayPulse()
-        progressOverlay.visibility = View.GONE
-        updateGlobalAiProgressOverlay()
-    }
-
-    private fun createGlobalAiProgressBar(): FrameLayout {
-        val density = resources.displayMetrics.density
-        return FrameLayout(this).apply {
-            visibility = View.GONE
-            setBackgroundColor(PaafektColors.surfaceHi)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                elevation = 28f * density
-            }
-            val row = LinearLayout(this@SinglePhotoRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14))
-            }
-            ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
-                val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-                row.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14) + nav.bottom)
-                insets
-            }
-            globalAiProgressLabel = TextView(this@SinglePhotoRoomActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                textSize = 13f
-                setTextColor(PaafektColors.textPrimary)
-                maxLines = 2
-            }
-            row.addView(globalAiProgressLabel)
-            val stopGlobal = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.single_photo_ai_stop)
-                textSize = 11f
-                setTextColor(PaafektColors.accentText)
-                gravity = Gravity.CENTER
-                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(4).toFloat()
-                    setColor(PaafektColors.danger)
-                }
-                contentDescription = getString(R.string.single_photo_ai_stop)
-                setOnClickListener { onAIStopClicked() }
-            }
-            row.addView(stopGlobal)
-            addView(row)
-        }
-    }
-
-    /** Bottom strip while a job is active — hidden on method picker to match iOS. */
-    private fun updateGlobalAiProgressOverlay() {
-        if (::globalAiProgressBar.isInitialized && !isDestroyed) {
-            val onMethodPicker = ::methodPickerView.isInitialized && methodPickerView.visibility == View.VISIBLE
-            val active = (aiGenerationRunning || aiGenerationResult != null) && !onMethodPicker
-            globalAiProgressBar.visibility = if (active) View.VISIBLE else View.GONE
-            if (active) {
-                val pct = (lastAIGenerationProgress * 100).toInt().coerceIn(0, 100)
-                globalAiProgressLabel.text = if (lastAIGenerationProgress >= 1f && aiGenerationResult != null) {
-                    getString(R.string.single_photo_global_ai_ready, pct)
-                } else {
-                    "${lastAIGenerationMessage} · $pct%"
-                }
-            }
-            (globalAiProgressBar.parent as? ViewGroup)?.bringChildToFront(globalAiProgressBar)
-            ViewCompat.requestApplyInsets(globalAiProgressBar)
-        }
-        syncRoomGenerationUiStateForList()
-    }
-
-    /** Shared with [com.furnit.android.ContentActivity] when this activity is in the background or destroyed. */
-    private fun syncRoomGenerationUiStateForList() {
-        val active = aiGenerationRunning || aiGenerationResult != null
-        if (!active) {
-            RoomGenerationUiState.clear()
-            return
-        }
-        val pct = (lastAIGenerationProgress * 100).toInt().coerceIn(0, 100)
-        val ctx = if (isDestroyed) applicationContext else this
-        val line = if (lastAIGenerationProgress >= 1f && aiGenerationResult != null) {
-            ctx.getString(R.string.single_photo_global_ai_ready, pct)
-        } else {
-            "${lastAIGenerationMessage} · $pct%"
-        }
-        RoomGenerationUiState.update(true, lastAIGenerationProgress, line)
-    }
-
-    private fun updateProgressOverlay(progress: Float, message: String) {
-        val percent = (progress * 100).toInt().coerceIn(0, 100)
-        val friendly = toFriendlyMessage(progress, message)
-        logProgress0("SinglePhotoRoomActivity.kt:updateProgressOverlay", "updating UI", mapOf(
-            "progress" to progress, "percent" to percent, "message" to message
-        ))
-        progressRing.setProgress(percent, true)
-        progressPercent.text = "$percent%"
-        progressText.text = friendly
-        setPhaseStripForPercent(percent)
-        updateGlobalAiProgressOverlay()
+        PaafektBuildingRoomOverlay.hide(rootLayout)
+        buildingRoomOverlay = null
     }
 }
