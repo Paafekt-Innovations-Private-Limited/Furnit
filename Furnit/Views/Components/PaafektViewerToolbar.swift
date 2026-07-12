@@ -156,3 +156,44 @@ struct PaafektViewerBackButton: View {
         .buttonStyle(.plain)
     }
 }
+
+/// Shared resting-pill / ruler-hint copy for room measurement chrome.
+enum PaafektRoomMeasurementDisplay {
+    /// Saved AI rooms show labeled height; footprint rooms keep W×D when height is not emphasized.
+    static func restingPillText(
+        width: Float,
+        height: Float,
+        depth: Float,
+        emphasizeHeight: Bool
+    ) -> String? {
+        if emphasizeHeight, height > 0.05, height.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(height)
+        }
+        if width > 0.05, depth > 0.05, width.isFinite, depth.isFinite {
+            return String(format: "%.1f m × %.1f m", width, depth)
+        }
+        if height > 0.05, height.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(height)
+        }
+        return nil
+    }
+
+    static func rulerHintText(
+        width: Float,
+        height: Float,
+        depth: Float,
+        showFullWHD: Bool
+    ) -> String? {
+        guard height > 0.05, height.isFinite else { return nil }
+        if showFullWHD,
+           width > 0.05, depth > 0.05,
+           width.isFinite, depth.isFinite {
+            return L10n.RoomViewer.roomDimensionsWHDNearAccurateChip(
+                width: width,
+                height: height,
+                depth: depth
+            )
+        }
+        return L10n.RoomViewer.approximateRoomHeight(height)
+    }
+}

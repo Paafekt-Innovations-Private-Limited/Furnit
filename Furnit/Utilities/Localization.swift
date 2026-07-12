@@ -408,13 +408,23 @@ enum L10n {
             )
         }
         static func roomDimensionsWHDManualChip(width: Float, height: Float, depth: Float) -> String {
-            approximateRoomHeight(height)
+            roomDimensionsWHDNearAccurateChip(width: width, height: height, depth: depth)
         }
         static func roomDimensionsWHManualChip(width: Float, height: Float) -> String {
             approximateRoomHeight(height)
         }
         static func roomDimensionsWHDAIChip(width: Float, height: Float, depth: Float) -> String {
-            approximateRoomHeight(height)
+            roomDimensionsWHDNearAccurateChip(width: width, height: height, depth: depth)
+        }
+        static func roomDimensionsWHDNearAccurateChip(width: Float, height: Float, depth: Float) -> String {
+            String(
+                format: "roomViewer.roomDimensionsWHDWithNearAccurate".localized,
+                locale: .current,
+                width,
+                height,
+                depth,
+                "roomViewer.roomDimensionsNearAccurateValues".localized
+            )
         }
         static let measuringRoom = "roomViewer.measuringRoom".localized
         static let goingBack = "roomViewer.goingBack".localized

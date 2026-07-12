@@ -9,12 +9,22 @@ enum DepthAnythingFlatPhotoCameraFraming {
         photoOrientation: PhotoOrientation,
         viewportSize: CGSize? = nil
     ) -> Float {
+        let lockedLandscapeAspect = Float(19.5 / 9.0)
+        let lockedPortraitAspect = Float(9.0 / 19.5)
         if let viewportSize,
            viewportSize.width > 1,
            viewportSize.height > 1 {
-            return Float(viewportSize.width / viewportSize.height)
+            let live = Float(viewportSize.width / viewportSize.height)
+            switch photoOrientation {
+            case .landscape where live < 1.05:
+                return lockedLandscapeAspect
+            case .portrait where live > 0.95:
+                return lockedPortraitAspect
+            default:
+                return live
+            }
         }
-        return photoOrientation == .landscape ? Float(19.5 / 9.0) : Float(9.0 / 19.5)
+        return photoOrientation == .landscape ? lockedLandscapeAspect : lockedPortraitAspect
     }
 
     static func imagePlaneStandoff(
@@ -396,8 +406,9 @@ class RealityKitBoundaryManager {
         let center = getRoomCenter()
         let boundsWidth = max(bounds.max.x - bounds.min.x, 0.1)
         let boundsHeight = max(bounds.max.y - bounds.min.y, 0.1)
-        let width = inferencePlaneWidthMeters.flatMap { $0.isFinite && $0 > 0.05 ? $0 : nil } ?? boundsWidth
-        let height = inferencePlaneHeightMeters.flatMap { $0.isFinite && $0 > 0.05 ? $0 : nil } ?? boundsHeight
+        // Frame to the rendered mesh span — stored inference W×H can overshoot mesh bounds and letterbox.
+        let width = boundsWidth
+        let height = boundsHeight
         let span = max(width, height)
         let planeZ = (bounds.min.z + bounds.max.z) * 0.5
         let standoff = depthAnythingImagePlaneStandoff(

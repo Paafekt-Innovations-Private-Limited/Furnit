@@ -510,8 +510,14 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun isFlatPhotoRoom(): Boolean = roomDepth < 0.05f
+
     private fun restingMeasurementPillText(): String {
-        return String.format("%.1f m × %.1f m", roomWidth, roomDepth)
+        return if (isFlatPhotoRoom()) {
+            getString(R.string.approximate_room_height, roomHeight)
+        } else {
+            String.format(Locale.US, "%.1f m × %.1f m", roomWidth, roomDepth)
+        }
     }
 
     private fun refreshImmersiveChromeVisibility(animate: Boolean = true) {
@@ -566,7 +572,11 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun showRoomDimensionsHint() {
-        val heightLabel = getString(R.string.approximate_room_height, roomHeight)
+        val heightLabel = if (isFlatPhotoRoom()) {
+            getString(R.string.room_dimensions_whd_near_accurate, roomWidth, roomHeight, roomDepth)
+        } else {
+            getString(R.string.approximate_room_height, roomHeight)
+        }
         hintController.showText(
             this,
             R.drawable.ic_ruler,
@@ -1489,8 +1499,8 @@ class GLBRoomActivity : AppCompatActivity() {
         function applyFlatPhotoCamera() {
             if (!isFlatPhotoMesh || flatPhotoWidth <= 0 || flatPhotoHeight <= 0) return;
             updateFlatPhotoProjection();
-            const planeWidth = inferenceRoomWidth > 0.05 ? inferenceRoomWidth : flatPhotoWidth;
-            const planeHeight = inferenceRoomHeight > 0.05 ? inferenceRoomHeight : flatPhotoHeight;
+            const planeWidth = flatPhotoWidth;
+            const planeHeight = flatPhotoHeight;
             const standoff = depthAnythingImagePlaneStandoff(planeWidth, planeHeight);
             const camY = planeHeight * 0.5;
             // glTF plane normal is +Z; WebGL/Three.js must view from +Z (SceneKit preview parity).

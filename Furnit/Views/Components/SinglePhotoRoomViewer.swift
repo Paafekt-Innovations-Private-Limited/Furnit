@@ -1438,13 +1438,12 @@ private struct DepthAnythingPreviewRoomView: View {
 
     private var previewRestingMeasurementPillText: String? {
         guard let dims = depthAnythingRoomDimensions else { return nil }
-        if dims.width > 0.05, dims.depth > 0.05, dims.width.isFinite, dims.depth.isFinite {
-            return String(format: "%.1f m × %.1f m", dims.width, dims.depth)
-        }
-        if dims.height > 0.05, dims.height.isFinite {
-            return L10n.RoomViewer.approximateRoomHeight(dims.height)
-        }
-        return nil
+        return PaafektRoomMeasurementDisplay.restingPillText(
+            width: dims.width,
+            height: dims.height,
+            depth: dims.depth,
+            emphasizeHeight: true
+        )
     }
 
     private var previewImmersiveChromeOverlay: some View {

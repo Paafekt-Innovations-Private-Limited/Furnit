@@ -386,6 +386,7 @@
     <string name="room_viewer_created_message">Your room textures have been extracted from the photo. Tap Save to keep this room.</string>
     <string name="room_viewer_dimensions">Dimensions: %s</string>
     <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="room_dimensions_whd_near_accurate">W × H × D\n%1$.2f × %2$.2f × %3$.2f m (Near accurate values)</string>
     <string name="room_viewer_navigation_teaching_hint">Drag to look · pinch to zoom · two fingers to move</string>
     <string name="room_viewer_first_run_title">Explore your room in 3D</string>
     <string name="room_viewer_first_run_body">Use Fit to add furniture and Capture to save a view.\nDrag to look around, pinch to zoom.</string>

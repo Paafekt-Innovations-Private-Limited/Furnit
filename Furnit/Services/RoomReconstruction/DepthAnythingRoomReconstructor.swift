@@ -255,12 +255,13 @@ final class DepthAnythingRoomReconstructor {
         )
         let rawDepthFlat = Self.flattenDepthMap(depthMap)
         let calibratedDepthMap = Self.scaleDepthMap(depthMap, scale: metricCalibration.depthScale)
+        let arkitGravityDown = Self.arkitGravityDownVector(from: calibrationMetadata)
         let measurementCalibration = Self.resolveMeasurementCameraHeightScale(
             depthMap: depthMap,
             rawDepthFlat: rawDepthFlat,
             workingImage: workingImage,
             geoCalib: geoCalibCalibration,
-            arkitGravityDown: Self.arkitGravityDownVector(from: calibrationMetadata),
+            arkitGravityDown: arkitGravityDown,
             arkitCameraHeightMeters: calibrationMetadata?["arkitCameraHeightM"].map(Float.init),
             imageWidth: imageWidth,
             imageHeight: imageHeight,
@@ -384,12 +385,11 @@ final class DepthAnythingRoomReconstructor {
             "conf=\(String(format: "%.2f", roomExtentMeasured.confidence)) " +
             "approx=\(roomExtentMeasured.approximate)"
         )
-        let importedCameraHeightForSingleView: Float = measurementCalibration.cameraHeightPriorSourceCode == 1
-            ? measurementCalibration.cameraHeightPriorMeters
-            : 1.60
+        let importedCameraHeightForSingleView = measurementCalibration.cameraHeightPriorMeters
         let gravityPitchForHeight = Self.measurementPitchRadians(
             geoCalib: geoCalibCalibration,
-            gravitySourceCode: measurementCalibration.gravitySourceCode
+            gravitySourceCode: measurementCalibration.gravitySourceCode,
+            arkitGravityDown: arkitGravityDown
         )
         let roomHeightMeasured = RoomHeight.roomHeightSingleView(
             pointGrid: measurementCalibration.pointGrid,
@@ -1719,8 +1719,16 @@ final class DepthAnythingRoomReconstructor {
 
     private static func measurementPitchRadians(
         geoCalib: GeoCalibCalibrationResult?,
-        gravitySourceCode: Int
+        gravitySourceCode: Int,
+        arkitGravityDown: SIMD3<Float>? = nil
     ) -> Float {
+        if gravitySourceCode == 2, let arkitGravityDown {
+            let down = simd_normalize(arkitGravityDown)
+            guard down.y.isFinite, down.z.isFinite, abs(down.y) > 0.1 else { return 0 }
+            let pitch = atan2(-down.z, down.y)
+            guard abs(pitch) <= maxPlausiblePitchRadians else { return 0 }
+            return pitch
+        }
         guard let geoCalib,
               gravitySourceCode == 1,
               abs(geoCalib.pitchRadians) <= maxPlausiblePitchRadians else {

@@ -348,13 +348,12 @@ struct ModelViewerView: View {
 
     private var modelViewerRestingMeasurementPillText: String? {
         let dims = effectiveRoomDimensions
-        if dims.width > 0.05, dims.depth > 0.05, dims.width.isFinite, dims.depth.isFinite {
-            return String(format: "%.1f m × %.1f m", dims.width, dims.depth)
-        }
-        if dims.height > 0.05, dims.height.isFinite {
-            return L10n.RoomViewer.approximateRoomHeight(dims.height)
-        }
-        return nil
+        return PaafektRoomMeasurementDisplay.restingPillText(
+            width: dims.width,
+            height: dims.height,
+            depth: dims.depth,
+            emphasizeHeight: model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+        )
     }
 
     private var modelViewerImmersiveChromeOverlay: some View {
@@ -741,8 +740,13 @@ struct ModelViewerView: View {
 
     private var roomDimensionsHintText: String {
         let dims = effectiveRoomDimensions
-        if dims.height > 0.05, dims.height.isFinite {
-            return L10n.RoomViewer.approximateRoomHeight(dims.height)
+        if let text = PaafektRoomMeasurementDisplay.rulerHintText(
+            width: dims.width,
+            height: dims.height,
+            depth: dims.depth,
+            showFullWHD: model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+        ) {
+            return text
         }
         if model.roomCoordinateFrame.usesNativeMeterSceneUnits {
             return "ROOM_DIMS unavailable"
@@ -760,7 +764,7 @@ struct ModelViewerView: View {
                     PaafektHintChip(
                         systemImage: "ruler.fill",
                         text: roomDimensionsHintText,
-                        maxWidth: 240
+                        maxWidth: 280
                     )
                     .transition(.opacity)
                 }

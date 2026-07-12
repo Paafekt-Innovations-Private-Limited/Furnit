@@ -1115,11 +1115,12 @@ struct SplatRoomView: View {
 
     private var roomDimensionsHintText: String {
         if let d = activeRoomMetersDimensions {
-            return L10n.RoomViewer.roomDimensionsWHDAIChip(
+            return PaafektRoomMeasurementDisplay.rulerHintText(
                 width: d.width,
                 height: d.height,
-                depth: d.depth
-            )
+                depth: d.depth,
+                showFullWHD: true
+            ) ?? "ROOM_DIMS unavailable"
         }
         return "ROOM_DIMS unavailable"
     }
@@ -1148,15 +1149,13 @@ struct SplatRoomView: View {
     }
 
     private var splatRestingMeasurementPillText: String? {
-        if let d = activeRoomMetersDimensions {
-            if d.width > 0.05, d.depth > 0.05, d.width.isFinite, d.depth.isFinite {
-                return String(format: "%.1f m × %.1f m", d.width, d.depth)
-            }
-            if d.height > 0.05, d.height.isFinite {
-                return L10n.RoomViewer.approximateRoomHeight(d.height)
-            }
-        }
-        return nil
+        guard let d = activeRoomMetersDimensions else { return nil }
+        return PaafektRoomMeasurementDisplay.restingPillText(
+            width: d.width,
+            height: d.height,
+            depth: d.depth,
+            emphasizeHeight: false
+        )
     }
 
     private var splatImmersiveChromeOverlay: some View {
