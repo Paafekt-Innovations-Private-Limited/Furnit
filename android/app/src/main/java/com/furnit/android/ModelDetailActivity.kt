@@ -497,7 +497,7 @@ class ModelDetailActivity : AppCompatActivity() {
     private fun showHelpDialog() {
         AlertDialog.Builder(this)
             .setTitle("3D Room Controls")
-            .setMessage("• Drag on screen to rotate the view\n\n• Pinch to zoom in/out\n\n• Tap the brain icon to detect furniture\n\n• Tap the camera icon to take a screenshot")
+            .setMessage("• Drag on screen to look around\n\n• Pinch to zoom in/out\n\n• Tap the gold Fit button (bottom-right) to try furniture fit\n\n• Tap the room to summon controls, then Capture to save a screenshot")
             .setPositiveButton("OK", null)
             .show()
     }

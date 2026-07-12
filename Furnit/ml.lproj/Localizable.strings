@@ -190,9 +190,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "മുറി സൃഷ്ടി";
 "faq.howToCreate" = "3D മുറി എങ്ങനെ സൃഷ്ടിക്കാം?";
-"faq.howToCreateAnswer" = "ഹോം സ്ക്രീനിന്റെ മുകളിൽ-ഇടതുവശത്തെ Photo → 3D ടാപ്പ് ചെയ്യുക, തുടർന്ന് നിങ്ങളുടെ മുറിയുടെ ഫോട്ടോ എടുക്കുക അല്ലെങ്കിൽ തിരഞ്ഞെടുക്കുക. 3D മുറി സൃഷ്ടിക്കാൻ രണ്ട് ഓപ്ഷനുകൾ കാണും.";
+"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "മുറി സൃഷ്ടിക്കാൻ ഫോട്ടോ എങ്ങനെ എടുക്കാം?";
-"faq.howToTakePhotoAnswer" = "നേരിട്ട് ഫോട്ടോ എടുക്കാൻ ഹോം സ്ക്രീനിൽ ക്യാമറ ഐക്കൺ ടാപ്പ് ചെയ്യുക. സ്റ്റാൻഡേർഡ് (1x) അല്ലെങ്കിൽ വൈഡ് ആംഗിൾ (0.5x അൾട്രാ-വൈഡ്) ലെൻസ് നിങ്ങൾക്ക് തിരഞ്ഞെടുക്കാം. നിങ്ങളുടെ ഉപകരണം സ്ഥിരമായി പിടിച്ച് ക്യാപ്ചർ ബട്ടൺ ടാപ്പ് ചെയ്യുക. ഫോട്ടോ നിങ്ങളുടെ 3D മുറി സൃഷ്ടിക്കാൻ ഉപയോഗിക്കും.";
+"faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.depthAwareRoomPhoto" = "ആപ്പിൽ ഫോട്ടോ എടുക്കുന്നത് ഗുണനിലവാരത്തിന് സഹായിക്കുമോ?";
 "faq.depthAwareRoomPhotoAnswer" = "അതെ. പിന്തുണയുള്ള ഉപകരണങ്ങളിൽ, ഗാലറിക്ക് പകരം Take a photo ആഴം-അവബോധ ക്യാമറ ഉപയോഗിക്കുന്നു (ലഭ്യമെങ്കിൽ), ഇത് 3D മുറി മെച്ചപ്പെടുത്താം.";
 "faq.twoMethods" = "മുറി സൃഷ്ടിക്കാനുള്ള രണ്ട് ഓപ്ഷനുകൾ എന്താണ്?";
@@ -213,17 +213,17 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ";
 "faq.whatIsSegmentation" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ എന്താണ്?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation live room viewer-ൽ നിന്ന്. brain default ആയി ഒരു primary item auto-segment. full-video mode-ൽ items ആദ്യം select; Segment selected pieces-ന് മാത്രം cutouts.";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "Room viewer-ൽ furniture എങ്ങനെ segment ചെയ്യാം?";
-"faq.howToSegmentAnswer" = "Room viewer-ൽ brain icon ടാപ്പ്. quick check-ന് main item auto-segment. specific pieces: viewfinder, camera furniture-ലേക്ക്, boxes ടാപ്പ്, Segment. Stop live identifications.";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "എന്റെ ഫർണിച്ചർ എന്തുകൊണ്ട് കണ്ടെത്തിയില്ല?";
 "faq.notDetectedAnswer" = "ഫർണിച്ചർ കണ്ടെത്തൽ വ്യക്തമായ, നല്ല വെളിച്ചമുള്ള ഫോട്ടോകളിൽ ഫർണിച്ചർ വ്യക്തമായി കാണുമ്പോൾ നന്നായി പ്രവർത്തിക്കുന്നു. ഫർണിച്ചർ ഭാഗികമായി മൂടപ്പെട്ടിട്ടില്ലെന്നോ പശ്ചാത്തലവുമായി കലർന്നിട്ടില്ലെന്നോ ഉറപ്പാക്കുക.";
 "faq.multiplePieces" = "ഒന്നിലധികം ഫർണിച്ചർ കഷണങ്ങൾ സെഗ്മെന്റ് ചെയ്യാമോ?";
-"faq.multiplePiecesAnswer" = "അതെ! full-video mode-ൽ several boxes ടാപ്പ് ചെയ്ത് once Segment — എല്ലാ selected pieces ഒരുമിച്ച് 3D room-ൽ. default brain flow-യിലും one-by-one segment ചെയ്യാം.";
+"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "എന്റെ 3D മുറി എങ്ങനെ കാണാം?";
-"faq.howToViewAnswer" = "3D വ്യൂവർ തുറക്കാൻ ഹോം സ്ക്രീനിലെ ഏതെങ്കിലും മുറി ടാപ്പ് ചെയ്യുക. ടച്ച് ജെസ്ച്ചറുകൾ ഉപയോഗിച്ച് മുറി തിരിക്കാനും സൂം ചെയ്യാനും പാൻ ചെയ്യാനും കഴിയും.";
+"faq.howToViewAnswer" = "Tap any room on the home screen to open the 3D viewer. Drag to look around and pinch to zoom. Tap the room to summon extra controls (recenter, ruler, Capture). The gold Fit button stays visible at bottom-right.";
 "faq.howToPlace" = "എന്റെ മുറിയിൽ ഫർണിച്ചർ എങ്ങനെ വയ്ക്കാം?";
 "faq.howToPlaceAnswer" = "Segment ടാപ്പ് ചെയ്ത ശേഷം തിരഞ്ഞെടുത്ത ഫർണിച്ചർ മുറിയിൽ overlay ആയി കാണും. സ്ഥാനം മാറ്റാൻ drag ചെയ്യുക, വലിപ്പം മാറ്റാൻ pinch ചെയ്യുക, ദിശ മാറ്റാൻ rotate ചെയ്യുക.";
 "faq.sampleRoom" = "എന്റേതിന് പകരം സാമ്പിൾ റൂം ഉപയോഗിക്കാമോ?";
@@ -231,21 +231,21 @@
 "faq.accuracy" = "3D മോഡൽ എത്ര കൃത്യമാണ്?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "മുറി അളവുകൾ ക്രമീകരിക്കാമോ?";
-"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ചെയ്യാൻ പറ്റില്ല. ruler ടാപ്പ് ചെയ്ത് estimated width, height, depth കാണുക. clear corners photo; manual rooms നിങ്ങളുടെ boundaries follow ചെയ്യും.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "ഫർണിച്ചറും അളവുകളും";
 "faq.arAssistedSizing" = "AR-സഹായിത ഫർണിച്ചർ സൈസിംഗ് എന്താണ്?";
-"faq.arAssistedSizingAnswer" = "ആദ്യം brain icon ഉപയോഗിച്ച് furniture segment. room-relative scale-ന് sizing control. AR/depth phones live camera depth; ഇല്ലെങ്കിൽ approximate.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "ചെറിയ അളവ് വായന എന്താണ്?";
 "faq.measurementPillAnswer" = "SmartyPants സജീവമാകുമ്പോൾ അനുമാനിച്ച ഫർണിച്ചർ, മുറി ഉയരം കാണാം. ടാപ്പ് ചെയ്ത് യഥാർത്ഥ അളവുകൾ നൽകുക. മുറി ഫോട്ടോ വൈഡ്-ആംഗിൾ (0.5×) ആണെങ്കിൽ അടയാളപ്പെടുത്തുക.";
 "faq.resetOverlayScale" = "മാസ്ക് തെറ്റായി സൂം ചെയ്തതായി തോന്നുന്നുവോ?";
-"faq.resetOverlayScaleAnswer" = "3D മുറിയിൽ ഓവർഫ്ലോ മെനു (⋮) തുറന്ന് Reset overlay scale തിരഞ്ഞെടുക്കുക. കണ്ടെത്തൽ മാസ്ക്കിന് ബാധകമായ ഓട്ടോ സൂം മായ്ക്കും.";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 "faq.roomFitment" = "ഫർണിച്ചർ പൊരുത്തപ്പെടുന്നുണ്ടോ എങ്ങനെ പരിശോധിക്കാം?";
 "faq.roomFitmentAnswer" = "segmentation-ന് ശേഷം 3D room-ൽ cutouts resize/reposition. full-video-ൽ Segment selected pieces room-ന്റെ മുകളിൽ composite ചെയ്ത് several items compare ചെയ്യാം.";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "പ്ലേസ്മെന്റ് ബുദ്ധിയും സൗന്ദര്യവും";
 "faq.whatIsPlacementIntelligence" = "പ്ലേസ്മെന്റ് ഇന്റലിജൻസ് എന്താണ്?";
-"faq.whatIsPlacementIntelligenceAnswer" = "പിന്തുണയുള്ള 3D റൂം വ്യൂവറുകളിൽ SmartyPants ഓണായിരിക്കുമ്പോൾ, പ്ലേസ്മെന്റ് ഇന്റലിജൻസ് കാർഡ് കണ്ടെത്തിയ വസ്തുവിന്റെ വലുപ്പം മുറിയുടെ പരിധിക്കകത്താണോ എന്ന് സംഗ്രഹിക്കുന്നു, ലഭ്യമാകുമ്പോൾ നിലത്ത് ഒഴിഞ്ഞ സ്ഥാനവും മൂല സൂചനകളും കാണിക്കുന്നു, ആഴം അനുമാനമാണെങ്കിൽ അത് പറയുന്നു. തലക്കെട്ടിൽ ടാപ്പ് ചെയ്ത് വിവരങ്ങൾ വികസിപ്പിക്കുക അല്ലെങ്കിൽ സ്ഥലം ലാഭിക്കാൻ ചുരുക്കി വയ്ക്കുക.";
+"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "സൗന്ദര്യ സ്കോറിന് നിറം ആപ്പ് എങ്ങനെ തിരഞ്ഞെടുക്കുന്നു?";
 "faq.furnitureColorAestheticAnswer" = "നിങ്ങൾ കാണുന്ന AI ഫർണിച്ചർ കട്ട്‌ഔട്ടിനുള്ളിൽ (അതേ സെഗ്‌മെന്റഡ് ഓവർലേ) കാണാവുന്ന പിക്സലുകളുടെ RGB ശരാശരി ആപ്പ് കണക്കാക്കി നിലം, മതിലുകൾ, മേൽക്കൂര എന്നിവയിൽ നിന്ന് സാമ്പിൾ ചെയ്ത നിറങ്ങളുമായി താരതമ്യം ചെയ്യുന്നു. കട്ട്‌ഔട്ട് തയ്യാറാകാത്ത പക്ഷം സെഗ്‌മെന്റേഷൻ യഥാർത്ഥ സാമ്പിൾ നൽകുന്നതുവരെ മുറിയുടെ പാലറ്റിൽ നിന്ന് ഫോൾബാക്ക് നിറം ഉപയോഗിക്കുന്നു.";
 "faq.whatDoHarmonyContrastMean" = "ഹാർമണി, കോൺട്രാസ്റ്റ്, സ്റ്റൈൽ ഫിറ്റ് എന്നാൽ എന്ത്?";
@@ -408,21 +408,21 @@
 
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "AI സവിശേഷതകൾ";
-"faq.whatIsBrainIcon" = "ബ്രെയിൻ ഐക്കൺ എന്താണ് ചെയ്യുന്നത്?";
-"faq.whatIsBrainIconAnswer" = "ബ്രെയിൻ ഐക്കൺ room viewer-ൽ SmartyPants ആരംഭിക്കുന്നു. സ്ഥിരസ്ഥിതിയായി ഏറ്റവും ഉയർന്ന-confidence furniture 3D room-ന്റെ മുകളിൽ transparent cutout ആയി auto-segment ചെയ്യുന്നു. tap-to-select ന് viewfinder ബട്ടൺ ആദ്യം ടാപ്പ് ചെയ്യുക.";
-"faq.whatIsViewfinderButton" = "Room viewer-ൽ viewfinder ബട്ടൺ എന്താണ് ചെയ്യുന്നത്?";
-"faq.whatIsViewfinderButtonAnswer" = "SmartyPants സജീവമാകുമ്പോൾ viewfinder (മുകളിൽ-വലത്) full-video mode ടോഗിൾ ചെയ്യുന്നു. live camera + detection boxes, ഒന്നോ കൂടുതലോ items ടാപ്പ്, പിന്നെ Segment. camera മറച്ച് transparent cutouts 3D room-ൽ. Stop live identifications.";
+"faq.whatIsBrainIcon" = "What does the Fit button do?";
+"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
+"faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
+"faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "സ്ക്രീൻഷോട്ട് എങ്ങനെ എടുക്കും?";
-"faq.howToScreenshotAnswer" = "SmartyPants സജീവമാകുമ്പോൾ (ബ്രെയിൻ ഐക്കൺ പച്ച), താഴെ-വലതുവശത്ത് ഒരു ഷെയർ ഐക്കൺ കാണിക്കും. AI ഡിറ്റക്ഷനുകളോടെ വ്യൂവിന്റെ സ്ക്രീൻഷോട്ട് നിങ്ങളുടെ ഫോട്ടോ ലൈബ്രറിയിൽ സേവ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക.";
+"faq.howToScreenshotAnswer" = "Tap the room to summon controls, then tap Capture. This saves the current view (including furniture overlays when Fit is on) to your Photos library.";
 "faq.howToSaveRoom" = "മുറി എങ്ങനെ സേവ് ചെയ്യും?";
-"faq.howToSaveRoomAnswer" = "3D മുറി ജനറേറ്റ് ചെയ്ത ശേഷം, ഇഷ്ടാനുസൃത പേരിൽ സേവ് ചെയ്യാൻ ടൂൾബാറിലെ സേവ് ഐക്കൺ (ഡൗൺലോഡ് അമ്പ്) ടാപ്പ് ചെയ്യുക. സേവ് ചെയ്യാത്ത മുറികൾ ബാക്ക് ടാപ്പ് ചെയ്യുമ്പോൾ ഡിലീറ്റ് ആകും.";
+"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - 3D Room Controls (added)
 "faq.roomControls" = "3D മുറി നിയന്ത്രണങ്ങൾ";
 "faq.howToNavigate" = "മുറിക്കുള്ളിൽ എങ്ങനെ നാവിഗേറ്റ് ചെയ്യും?";
-"faq.howToNavigateAnswer" = "സ്ക്രീനിന്റെ താഴെ മധ്യഭാഗത്തുള്ള ജോയ്സ്റ്റിക് ഉപയോഗിച്ച് നീങ്ങുക. മുറിയിലൂടെ പറക്കാൻ ഏത് ദിശയിലേക്കും വലിക്കുക. ക്യാമറ പൊസിഷൻ റീസെറ്റ് ചെയ്യാൻ റീസെന്റർ ബട്ടൺ (വ്യൂഫൈൻഡർ ഐക്കൺ) ടാപ്പ് ചെയ്യുക.";
-"faq.whatDoArrowsDo" = "അമ്പടയാള ബട്ടണുകൾ എന്താണ് ചെയ്യുന്നത്?";
-"faq.whatDoArrowsDoAnswer" = "3D വ്യൂവിന്റെ പാർശ്വത്തിലെ അമ്പടയാള ബട്ടണുകൾ ക്യാമറ നീക്കുന്നു: മുകളിലേക്കും താഴേക്കും വ്യൂ ഉയരം മാറ്റുന്നു; ഇടത്തും വലത്തും പാൻ ചെയ്യുന്നു. മുറി ഭ്രമണം ചെയ്യാൻ സ്ക്രീനിൽ വലിച്ചുകൂട്ടാനും വ്യൂ റീസെറ്റ് ചെയ്യാൻ റീസെന്റർ ബട്ടൺ (വ്യൂഫൈൻഡർ ഐക്കൺ) ഉപയോഗിക്കാനും കഴിയും.";
+"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
+"faq.whatDoArrowsDo" = "How do I show or hide viewer controls?";
+"faq.whatDoArrowsDoAnswer" = "The room viewer uses immersive mode—controls hide for a clean view. Tap the room to summon the toolbar. The gold Fit button at bottom-right is always visible. While Fit is active, Done appears top-right to exit segmentation.";
 "faq.whatIsMemoryDisplay" = "MB നമ്പർ എന്താണ് അർത്ഥമാക്കുന്നത്?";
 "faq.whatIsMemoryDisplayAnswer" = "മുറികളിൽ കാണിക്കുന്ന MB (മെഗാബൈറ്റ്സ്) ഫയൽ സൈസ് സൂചിപ്പിക്കുന്നു. ഇത് സ്റ്റോറേജ് മാനേജ് ചെയ്യാൻ സഹായിക്കുന്നു. എല്ലാ മുറികളും ഉപയോഗിക്കുന്ന ആകെ സ്റ്റോറേജ് ഹോം സ്ക്രീനിന്റെ മുകളിൽ കാണിക്കും.";
 
@@ -508,13 +508,13 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "അളവ് അറിയിപ്പ്";
 "help.measurementAccuracyBody" = "AR depth പിന്തുണയില്ലാത്ത ഫോണുകളിലും മുറിയും ഫർണിച്ചറും പ്രിവ്യൂ കാണാം, എന്നാൽ മുറിയുടെ അളവും പ്രത്യേകിച്ച് ഫർണിച്ചറിന്റെ അളവും ഏകദേശമായിരിക്കും.";
-"faq.whatIsBrainIconAnswer" = "ബ്രെയിൻ ഐക്കൺ room viewer-ൽ SmartyPants ആരംഭിക്കുന്നു. സ്ഥിരസ്ഥിതിയായി ഏറ്റവും ഉയർന്ന-confidence furniture 3D room-ന്റെ മുകളിൽ transparent cutout ആയി auto-segment ചെയ്യുന്നു. tap-to-select ന് viewfinder ബട്ടൺ ആദ്യം ടാപ്പ് ചെയ്യുക.";
-"faq.howToSegmentAnswer" = "Room viewer-ൽ brain icon ടാപ്പ്. quick check-ന് main item auto-segment. specific pieces: viewfinder, camera furniture-ലേക്ക്, boxes ടാപ്പ്, Segment. Stop live identifications.";
+"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.accuracyAnswer" = "3D മുറി ഒരു ഫോട്ടോയെ അടിസ്ഥാനമാക്കിയുള്ള ഏകദേശ കണക്കാണ്. മുറിയുടെ അളവുകൾ മാർഗ്ഗനിർദേശമായി ഉപകാരപ്പെടാം, പക്ഷേ അവ സർവേ നിലവാരത്തിലുള്ള കൃത്യതയുള്ളതല്ല. ഫർണിച്ചർ അളക്കൽ AR അല്ലെങ്കിൽ depth പിന്തുണയുള്ള ഫോണുകളിൽ കൂടുതൽ വിശ്വസനീയമാണ്.";
-"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ചെയ്യാൻ പറ്റില്ല. ruler ടാപ്പ് ചെയ്ത് estimated width, height, depth കാണുക. clear corners photo; manual rooms നിങ്ങളുടെ boundaries follow ചെയ്യും.";
-"faq.arAssistedSizingAnswer" = "ആദ്യം brain icon ഉപയോഗിച്ച് furniture segment. room-relative scale-ന് sizing control. AR/depth phones live camera depth; ഇല്ലെങ്കിൽ approximate.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPillAnswer" = "ഫർണിച്ചർ സൈസ് പിൽ sizing mode ഓണായിരിക്കുമ്പോഴും ആപ്പിന് ഉപയോഗിക്കാവുന്ന live height estimate ലഭിക്കുമ്പോഴും മാത്രമേ പ്രത്യക്ഷപ്പെടൂ. ruler ബട്ടൺ നിലവിലെ മുറിയുടെ വീതി, ഉയരം, ആഴം എന്നിവ ചെറിയ കാർഡിൽ കാണിക്കും. non-AR ഫോണുകളിൽ ഈ റീഡിംഗുകൾ, പ്രത്യേകിച്ച് ഫർണിച്ചറിനായി, കുറച്ച് കുറവായി വിശ്വസനീയമാണ്.";
-"faq.resetOverlayScaleAnswer" = "ഇപ്പോൾ overflow menu ഇല്ല. ഓവർലേ തെറ്റായി തോന്നിയാൽ ബ്രെയിൻ ഐക്കൺ ഓഫ് ചെയ്ത് വീണ്ടും ഓൺ ചെയ്യുക, അല്ലെങ്കിൽ pinch ഉപയോഗിച്ച് ഫർണിച്ചറിന്റെ വലുപ്പം കൈയോടെ ക്രമപ്പെടുത്തുക.";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 "faq.pinchOverlaySize" = "സെഗ്മെന്റ് ചെയ്ത ഫർണിച്ചർ pinch ചെയ്യുമ്പോൾ എന്ത് സംഭവിക്കും?";
 "faq.pinchOverlaySizeAnswer" = "pinch ചെയ്‌താൽ ഫർണിച്ചർ ഓവർലേ വലുതാകുകയോ ചെറുതാകുകയോ ചെയ്യും. sizing mode ഓണായിരിക്കുമ്പോഴും Furni pill കാണുമ്പോഴും ആ pill മുറിക്ക് അനുസരിച്ചുള്ള ഇപ്പോഴത്തെ resized ഫർണിച്ചർ അളവിലേക്ക് അപ്‌ഡേറ്റ് ചെയ്യും. sizing mode ഓഫ് ആണെങ്കിൽ pinch സ്ക്രീനിലെ ഓവർലേയുടെ ദൃശ്യ വലിപ്പം മാത്രം മാറ്റും.";

@@ -201,9 +201,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "Room Creation";
 "faq.howToCreate" = "How do I create a 3D room?";
-"faq.howToCreateAnswer" = "Tap Photo → 3D in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options for creating your 3D room.";
+"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "How do I take a photo to create a room?";
-"faq.howToTakePhotoAnswer" = "Tap the camera icon on the home screen to take a photo directly. You can choose between Standard (1x) or Wide Angle (0.5x ultra-wide) lens. Hold your device steady and tap the capture button. The photo will then be used to create your 3D room.";
+"faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.twoMethods" = "What are the two room creation options?";
 "faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
 "faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
@@ -219,31 +219,31 @@
 "faq.howManyRooms" = "How many rooms can I create?";
 "faq.howManyRoomsAnswer" = "You can create up to 20 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.";
 "faq.howToSaveRoom" = "How do I save a room?";
-"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the save icon (download arrow) in the toolbar to save it with a custom name. Rooms that aren't saved will be deleted when you tap Back.";
+"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - AI Features
 "faq.aiFeatures" = "AI Features";
-"faq.whatIsBrainIcon" = "What does the brain icon do?";
-"faq.whatIsBrainIconAnswer" = "The brain icon starts SmartyPants in the room viewer. By default it auto-segments the highest-confidence furniture piece as a transparent cutout over your 3D room. For tap-to-select, tap the viewfinder button first.";
-"faq.whatIsViewfinderButton" = "What does the viewfinder button do in the room viewer?";
-"faq.whatIsViewfinderButtonAnswer" = "While SmartyPants is active, the viewfinder button (top-right) toggles full-video mode. You get a live camera feed with detection boxes, tap one or more items to select them, then tap Segment. The camera hides and transparent furniture cutouts composite over your 3D room so you can check fitment. Tap Stop to return to live identifications.";
+"faq.whatIsBrainIcon" = "What does the Fit button do?";
+"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
+"faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
+"faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "How do I take a screenshot?";
-"faq.howToScreenshotAnswer" = "When SmartyPants is active (brain icon is green), a share icon appears on the bottom-right. Tap it to save a screenshot of the view with AI detections to your Photos library.";
+"faq.howToScreenshotAnswer" = "Tap the room to summon controls, then tap Capture. This saves the current view (including furniture overlays when Fit is on) to your Photos library.";
 "faq.whatIsSegmentation" = "What is furniture segmentation?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the live room viewer. The brain icon auto-segments one primary item by default. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces so you can judge fit against your 3D room.";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "How do I segment furniture in the room viewer?";
-"faq.howToSegmentAnswer" = "Tap the brain icon in the room viewer. For a quick check, it auto-segments the main item over your 3D room. To pick specific pieces: tap the viewfinder button, point the camera at the furniture, tap one or more detection boxes, then tap Segment. Tap Stop to return to live identifications.";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "Why isn't my furniture being detected?";
 "faq.notDetectedAnswer" = "Object detection works best with clear, well-lit environments where furniture is clearly visible. Make sure the object isn't partially hidden or too far from the camera.";
 
 // FAQ - 3D Room Controls
 "faq.roomControls" = "3D Room Controls";
 "faq.howToView" = "How do I view my 3D room?";
-"faq.howToViewAnswer" = "Tap on any room in your home screen to open the 3D viewer. Use touch gestures to rotate and zoom, or use the joystick at the bottom to move around inside the room.";
+"faq.howToViewAnswer" = "Tap any room on the home screen to open the 3D viewer. Drag to look around and pinch to zoom. Tap the room to summon extra controls (recenter, ruler, Capture). The gold Fit button stays visible at bottom-right.";
 "faq.howToNavigate" = "How do I navigate inside the room?";
-"faq.howToNavigateAnswer" = "Use the joystick at the bottom center of the screen to move around. Drag it in any direction to fly through the room. Use the recenter button (viewfinder icon) to reset the camera position.";
-"faq.whatDoArrowsDo" = "What do the arrow buttons do?";
-"faq.whatDoArrowsDoAnswer" = "The arrow buttons on the side of the 3D view move the camera: up and down change the view height; left and right pan the camera. You can also drag on the screen to orbit the room and use the recenter button (viewfinder icon) to reset the view.";
+"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
+"faq.whatDoArrowsDo" = "How do I show or hide viewer controls?";
+"faq.whatDoArrowsDoAnswer" = "The room viewer uses immersive mode—controls hide for a clean view. Tap the room to summon the toolbar. The gold Fit button at bottom-right is always visible. While Fit is active, Done appears top-right to exit segmentation.";
 "faq.whatIsMemoryDisplay" = "What does the MB number mean?";
 "faq.whatIsMemoryDisplayAnswer" = "The MB (megabytes) shown in rooms indicates the file size. This helps you manage storage. The total storage used by all rooms is shown at the top of the home screen.";
 "faq.howToPlace" = "How do I place furniture in my room?";
@@ -253,25 +253,25 @@
 "faq.accuracy" = "How accurate is the 3D model?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "Can I adjust room dimensions?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "Furniture & measurements";
 "faq.arAssistedSizing" = "How is furniture overlay size estimated?";
-"faq.arAssistedSizingAnswer" = "Tap the brain icon to segment furniture first. Use the sizing control when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth for a more realistic furniture size; without depth, furniture measurements are approximate.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "What is the small measurement readout?";
 "faq.measurementPillAnswer" = "The furniture size pill appears only when sizing mode is on and the app has a usable live height estimate. The ruler button shows the current room width, height, and depth in a small card. On non-AR phones, these readings are less reliable, especially for furniture.";
 "faq.resetOverlayScale" = "The furniture mask looks wrongly zoomed—what can I do?";
-"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, turn the brain icon off and on again, or pinch the furniture manually to fine-tune its size.";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 "faq.depthAwareRoomPhoto" = "Does taking a photo in the app help room quality?";
 "faq.depthAwareRoomPhotoAnswer" = "Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.";
 "faq.multiplePieces" = "Can I add multiple furniture pieces?";
-"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default brain flow.";
+"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 "faq.roomFitment" = "How do I check if furniture fits?";
 "faq.roomFitmentAnswer" = "After segmentation, resize and reposition furniture cutouts in your 3D room. In full-video mode, Segment composites selected pieces over the room so you can compare several items against the space at once.";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "Placement intelligence & aesthetic";
 "faq.whatIsPlacementIntelligence" = "What is Placement Intelligence?";
-"faq.whatIsPlacementIntelligenceAnswer" = "While SmartyPants is on in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
+"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "How does the app pick a color for aesthetic scoring?";
 "faq.furnitureColorAestheticAnswer" = "The app averages the RGB color of visible pixels inside the AI furniture cutout (the same segmented overlay you see on camera). That mean color is compared to colors sampled from your room's floor, walls, and ceiling. If the cutout is not ready yet, a fallback color is taken from the room palette until segmentation supplies a real sample.";
 "faq.whatDoHarmonyContrastMean" = "What do harmony, contrast, and style fit mean?";

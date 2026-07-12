@@ -190,9 +190,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "রুম তৈরি";
 "faq.howToCreate" = "কিভাবে 3D রুম তৈরি করবেন?";
-"faq.howToCreateAnswer" = "হোম স্ক্রিনের উপরের-বামে Photo → 3D ট্যাপ করুন, তারপর আপনার রুমের ছবি তুলুন বা সিলেক্ট করুন। 3D রুম তৈরির দুটি অপশন দেখতে পাবেন।";
+"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "রুম তৈরি করতে কিভাবে ছবি তুলব?";
-"faq.howToTakePhotoAnswer" = "সরাসরি ছবি তুলতে হোম স্ক্রিনে ক্যামেরা আইকনে ট্যাপ করুন। আপনি স্ট্যান্ডার্ড (1x) বা ওয়াইড অ্যাঙ্গেল (0.5x আল্ট্রা-ওয়াইড) লেন্স বেছে নিতে পারেন। আপনার ডিভাইস স্থির রাখুন এবং ক্যাপচার বাটনে ট্যাপ করুন। ছবিটি আপনার 3D রুম তৈরিতে ব্যবহৃত হবে।";
+"faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.depthAwareRoomPhoto" = "অ্যাপে ছবি তোলা রুমের মান উন্নত করে?";
 "faq.depthAwareRoomPhotoAnswer" = "হ্যাঁ। সমর্থিত ডিভাইসে গ্যালারির বদলে Take a photo ইন-অ্যাপ ক্যামেরা ও উপলব্ধ হলে গভীরতা ব্যবহার করে, যা 3D রুম তৈরি উন্নত করতে পারে।";
 "faq.twoMethods" = "রুম তৈরির দুটি বিকল্প কী কী?";
@@ -212,38 +212,38 @@
 
 // FAQ - AI Features
 "faq.aiFeatures" = "AI বৈশিষ্ট্য";
-"faq.whatIsBrainIcon" = "ব্রেইন আইকন কী করে?";
-"faq.whatIsBrainIconAnswer" = "ব্রেইন আইকন রুম ভিউয়ারে SmartyPants চালু করে। ডিফল্টভাবে সর্বোচ্চ-confidence ফার্নিচার আপনার 3D রুমের ওপর স্বচ্ছ cutout হিসেবে auto-segment করে। tap-to-select-এর জন্য আগে viewfinder বাটন ট্যাপ করুন।";
-"faq.whatIsViewfinderButton" = "রুম ভিউয়ারে viewfinder বাটন কী করে?";
-"faq.whatIsViewfinderButtonAnswer" = "SmartyPants চালু থাকলে viewfinder বাটন (উপর-ডান) full-video মোড টগল করে। লাইভ ক্যামেরা ও detection box দেখা যায়, এক বা একাধিক আইটেম ট্যাপ করে Segment চাপুন। ক্যামেরা লুকিয়ে স্বচ্ছ cutout 3D রুমের ওপর দেখায়। Stop-এ live identification-এ ফিরুন।";
+"faq.whatIsBrainIcon" = "What does the Fit button do?";
+"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
+"faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
+"faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "স্ক্রিনশট কিভাবে নেব?";
-"faq.howToScreenshotAnswer" = "SmartyPants সক্রিয় থাকলে (ব্রেইন আইকন সবুজ), নীচে-ডানে একটি শেয়ার আইকন দেখা যায়। AI শনাক্তকরণ সহ ভিউয়ের স্ক্রিনশট আপনার ফটো লাইব্রেরিতে সংরক্ষণ করতে ট্যাপ করুন।";
+"faq.howToScreenshotAnswer" = "Tap the room to summon controls, then tap Capture. This saves the current view (including furniture overlays when Fit is on) to your Photos library.";
 "faq.howToSaveRoom" = "রুম কিভাবে সেভ করব?";
-"faq.howToSaveRoomAnswer" = "3D রুম তৈরির পর, কাস্টম নামে সেভ করতে টুলবারে সেভ আইকনে (ডাউনলোড তীর) ট্যাপ করুন। সেভ না করা রুম ব্যাক ট্যাপ করলে মুছে যাবে।";
+"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "ফার্নিচার সেগমেন্টেশন";
 "faq.whatIsSegmentation" = "ফার্নিচার সেগমেন্টেশন কী?";
-"faq.whatIsSegmentationAnswer" = "ফার্নিচার segmentation লাইভ রুম ভিউয়ার থেকে চলে। ব্রেইন ডিফল্টভাবে একটি primary আইটেম auto-segment করে। full-video মোডে আগে আইটেম বেছে নিন; Segment শুধু সেগুলোর জন্য স্বচ্ছ cutout তৈরি করে।";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "রুম ভিউয়ারে ফার্নিচার কীভাবে segment করব?";
-"faq.howToSegmentAnswer" = "রুম ভিউয়ারে ব্রেইন আইকন ট্যাপ করুন। দ্রুত চেকের জন্য main আইটেম auto-segment হয়। নির্দিষ্ট টুকরো বেছে নিতে: viewfinder, ক্যামেরা ফার্নিচারের দিকে, box ট্যাপ, তারপর Segment। Stop live identification।";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "আমার ফার্নিচার কেন শনাক্ত হচ্ছে না?";
 "faq.notDetectedAnswer" = "ফার্নিচার শনাক্তকরণ পরিষ্কার, ভালো আলোযুক্ত ছবিতে ফার্নিচার স্পষ্ট দেখা গেলে সবচেয়ে ভালো কাজ করে। নিশ্চিত করুন ফার্নিচার আংশিকভাবে ঢাকা নেই বা ব্যাকগ্রাউন্ডে মিশে যায়নি।";
 "faq.multiplePieces" = "একাধিক ফার্নিচার সেগমেন্ট করতে পারি?";
-"faq.multiplePiecesAnswer" = "হ্যাঁ! full-video মোডে একাধিক box ট্যাপ করে একবার Segment চাপলে সব selected টুকরো একসাথে 3D রুমে cutout হয়। default brain flow-তেও একটির পর একটির segment করা যায়।";
+"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room Controls
 "faq.roomControls" = "3D রুম নিয়ন্ত্রণ";
 "faq.howToNavigate" = "রুমের ভিতরে কিভাবে নেভিগেট করব?";
-"faq.howToNavigateAnswer" = "স্ক্রিনের নীচে মাঝখানে জয়স্টিক ব্যবহার করে ঘুরে বেড়ান। রুমের মধ্য দিয়ে উড়তে যেকোনো দিকে টানুন। ক্যামেরা অবস্থান রিসেট করতে রিসেন্টার বোতামে (ভিউফাইন্ডার আইকন) ট্যাপ করুন।";
-"faq.whatDoArrowsDo" = "তীর বোতামগুলো কী করে?";
-"faq.whatDoArrowsDoAnswer" = "3D ভিউয়ের পাশের তীর বোতামগুলো ক্যামেরা সরায়: উপরে ও নিচে দৃশ্যের উচ্চতা বদলায়; বাম ও ডান প্যান করে। পর্দায় টেনে ঘর ঘোরাতে পারেন এবং দৃশ্য রিসেট করতে রিসেন্টার বোতাম (ভিউফাইন্ডার আইকন) ব্যবহার করতে পারেন।";
+"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
+"faq.whatDoArrowsDo" = "How do I show or hide viewer controls?";
+"faq.whatDoArrowsDoAnswer" = "The room viewer uses immersive mode—controls hide for a clean view. Tap the room to summon the toolbar. The gold Fit button at bottom-right is always visible. While Fit is active, Done appears top-right to exit segmentation.";
 "faq.whatIsMemoryDisplay" = "MB সংখ্যা কী বোঝায়?";
 "faq.whatIsMemoryDisplayAnswer" = "রুমে প্রদর্শিত MB (মেগাবাইট) ফাইলের আকার নির্দেশ করে। এটি আপনাকে স্টোরেজ পরিচালনা করতে সাহায্য করে। সব রুমের মোট স্টোরেজ হোম স্ক্রিনের শীর্ষে দেখানো হয়।";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "আমার 3D রুম কিভাবে দেখব?";
-"faq.howToViewAnswer" = "3D ভিউয়ার খুলতে হোম স্ক্রিনে যেকোনো রুমে ট্যাপ করুন। টাচ জেসচার ব্যবহার করে রুম ঘোরাতে, জুম করতে এবং প্যান করতে পারেন।";
+"faq.howToViewAnswer" = "Tap any room on the home screen to open the 3D viewer. Drag to look around and pinch to zoom. Tap the room to summon extra controls (recenter, ruler, Capture). The gold Fit button stays visible at bottom-right.";
 "faq.howToPlace" = "আমার রুমে ফার্নিচার কিভাবে রাখব?";
 "faq.howToPlaceAnswer" = "Segment ট্যাপ করার পর নির্বাচিত ফার্নিচার রুমে ওভারলে হিসেবে দেখা যায়। অবস্থান ঠিক করতে টানুন, সাইজ বদলাতে পিঞ্চ করুন, আর দিক ঠিক করতে ঘোরান।";
 "faq.sampleRoom" = "আমার পরিবর্তে স্যাম্পল রুম ব্যবহার করতে পারি?";
@@ -251,21 +251,21 @@
 "faq.accuracy" = "3D মডেল কতটা নির্ভুল?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "রুমের মাত্রা সামঞ্জস্য করতে পারি?";
-"faq.adjustDimensionsAnswer" = "AI রুমের dimension ম্যানুয়ালি edit করা যায় না। estimated width, height, depth দেখতে ruler ট্যাপ করুন। স্পষ্ট কোণার ছবি তুলুন; manual rooms আপনার boundary অনুসরণ করে।";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "ফার্নিচার ও মাপ";
 "faq.arAssistedSizing" = "AR-সহায়িত ফার্নিচার সাইজিং কী?";
-"faq.arAssistedSizingAnswer" = "প্রথমে ব্রেইন আইকন দিয়ে ফার্নিচার segment করুন। room-relative scale-এর জন্য sizing control ব্যবহার করুন। AR/depth ফোনে live camera depth ব্যবহার হয়; depth না থাকলে approximate।";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "ছোট মাপের রিডআউট কী?";
 "faq.measurementPillAnswer" = "SmartyPants সক্রিয় থাকলে আনুমানিক ফার্নিচার ও রুমের উচ্চতা দেখাতে পারে। সঠিকতার জন্য ট্যাপ করে আসল মাপ লিখুন। রুমের ছবি ওয়াইড-অ্যাঙ্গেল (0.5×) হলে তা চিহ্নিত করুন।";
 "faq.resetOverlayScale" = "মাস্ক ভুল জুম লাগছে—কী করব?";
-"faq.resetOverlayScaleAnswer" = "3D রুমে ওভারফ্লো মেনু (⋮) খুলে Reset overlay scale বেছে নিন। শনাক্তকরণ মাস্কের স্বয়ংক্রিয় জুম মুছে যাবে।";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 "faq.roomFitment" = "ফার্নিচার মানানসই কিনা কীভাবে যাচাই করব?";
 "faq.roomFitmentAnswer" = "segmentation-এর পর 3D রুমে cutout resize/reposition করুন। full-video-তে Segment selected টুকরো রুমের ওপর রেখে একসাথে তুলনা করতে দেয়।";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "প্লেসমেন্ট বুদ্ধিমত্তা ও নান্দনিকতা";
 "faq.whatIsPlacementIntelligence" = "প্লেসমেন্ট ইন্টেলিজেন্স কী?";
-"faq.whatIsPlacementIntelligenceAnswer" = "সমর্থিত 3D রুম ভিউয়ারে SmartyPants চালু থাকলে, প্লেসমেন্ট ইন্টেলিজেন্স কার্ড দেখায় সনাক্ত বস্তুর আকার রুমের সীমার মধ্যে আছে কি না, মাটিতে ফাঁকা জায়গার ইঙ্গিত ও কোণার পরামর্শ (যখন উপলব্ধ), এবং গভীরতা আনুমানিক হলে তা উল্লেখ করে। শিরোনামে ট্যাপ করে বিস্তারিত দেখুন বা জায়গা বাঁচাতে ভাঁজ করে রাখুন।";
+"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "নান্দনিক স্কোরের জন্য রং কীভাবে বেছে নেয় অ্যাপ?";
 "faq.furnitureColorAestheticAnswer" = "অ্যাপ আপনার দেখা AI ফার্নিচার কাটআউটের (যে সেগমেন্টেড ওভারলে) ভেতরের দৃশ্যমান পিক্সেলের RGB গড় বের করে এবং তা মেঝে, দেয়াল ও ছাদ থেকে নেওয়া রঙের সঙ্গে তুলনা করে। কাটআউট তৈরি না হলে সেগমেন্টেশন আসল নমুনা না দেওয়া পর্যন্ত রুম প্যালেট থেকে বিকল্প রং ব্যবহার হয়।";
 "faq.whatDoHarmonyContrastMean" = "সুরেলাপন, কনট্রাস্ট ও স্টাইল মিল মানে কী?";
@@ -508,13 +508,13 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "মাপজোক সংক্রান্ত নোটিশ";
 "help.measurementAccuracyBody" = "AR depth সমর্থনহীন ফোনেও রুম ও ফার্নিচারের প্রিভিউ দেখা যাবে, তবে রুমের মাপ এবং বিশেষ করে ফার্নিচারের মাপ কেবল আনুমানিক হবে।";
-"faq.whatIsBrainIconAnswer" = "ব্রেইন আইকন রুম ভিউয়ারে SmartyPants চালু করে। ডিফল্টভাবে সর্বোচ্চ-confidence ফার্নিচার আপনার 3D রুমের ওপর স্বচ্ছ cutout হিসেবে auto-segment করে। tap-to-select-এর জন্য আগে viewfinder বাটন ট্যাপ করুন।";
-"faq.howToSegmentAnswer" = "রুম ভিউয়ারে ব্রেইন আইকন ট্যাপ করুন। দ্রুত চেকের জন্য main আইটেম auto-segment হয়। নির্দিষ্ট টুকরো বেছে নিতে: viewfinder, ক্যামেরা ফার্নিচারের দিকে, box ট্যাপ, তারপর Segment। Stop live identification।";
+"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.accuracyAnswer" = "3D রুমটি একটিমাত্র ছবির ভিত্তিতে একটি অনুমান। রুমের মাপ দিকনির্দেশনা হিসেবে কাজে লাগতে পারে, তবে তা জরিপ-মানের নয়। ফার্নিচার মাপ AR বা depth সমর্থিত ফোনে সবচেয়ে নির্ভরযোগ্য।";
-"faq.adjustDimensionsAnswer" = "AI রুমের dimension ম্যানুয়ালি edit করা যায় না। estimated width, height, depth দেখতে ruler ট্যাপ করুন। স্পষ্ট কোণার ছবি তুলুন; manual rooms আপনার boundary অনুসরণ করে।";
-"faq.arAssistedSizingAnswer" = "প্রথমে ব্রেইন আইকন দিয়ে ফার্নিচার segment করুন। room-relative scale-এর জন্য sizing control ব্যবহার করুন। AR/depth ফোনে live camera depth ব্যবহার হয়; depth না থাকলে approximate।";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPillAnswer" = "ফার্নিচার সাইজের ছোট পিলটি তখনই দেখা যায় যখন sizing mode চালু থাকে এবং অ্যাপের কাছে ব্যবহারযোগ্য লাইভ উচ্চতার অনুমান থাকে। রুলার বাটন একটি ছোট কার্ডে বর্তমান রুমের প্রস্থ, উচ্চতা ও গভীরতা দেখায়। non-AR ফোনে এই মানগুলো বিশেষ করে ফার্নিচারের ক্ষেত্রে কম নির্ভরযোগ্য।";
-"faq.resetOverlayScaleAnswer" = "এখন আর কোনো overflow menu নেই। ওভারলে ভুল দেখালে ব্রেইন আইকন বন্ধ করে আবার চালু করুন, অথবা pinch করে ফার্নিচারের আকার হাতে ঠিক করুন।";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 "faq.pinchOverlaySize" = "সেগমেন্ট করা ফার্নিচারকে পিঞ্চ করলে কী হয়?";
 "faq.pinchOverlaySizeAnswer" = "পিঞ্চ করলে ফার্নিচার ওভারলে বড় বা ছোট হয়। যদি sizing mode চালু থাকে এবং Furni pill দেখা যায়, তাহলে সেই pill-এ রুম অনুযায়ী বর্তমান resized ফার্নিচারের মাপ আপডেট হবে। sizing mode বন্ধ থাকলে, পিঞ্চ শুধু স্ক্রিনে ওভারলের দৃশ্যমান আকার বদলাবে।";

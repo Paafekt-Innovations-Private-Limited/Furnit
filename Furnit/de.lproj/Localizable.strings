@@ -190,9 +190,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "Raumerstellung";
 "faq.howToCreate" = "Wie erstelle ich einen 3D-Raum?";
-"faq.howToCreateAnswer" = "Tippen Sie oben links auf dem Startbildschirm auf Photo → 3D und nehmen Sie dann ein Foto Ihres Raums auf oder wählen Sie eines aus. Sie sehen zwei Optionen zur Erstellung Ihres 3D-Raums.";
+"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "Wie nehme ich ein Foto auf, um einen Raum zu erstellen?";
-"faq.howToTakePhotoAnswer" = "Tippen Sie auf das Kamera-Symbol auf dem Startbildschirm, um direkt ein Foto aufzunehmen. Sie können zwischen Standard (1x) oder Weitwinkel (0.5x Ultra-Weitwinkel) Objektiv wählen. Halten Sie Ihr Gerät ruhig und tippen Sie auf die Aufnahmetaste. Das Foto wird dann verwendet, um Ihren 3D-Raum zu erstellen.";
+"faq.howToTakePhotoAnswer" = "Beim Erstellen eines Raums wählen Sie Foto aufnehmen. Standard (1x) oder Weitwinkel (0.5×). Gerät ruhig halten und aufnehmen. Das Foto wird für Ihren 3D-Raum verwendet.";
 "faq.depthAwareRoomPhoto" = "Hilft ein Foto in der App der Raumqualität?";
 "faq.depthAwareRoomPhotoAnswer" = "Ja. Auf unterstützten Geräten nutzt „Foto aufnehmen“ (statt Galerie) die In-App-Kamera mit Tiefendaten, sofern verfügbar – das kann Aufbau und Maßstab des 3D-Raums verbessern.";
 "faq.twoMethods" = "Was sind die beiden Optionen zur Raumerstellung?";
@@ -209,17 +209,21 @@
 "faq.generationFailingAnswer" = "Die Raumerstellung kann fehlschlagen, wenn das Foto zu dunkel, unscharf ist oder nicht genügend Raummerkmale zeigt. Versuchen Sie, ein neues Foto mit besserer Beleuchtung und einem weiteren Winkel aufzunehmen.";
 "faq.howManyRooms" = "Wie viele Räume kann ich erstellen?";
 "faq.howManyRoomsAnswer" = "Sie können bis zu 20 Räume erstellen. Löschen Sie ältere Räume, um Platz zu schaffen. Oben auf dem Startbildschirm sehen Sie die Raumanzahl und den belegten Speicher.";
+"faq.howToSaveRoom" = "Wie speichere ich einen Raum?";
+"faq.howToSaveRoomAnswer" = "Nach der 3D-Erstellung auf den Raum tippen, Steuerung einblenden, dann Speichern-Symbol (Download-Pfeil) und Namen eingeben. Ohne Speichern verlassen wird die Vorschau verworfen.";
+"faq.howToScreenshot" = "Wie mache ich einen Screenshot?";
+"faq.howToScreenshotAnswer" = "Tippen Sie auf den Raum, um die Steuerung einzublenden, dann auf Aufnahme. Speichert die aktuelle Ansicht (einschließlich Möbel-Overlays bei aktivem Fit) in Ihrer Fotomediathek.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Möbel-Segmentierung";
 "faq.whatIsSegmentation" = "Was ist Möbel-Segmentierung?";
-"faq.whatIsSegmentationAnswer" = "Die Möbel-Segmentierung läuft im Live-Raum-Viewer. Das Gehirn-Symbol segmentiert standardmäßig automatisch ein Hauptobjekt. Im Vollvideo-Modus wählen Sie zuerst erkannte Elemente aus; Segment erstellt dann transparente Ausschnitte nur für diese Stücke, damit Sie die Passform im 3D-Raum prüfen können.";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "Wie segmentiere ich Möbel im Raum-Viewer?";
-"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf das Gehirn-Symbol. Für eine schnelle Prüfung segmentiert es automatisch das Hauptobjekt über Ihrem 3D-Raum. Um bestimmte Stücke zu wählen: Viewfinder-Schaltfläche tippen, Kamera auf das Möbel richten, ein oder mehrere Erkennungsrahmen antippen, dann Segment. Mit Stop kehren Sie zur Live-Erkennung zurück.";
+"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf Fit. Für eine schnelle Prüfung wird das Hauptobjekt automatisch segmentiert. Für bestimmte Stücke: Steuerung einblenden, Full-Video-Modus aktivieren, Kamera auf Möbel richten, Rahmen tippen, dann Segmentieren. Oben rechts auf Fertig tippen zum Beenden.";
 "faq.notDetected" = "Warum werden meine Möbel nicht erkannt?";
 "faq.notDetectedAnswer" = "Die Möbelerkennung funktioniert am besten mit klaren, gut beleuchteten Fotos, auf denen die Möbel deutlich sichtbar sind. Stellen Sie sicher, dass die Möbel nicht teilweise verdeckt sind oder mit dem Hintergrund verschmelzen.";
 "faq.multiplePieces" = "Kann ich mehrere Möbelstücke segmentieren?";
-"faq.multiplePiecesAnswer" = "Ja! Im Vollvideo-Modus können Sie mehrere Erkennungsrahmen antippen und dann einmal Segment tippen, um alle ausgewählten Stücke gemeinsam über Ihren 3D-Raum auszuschneiden. Sie können Elemente auch einzeln mit dem Standard-Gehirn-Flow segmentieren.";
+"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "Wie prüfe ich, ob Möbel passen?";
@@ -228,7 +232,7 @@
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "Platzierung & Ästhetik";
 "faq.whatIsPlacementIntelligence" = "Was ist „Placement Intelligence“?";
-"faq.whatIsPlacementIntelligenceAnswer" = "Wenn SmartyPants in unterstützten 3D-Raumansichten aktiv ist, fasst eine Karte „Placement Intelligence“ zusammen, ob die erkannte Objektgröße in Ihre Raumgrenzen passt, zeigt bei Bedarf Boden- und Eckvorschläge und weist darauf hin, wenn die Tiefe geschätzt ist. Tippen Sie auf die Kopfzeile für alle Details oder lassen Sie die Karte eingeklappt, um Platz zu sparen.";
+"faq.whatIsPlacementIntelligenceAnswer" = "Wenn Fit in unterstützten 3D-Raum-Viewern aktiv ist, zeigt eine Placement-Intelligence-Karte, ob erkanntes Möbel in die Raummaße passt. Tippen Sie auf die Überschrift für Details oder lassen Sie sie eingeklappt.";
 "faq.furnitureColorAesthetic" = "Wie wählt die App eine Farbe für die Ästhetikbewertung?";
 "faq.furnitureColorAestheticAnswer" = "Die App mittelt die RGB-Farbe der sichtbaren Pixel in der KI-Möbelauswahl (demselben segmentierten Overlay). Diese mittlere Farbe wird mit Farben verglichen, die aus Boden, Wänden und Decke Ihres Raums gesampelt wurden. Ist die Auswahl noch nicht bereit, nutzt die App vorerst eine Farbe aus der Raumpalette, bis die Segmentierung echte Pixel liefert.";
 "faq.whatDoHarmonyContrastMean" = "Was bedeuten Harmonie, Kontrast und Stil-Treffer?";
@@ -236,7 +240,7 @@
 "faq.whenDoesAestheticScoreLow" = "Wann können ästhetische Werte niedrig sein oder „clash“ zeigen?";
 "faq.whenDoesAestheticScoreLowAnswer" = "Leuchtend gesättigte Objekte fallen oft schlechter aus, wenn ihr Farbton nicht zu den harmonischen Mustern der App gegenüber Ihrem Raum passt – z. B. giftgrün, Magenta, Violett oder signalorange in warmen Beige- oder Braunräumen, oder grell Primär in einem Raum mit überwiegender Farbfamilie. Sehr ähnliche Helligkeit zu Boden oder Wand (Braun auf Braun, Grau auf Grau) kann den Kontrast senken. Als rustikal oder traditionell erkannte Räume können einen niedrigeren Stil-Treffer zeigen, weil das Möbelprofil standardmäßig moderne/minimalistische Stichwörter nutzt. Matter Grau- oder Schmutzmittel aus unruhigem Hintergrund kann neutral statt clash wirken. Die Werte sind nur Orientierung – beim echten Einrichten zählt Ihr Urteil.";
 "faq.howToView" = "Wie betrachte ich meinen 3D-Raum?";
-"faq.howToViewAnswer" = "Tippen Sie auf einen beliebigen Raum auf Ihrem Startbildschirm, um den 3D-Viewer zu öffnen. Sie können mit Touch-Gesten drehen, zoomen und schwenken.";
+"faq.howToViewAnswer" = "Tippen Sie auf einen Raum auf dem Startbildschirm, um den 3D-Viewer zu öffnen. Ziehen zum Umsehen, kneifen zum Zoomen. Tippen Sie auf den Raum für weitere Steuerung (Zentrieren, Lineal, Aufnahme). Die goldene Fit-Taste bleibt unten rechts sichtbar.";
 "faq.howToPlace" = "Wie platziere ich Möbel in meinem Raum?";
 "faq.howToPlaceAnswer" = "Nach dem Tippen auf Segment erscheint das ausgewählte Möbel als Überlagerung im Raum. Ziehen Sie es zum Positionieren, nutzen Sie Pinch zum Ändern der Größe und drehen Sie es für die Ausrichtung.";
 "faq.sampleRoom" = "Kann ich einen Beispielraum anstelle meines eigenen verwenden?";
@@ -244,21 +248,21 @@
 "faq.accuracy" = "Wie genau ist das 3D-Modell?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "Kann ich die Raummaße anpassen?";
-"faq.adjustDimensionsAnswer" = "KI-Raummaße können nicht manuell bearbeitet werden. Tippen Sie im Raum-Viewer auf das Lineal, um geschätzte Breite, Höhe und Tiefe zu sehen. Für bessere Ergebnisse fotografieren Sie einen klaren Raum mit sichtbaren Ecken; manuelle Räume folgen Ihren gezeichneten Grenzen.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "Möbel & Maße";
 "faq.arAssistedSizing" = "Was ist AR-gestützte Möbelgröße?";
-"faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, um Möbel zu segmentieren. Nutzen Sie die Größensteuerung für raumrelative Skalierung. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen; ohne Tiefe sind Möbelmaße nur ungefähr.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "Was bedeutet die kleine Maßanzeige?";
 "faq.measurementPillAnswer" = "Während SmartyPants aktiv ist, kann eine kleine Anzeige geschätzte Möbel- und Raumhöhe zeigen. Tippen Sie darauf, um reale Maße einzugeben. War das Raumfoto mit Weitwinkel (0,5×) aufgenommen, markieren Sie das.";
 "faq.resetOverlayScale" = "Die Maske wirkt falsch gezoomt – was tun?";
-"faq.resetOverlayScaleAnswer" = "Öffnen Sie im 3D-Raum das Überlaufmenü (⋮) und wählen Sie „Overlay-Zoom zurücksetzen“. Damit wird die automatische Skalierung der Erkennungsmaske gelöscht.";
+"faq.resetOverlayScaleAnswer" = "Es gibt kein Überlaufmenü mehr. Wenn das Overlay falsch wirkt, tippen Sie auf Fertig, um Fit zu beenden, und erneut auf Fit, oder passen Sie die Größe per Kneifen an.";
 
 // FAQ - 3D Room Controls
 "faq.roomControls" = "3D-Raum-Steuerung";
 "faq.howToNavigate" = "Wie bewege ich mich im Raum?";
-"faq.howToNavigateAnswer" = "Nutzen Sie den Joystick unten in der Bildschirmmitte zur Bewegung. Ziehen Sie ihn in eine beliebige Richtung, um durch den Raum zu fliegen. Mit der Schaltfläche „Zentrieren“ (Sucher-Symbol) setzen Sie die Kameraposition zurück.";
-"faq.whatDoArrowsDo" = "Wofür sind die Pfeiltasten?";
-"faq.whatDoArrowsDoAnswer" = "Die Pfeiltasten an der Seite der 3D-Ansicht bewegen die Kamera: oben und unten ändern die Blickhöhe; links und rechts schwenken die Kamera. Sie können auch auf dem Bildschirm ziehen, um den Raum zu umkreisen, und die Zentrieren-Taste (Sucher-Symbol) nutzen, um die Ansicht zurückzusetzen.";
+"faq.howToNavigateAnswer" = "Ziehen Sie auf dem Raum, um die Kamera zu drehen, und kneifen Sie zum Zoomen. Tippen Sie auf den Bildschirm, um die Symbolleiste einzublenden, dann das Sucher-Symbol zum Zentrieren. Eine ruhige Einblendscheibe unten links bringt versteckte Steuerung zurück.";
+"faq.whatDoArrowsDo" = "Wie blende ich Viewer-Steuerung ein oder aus?";
+"faq.whatDoArrowsDoAnswer" = "Der Raum-Viewer nutzt den Immersionsmodus—Steuerung ist für eine klare Ansicht ausgeblendet. Tippen Sie auf den Raum, um die Symbolleiste einzublenden. Die goldene Fit-Taste unten rechts bleibt immer sichtbar. Bei aktivem Fit erscheint oben rechts Fertig zum Beenden der Segmentierung.";
 "faq.whatIsMemoryDisplay" = "Was bedeutet die MB-Zahl?";
 "faq.whatIsMemoryDisplayAnswer" = "Die in Räumen angezeigte MB (Megabyte) gibt die Dateigröße an. So verwalten Sie den Speicher. Der von allen Räumen genutzte Speicher wird oben auf dem Startbildschirm angezeigt.";
 
@@ -519,16 +523,16 @@
 "help.measurementAccuracyTitle" = "Hinweis zur Messung";
 "help.measurementAccuracyBody" = "Auf Telefonen ohne AR-Tiefensensor können Räume und Möbel weiterhin angezeigt werden, aber Raummaße und besonders Möbelmaße sind nur Näherungen.";
 "faq.aiFeatures" = "KI-Funktionen";
-"faq.whatIsBrainIcon" = "Was macht das Gehirn-Symbol?";
-"faq.whatIsBrainIconAnswer" = "Das Gehirn-Symbol startet SmartyPants im Raum-Viewer. Standardmäßig segmentiert es automatisch das Möbelstück mit der höchsten Konfidenz als transparente Aussparung über Ihrem 3D-Raum. Für Tippen-zum-Auswählen tippen Sie zuerst auf die Viewfinder-Schaltfläche.";
-"faq.whatIsViewfinderButton" = "Was macht die Viewfinder-Schaltfläche im Raum-Viewer?";
-"faq.whatIsViewfinderButtonAnswer" = "Während SmartyPants aktiv ist, schaltet die Viewfinder-Schaltfläche (oben rechts) den Vollvideo-Modus um. Sie sehen einen Live-Kamerabild mit Erkennungsrahmen, tippen ein oder mehrere Elemente an, dann auf Segment. Die Kamera wird ausgeblendet und transparente Möbelausschnitte liegen über Ihrem 3D-Raum, damit Sie die Passform prüfen können. Mit Stop kehren Sie zur Live-Erkennung zurück.";
-"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf das Gehirn-Symbol. Für eine schnelle Prüfung segmentiert es automatisch das Hauptobjekt über Ihrem 3D-Raum. Um bestimmte Stücke zu wählen: Viewfinder-Schaltfläche tippen, Kamera auf das Möbel richten, ein oder mehrere Erkennungsrahmen antippen, dann Segment. Mit Stop kehren Sie zur Live-Erkennung zurück.";
+"faq.whatIsBrainIcon" = "Was macht die Fit-Taste?";
+"faq.whatIsBrainIconAnswer" = "Tippen Sie im Raum-Viewer unten rechts auf die goldene Fit-Taste, um SmartyPants-Möbelsegmentierung zu starten. Standardmäßig wird das Objekt mit höchster Konfidenz als transparenter Ausschnitt über Ihrem 3D-Raum segmentiert. Tippen Sie oben rechts auf Fertig zum Beenden. Für die Auswahl bestimmter Stücke zuerst Steuerung einblenden und Full-Video-Modus aktivieren.";
+"faq.whatIsViewfinderButton" = "Was macht der Full-Video-Modus im Raum-Viewer?";
+"faq.whatIsViewfinderButtonAnswer" = "Während Fit aktiv ist, Steuerung einblenden und das Sucher-Symbol tippen, um den Full-Video-Modus umzuschalten. Live-Kamera mit Erkennungsrahmen—ein oder mehrere Objekte tippen, dann Segmentieren. Die Kamera wird ausgeblendet und transparente Ausschnitte werden über den 3D-Raum gelegt. Oben rechts auf Fertig tippen, um den Segmentmodus zu verlassen oder Fit zu beenden.";
+"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf Fit. Für eine schnelle Prüfung wird das Hauptobjekt automatisch segmentiert. Für bestimmte Stücke: Steuerung einblenden, Full-Video-Modus aktivieren, Kamera auf Möbel richten, Rahmen tippen, dann Segmentieren. Oben rechts auf Fertig tippen zum Beenden.";
 "faq.accuracyAnswer" = "Der 3D-Raum ist eine Schätzung aus nur einem Foto. Die Raummaße können als Orientierung dienen, sind aber keine exakten Vermessungsdaten. Möbelmaße sind auf Telefonen mit AR-/Tiefenunterstützung am zuverlässigsten.";
-"faq.adjustDimensionsAnswer" = "KI-Raummaße können nicht manuell bearbeitet werden. Tippen Sie im Raum-Viewer auf das Lineal, um geschätzte Breite, Höhe und Tiefe zu sehen. Für bessere Ergebnisse fotografieren Sie einen klaren Raum mit sichtbaren Ecken; manuelle Räume folgen Ihren gezeichneten Grenzen.";
-"faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, um Möbel zu segmentieren. Nutzen Sie die Größensteuerung für raumrelative Skalierung. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen; ohne Tiefe sind Möbelmaße nur ungefähr.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPillAnswer" = "Die kleine Möbelgrößenanzeige erscheint nur, wenn der Größenmodus aktiv ist und die App eine brauchbare Live-Höhenschätzung hat. Die Lineal-Schaltfläche zeigt die aktuelle Raum-Breite, -Höhe und -Tiefe in einer kleinen Karte an. Auf Telefonen ohne AR sind diese Werte weniger zuverlässig, besonders bei Möbeln.";
-"faq.resetOverlayScaleAnswer" = "Es gibt jetzt kein Überlaufmenü mehr. Wenn die Überlagerung nicht richtig aussieht, schalten Sie das Gehirn-Symbol aus und wieder ein oder passen Sie die Möbelgröße per Pinch-Geste manuell an.";
+"faq.resetOverlayScaleAnswer" = "Es gibt kein Überlaufmenü mehr. Wenn das Overlay falsch wirkt, tippen Sie auf Fertig, um Fit zu beenden, und erneut auf Fit, oder passen Sie die Größe per Kneifen an.";
 
 "faq.pinchOverlaySize" = "Was passiert, wenn ich die segmentierten Möbel per Pinch vergrößere oder verkleinere?";
 "faq.pinchOverlaySizeAnswer" = "Durch die Pinch-Geste wird die Möbelüberlagerung größer oder kleiner. Wenn der Größenmodus aktiv ist und die Furni-Anzeige sichtbar ist, wird diese Anzeige auf die aktuell angepasste Möbelschätzung für den Raum aktualisiert. Ist der Größenmodus aus, ändert Pinch nur die sichtbare Overlay-Größe auf dem Bildschirm.";

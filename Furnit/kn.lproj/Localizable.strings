@@ -190,9 +190,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "ಕೊಠಡಿ ರಚನೆ";
 "faq.howToCreate" = "3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸುವುದು?";
-"faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ Photo → 3D ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೋಡುತ್ತೀರಿ.";
+"faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್ ಟೂಲ್‌ಬಾರ್‌ನಲ್ಲಿ Photo → 3D (ಅಥವಾ ಖಾಲಿ ಸ್ಥಿತಿಯಲ್ಲಿ Create Room from Photo) ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೋಡುತ್ತೀರಿ.";
 "faq.howToTakePhoto" = "ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?";
-"faq.howToTakePhotoAnswer" = "ನೇರವಾಗಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಕ್ಯಾಮೆರಾ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಸ್ಟ್ಯಾಂಡರ್ಡ್ (1x) ಅಥವಾ ವೈಡ್ ಆಂಗಲ್ (0.5x ಅಲ್ಟ್ರಾ-ವೈಡ್) ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಬಹುದು. ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಫೋಟೋವನ್ನು ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಬಳಸಲಾಗುತ್ತದೆ.";
+"faq.howToTakePhotoAnswer" = "ಕೊಠಡಿ ರಚಿಸುವಾಗ Take a Photo ಆಯ್ಕೆಮಾಡಿ. Standard (1x) ಅಥವಾ Wide Angle (0.5×) ಆಯ್ಕೆಮಾಡಬಹುದು. ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಮಾಡಿ. ಫೋಟೋ ನಿಮ್ಮ 3D ಕೊಠಡಿ ನಿರ್ಮಾಣಕ್ಕೆ ಬಳಸಲಾಗುತ್ತದೆ.";
 "faq.depthAwareRoomPhoto" = "ಅಪ್ಲಿಕೇಶನ್‌ನಲ್ಲಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳುವುದು ಕೊಠಡಿಯ ಗುಣಮಟ್ಟವನ್ನು ಉತ್ತಮಗೊಳಿಸುತ್ತದೆಯೇ?";
 "faq.depthAwareRoomPhotoAnswer" = "ಹೌದು. ಬೆಂಬಲಿತ ಸಾಧನಗಳಲ್ಲಿ, ಗ್ಯಾಲರಿಯಿಂದ ಆಯ್ಕೆಮಾಡುವ ಬದಲು «ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ» ಆಯ್ಕೆಮಾಡುವುದು ಲಭ್ಯವಿರುವಲ್ಲಿ ಆಳ-ಮಾಹಿತಿಯೊಂದಿಗೆ ಇನ್-ಅಪ್ ಕ್ಯಾಮರಾವನ್ನು ಬಳಸುತ್ತದೆ; ಇದು ನಿಮ್ಮ 3D ಕೊಠಡಿಯ ನಿರ್ಮಾಣ ಮತ್ತು ಪ್ರಮಾಣಕ್ಕೆ ಸುಧಾರಣೆ ತರುಬಹುದು.";
 "faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
@@ -213,17 +213,17 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
 "faq.whatIsSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಎಂದರೇನು?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation live room viewer ನಿಂದ ಚಲಿಸುತ್ತದೆ. brain ಡಿಫಾಲ್ಟ್ ಆಗಿ ಒಂದು primary item auto-segment. full-video mode ನಲ್ಲಿ ಮೊದಲು items ಆಯ್ಕೆ; Segment ಆಯ್ಕೆ ಮಾಡಿದವುಗಳಿಗೆ ಮಾತ್ರ cutouts.";
+"faq.whatIsSegmentationAnswer" = "Room viewer ನಲ್ಲಿ Fit ಬಟನ್ ಮೂಲಕ furniture segmentation ಚಲಿಸುತ್ತದೆ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಒಂದು primary item auto-segment. full-video mode ನಲ್ಲಿ ಮೊದಲು items ಆಯ್ಕೆ; Segment ಆಯ್ಕೆ ಮಾಡಿದ pieces ಗಾಗಿ ಮಾತ್ರ cutouts.";
 "faq.howToSegment" = "Room viewer ನಲ್ಲಿ furniture ಹೇಗೆ segment ಮಾಡುವುದು?";
-"faq.howToSegmentAnswer" = "Room viewer ನಲ್ಲಿ brain icon ಟ್ಯಾಪ್. quick check ಗಾಗಿ main item auto-segment. specific pieces: viewfinder, camera furniture ಕಡೆ, boxes ಟ್ಯಾಪ್, Segment. Stop live identifications.";
+"faq.howToSegmentAnswer" = "Room viewer ನಲ್ಲಿ Fit ಟ್ಯಾಪ್ ಮಾಡಿ. quick check ಗಾಗಿ main item auto-segment. ನಿರ್ದಿಷ್ಟ pieces: ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ, full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ, camera furniture ಕಡೆ ಹಿಡಿದು boxes ಟ್ಯಾಪ್ ಮಾಡಿ, Segment. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "faq.notDetected" = "ನನ್ನ ಪೀಠೋಪಕರಣ ಏಕೆ ಪತ್ತೆಯಾಗುತ್ತಿಲ್ಲ?";
 "faq.notDetectedAnswer" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯು ಸ್ಪಷ್ಟ, ಉತ್ತಮ ಬೆಳಕಿನ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣ ಸ್ಪಷ್ಟವಾಗಿ ಗೋಚರಿಸಿದಾಗ ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ. ಪೀಠೋಪಕರಣ ಭಾಗಶಃ ಮುಚ್ಚಲಾಗಿಲ್ಲ ಅಥವಾ ಹಿನ್ನೆಲೆಯೊಂದಿಗೆ ಮಿಶ್ರಣವಾಗಿಲ್ಲ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.";
 "faq.multiplePieces" = "ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ವಿಭಜಿಸಬಹುದೇ?";
-"faq.multiplePiecesAnswer" = "ಹೌದು! full-video mode ನಲ್ಲಿ ಹಲವು boxes ಟ್ಯಾಪ್ ಮಾಡಿ ಒಮ್ಮೆ Segment — ಎಲ್ಲ selected pieces ಒಟ್ಟಿಗೆ 3D room ಮೇಲೆ. default brain flow ನಲ್ಲಿ ಒಂದೊಂದಾಗಿ segment ಮಾಡಬಹುದು.";
+"faq.multiplePiecesAnswer" = "ಹೌದು! full-video mode ನಲ್ಲಿ ಹಲವು boxes ಟ್ಯಾಪ್ ಮಾಡಿ ಒಮ್ಮೆ Segment—ಎಲ್ಲ selected pieces ಒಟ್ಟಿಗೆ 3D room ಮೇಲೆ. default Fit flow ನಲ್ಲಿ ಒಂದೊಂದಾಗಿ segment ಮಾಡಬಹುದು.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "ನನ್ನ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ವೀಕ್ಷಿಸುವುದು?";
-"faq.howToViewAnswer" = "3D ವೀಕ್ಷಕವನ್ನು ತೆರೆಯಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಟಚ್ ಜೆಸ್ಚರ್‌ಗಳನ್ನು ಬಳಸಿ ಕೊಠಡಿಯನ್ನು ತಿರುಗಿಸಬಹುದು, ಜೂಮ್ ಮಾಡಬಹುದು ಮತ್ತು ಪ್ಯಾನ್ ಮಾಡಬಹುದು.";
+"faq.howToViewAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿ ಟ್ಯಾಪ್ ಮಾಡಿ 3D viewer ತೆರೆಯಿರಿ. ನೋಡಲು ಎಳೆಯಿರಿ, ಜೂಮ್ ಮಾಡಲು ಚಿಮುಡಿಸಿ. ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಗಳಿಗಾಗಿ (recenter, ruler, Capture) ಕೊಠಡಿ ಟ್ಯಾಪ್ ಮಾಡಿ. ಕೆಳಗೆ-ಬಲದ ಚಿನ್ನದ Fit ಬಟನ್ ಯಾವಾಗಲೂ ಕಾಣಿಸುತ್ತದೆ.";
 "faq.howToPlace" = "ನನ್ನ ಕೊಠಡಿಯಲ್ಲಿ ಪೀಠೋಪಕರಣ ಹೇಗೆ ಇಡುವುದು?";
 "faq.howToPlaceAnswer" = "Segment ಟ್ಯಾಪ್ ಮಾಡಿದ ನಂತರ ಆಯ್ದ furniture room ನಲ್ಲಿ overlay ಆಗಿ ಕಾಣುತ್ತದೆ. Position ಮಾಡಲು drag ಮಾಡಿ, resize ಮಾಡಲು pinch ಮಾಡಿ, orientation ಸರಿಪಡಿಸಲು rotate ಮಾಡಿ.";
 "faq.sampleRoom" = "ನನ್ನದರ ಬದಲು ಮಾದರಿ ಕೊಠಡಿ ಬಳಸಬಹುದೇ?";
@@ -231,21 +231,21 @@
 "faq.accuracy" = "3D ಮಾದರಿ ಎಷ್ಟು ನಿಖರ?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಬಹುದೇ?";
-"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ಮಾಡಲಾಗುವುದಿಲ್ಲ. ruler ಟ್ಯಾಪ್ ಮಾಡಿ estimated width, height, depth ನೋಡಿ. clear corners photo; manual rooms ನಿಮ್ಮ boundaries ಅನುಸರಿಸುತ್ತವೆ.";
+"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ಮಾಡಲಾಗುವುದಿಲ್ಲ. ಉಳಿಸಿದ ನಂತರ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ruler ಟ್ಯಾಪ್ ಮಾಡಿ estimated width, height, depth ನೋಡಿ. pre-save preview ನಲ್ಲಿ dimension chips ಮರೆಮಾಡಲಾಗುತ್ತವೆ—ಮೊದಲು ಉಳಿಸಿ, ನಂತರ ಮತ್ತೆ ತೆರೆದು ಅಳತೆಗಳನ್ನು ನೋಡಿ. manual rooms ನಿಮ್ಮ boundaries ಅನುಸರಿಸುತ್ತವೆ.";
 "faq.furnitureMeasurements" = "ಪೀಠೋಪಕರಣ ಮತ್ತು ಅಳತೆಗಳು";
 "faq.arAssistedSizing" = "ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?";
-"faq.arAssistedSizingAnswer" = "ಮೊದಲು brain icon ನಿಂದ furniture segment. room-relative scale ಗಾಗಿ sizing control. AR/depth phones live camera depth; ಇಲ್ಲದಿದ್ದರೆ approximate.";
+"faq.arAssistedSizingAnswer" = "ಮೊದಲು Fit ಟ್ಯಾಪ್ ಮಾಡಿ furniture segment ಮಾಡಿ. room-relative scale ಗಾಗಿ summoned toolbar ನಲ್ಲಿ sizing control ಬಳಸಿ. AR/depth phones live camera depth; ಇಲ್ಲದಿದ್ದರೆ approximate.";
 "faq.measurementPill" = "ಚಿಕ್ಕ ಅಳತೆ ಓದುವಿಕೆ (ಪಿಲ್) ಏನು?";
 "faq.measurementPillAnswer" = "SmartyPants ಸಕ್ರಿಯವಾಗಿದ್ದಾಗ, ಪೀಠೋಪಕರಣದ ಮತ್ತು ಕೊಠಡಿಯ ಅಂದಾಜು ಎತ್ತರಗಳನ್ನು ತೋರಿಸುವ ಪಿಲ್ ಕಾಣಬಹುದು. ಉತ್ತಮ ನಿಖರತೆಗಾಗಿ ನಿಜವಾದ ಅಳತೆಗಳನ್ನು ನಮೂದಿಸಲು ಅದನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ನಿಮ್ಮ ಕೊಠಡಿ ಫೋಟೋ ವೈಡ್-ಆಂಗಲ್ (0.5×) ಲೆನ್ಸ್‌ನಲ್ಲಿ ತೆಗೆದಿದ್ದರೆ, ಆಯ್ಕೆಯನ್ನು ಗುರುತಿಸಿ — ಚೌಕಟ್ಟು ಸ್ಥಿರವಾಗಿ ಉಳಿಯುತ್ತದೆ.";
 "faq.resetOverlayScale" = "ಪೀಠೋಪಕರಣ ಮಾಸ್ಕ್ ತಪ್ಪಾಗಿ ಜೂಮ್ ಆಗಿದೆ ಎನಿಸುತ್ತದೆ — ಏನು ಮಾಡಲಿ?";
-"faq.resetOverlayScaleAnswer" = "3D ಕೊಠಡಿಯಲ್ಲಿ ಓವರ್‌ಫ್ಲೋ ಮೆನು (⋮) ತೆರೆದು «ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ» ಆಯ್ಕೆಮಾಡಿ. ಪತ್ತೆ ಓವರ್ಲೇಗೆ ಅನ್ವಯಿಸಿದ ಸ್ವಯಂಚಾಲಿತ ಜೂಮ್ ಅನ್ನು ಅದು ತೆರವುಗೊಳಿಸುತ್ತದೆ; ನೀವು ಚಲಿಸಿದಂತೆ ಮತ್ತೆ ಸರಿಯಾಗಿ ಹೊಂದಿಕೊಳ್ಳುತ್ತದೆ.";
+"faq.resetOverlayScaleAnswer" = "ಈಗ overflow menu ಇಲ್ಲ. overlay ತಪ್ಪಾಗಿ ಕಾಣಿಸಿದರೆ Done ಟ್ಯಾಪ್ ಮಾಡಿ Fit ಬಿಡಿ ಮತ್ತು ಮತ್ತೆ Fit ಟ್ಯಾಪ್ ಮಾಡಿ, ಅಥವಾ pinch ಬಳಸಿ ಗಾತ್ರ ಸರಿಪಡಿಸಿ.";
 "faq.roomFitment" = "ಪೀಠೋಪಕರಣ ಸರಿಯಾಗಿ ಹೊಂದುತ್ತದೆಯೇ ಎಂದು ಹೇಗೆ ಪರಿಶೀಲಿಸುವುದು?";
 "faq.roomFitmentAnswer" = "segmentation ನಂತರ 3D room ನಲ್ಲಿ cutouts resize/reposition. full-video ನಲ್ಲಿ Segment selected pieces room ಮೇಲೆ composite ಮಾಡಿ ಹಲವು items ಹೋಲಿಸಲು ಸಹಾಯ.";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಬುದ್ಧಿಮತ್ತೆ ಮತ್ತು ಸೌಂದರ್ಯ";
 "faq.whatIsPlacementIntelligence" = "ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಇಂಟೆಲಿಜೆನ್ಸ್ ಎಂದರೇನು?";
-"faq.whatIsPlacementIntelligenceAnswer" = "ಬೆಂಬಲಿತ 3D ರೂಮ್ ವ್ಯೂವರ್‌ಗಳಲ್ಲಿ SmartyPants ಆನ್ ಆಗಿದ್ದಾಗ, ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಇಂಟೆಲಿಜೆನ್ಸ್ ಕಾರ್ಡ್ ಪತ್ತೆಯಾದ ವಸ್ತುವಿನ ಗಾತ್ರ ಕೊಠಡಿಯ ಮಿತಿಗಳೊಳಗೆ ಸರಿಹೊಂದುತ್ತದೆಯೇ ಎಂದು ಸಾರಾಂಶಿಸುತ್ತದೆ, ಲಭ್ಯವಿದ್ದಾಗ ನೆಲದ ಖಾಲಿ ಜಾಗದ ಸೂಚನೆಗಳು ಮತ್ತು ಮೂಲೆ ಸಲಹೆಗಳನ್ನು ತೋರಿಸುತ್ತದೆ, ಮತ್ತು ಆಳ ಅಂದಾಜು ಎಂದಾಗ ಅದನ್ನು ಹೇಳುತ್ತದೆ. ಶೀರ್ಷಿಕೆಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ವಿವರಗಳನ್ನು ವಿಸ್ತೃತವಾಗಿ ನೋಡಿ ಅಥವಾ ಸ್ಥಳ ಉಳಿಸಲು ಕುಗ್ಗಿಸಿ.";
+"faq.whatIsPlacementIntelligenceAnswer" = "ಬೆಂಬಲಿತ 3D room viewers ನಲ್ಲಿ Fit ಸಕ್ರಿಯವಾಗಿರುವಾಗ Placement Intelligence card ಪತ್ತೆಯಾದ furniture room dimensions ಒಳಗೆ ಸರಿಹೊಂದುತ್ತದೆಯೇ ಎಂದು ತೋರಿಸುತ್ತದೆ. ವಿವರಗಳಿಗಾಗಿ header ಟ್ಯಾಪ್ ಮಾಡಿ, ಸ್ಥಳ ಉಳಿಸಲು collapsed ಬಿಡಿ.";
 "faq.furnitureColorAesthetic" = "ಸೌಂದರ್ಯ ಅಂಕಕ್ಕೆ ಬಣ್ಣವನ್ನು ಅಪ್ಲಿಕೇಶನ್ ಹೇಗೆ ಆಯ್ಕೆ ಮಾಡುತ್ತದೆ?";
 "faq.furnitureColorAestheticAnswer" = "ಅಪ್ಲಿಕೇಶನ್ ನೀವು ನೋಡುವ AI ಪೀಠೋಪಕರಣ ಕಟ್‌ಔಟ್ (ಅದೇ ವಿಭಜಿತ ಓವರ್‌ಲೇ) ಒಳಗಿನ ಗೋಚರ ಪಿಕ್ಸೆಲ್‌ಗಳ RGB ಸರಾಸರಿ ಲೆಕ್ಕಿಸುತ್ತದೆ ಮತ್ತು ಅದನ್ನು ನೆಲ, ಗೋಡೆಗಳು ಮತ್ತು ಛತದಿಂದ ಮಾದರಿ ಮಾಡಿದ ಬಣ್ಣಗಳೊಂದಿಗೆ ಹೋಲಿಸುತ್ತದೆ. ಕಟ್‌ಔಟ್ ಸಿದ್ಧವಾಗದಿದ್ದರೆ ವಿಭಜನೆ ನಿಜವಾದ ಮಾದರಿ ನೀಡುವವರೆಗೆ ಕೊಠಡಿ ಪ್ಯಾಲೆಟ್‌ನಿಂದ ಬದಲಿ ಬಣ್ಣ ಬಳಸಲಾಗುತ್ತದೆ.";
 "faq.whatDoHarmonyContrastMean" = "ಸಾಮರಸ್ಯ, ಕಾಂಟ್ರಾಸ್ಟ್ ಮತ್ತು ಶೈಲಿ ಹೊಂದಾಣಿಕೆ ಎಂದರೇನು?";
@@ -408,21 +408,21 @@
 
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "AI ವೈಶಿಷ್ಟ್ಯಗಳು";
-"faq.whatIsBrainIcon" = "ಮೆದುಳಿನ ಐಕಾನ್ ಏನು ಮಾಡುತ್ತದೆ?";
-"faq.whatIsBrainIconAnswer" = "ಬ್ರೇನ್ ಐಕಾನ್ room viewer ನಲ್ಲಿ SmartyPants ಆರಂಭಿಸುತ್ತದೆ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಅತ್ಯಧಿಕ-confidence furniture ಅನ್ನು 3D ಕೊಠಡಿಯ ಮೇಲೆ ಪಾರದರ್ಶಕ cutout ಆಗಿ auto-segment ಮಾಡುತ್ತದೆ. tap-to-select ಗಾಗಿ ಮೊದಲು viewfinder ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ.";
-"faq.whatIsViewfinderButton" = "Room viewer ನಲ್ಲಿ viewfinder ಬಟನ್ ಏನು ಮಾಡುತ್ತದೆ?";
-"faq.whatIsViewfinderButtonAnswer" = "SmartyPants ಸಕ್ರಿಯವಾಗಿರುವಾಗ viewfinder ಬಟನ್ (ಮೇಲೆ-ಬಲ) full-video mode ಟಾಗಲ್ ಮಾಡುತ್ತದೆ. live camera + detection boxes, ಒಂದು ಅಥವಾ ಹೆಚ್ಚು items ಟ್ಯಾಪ್, ನಂತರ Segment. camera ಮರೆಮಾಡಿ ಪಾರದರ್ಶಕ cutouts 3D room ಮೇಲೆ. Stop live identifications.";
+"faq.whatIsBrainIcon" = "Fit ಬಟನ್ ಏನು ಮಾಡುತ್ತದೆ?";
+"faq.whatIsBrainIconAnswer" = "Room viewer ನಲ್ಲಿ ಕೆಳಗೆ-ಬಲದ ಚಿನ್ನದ Fit ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ SmartyPants ಪೀಠೋಪಕರಣ segmentation ಪ್ರಾರಂಭಿಸಿ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಅತ್ಯಧಿಕ-confidence ವಸ್ತುವನ್ನು 3D ಕೊಠಡಿಯ ಮೇಲೆ ಪಾರದರ್ಶಕ cutout ಆಗಿ auto-segment ಮಾಡುತ್ತದೆ. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ. ನಿರ್ದಿಷ್ಟ pieces ಆಯ್ಕೆಗಾಗಿ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ಮೊದಲು full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ.";
+"faq.whatIsViewfinderButton" = "Room viewer ನಲ್ಲಿ full-video mode ಏನು ಮಾಡುತ್ತದೆ?";
+"faq.whatIsViewfinderButtonAnswer" = "Fit ಸಕ್ರಿಯವಾಗಿರುವಾಗ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ viewfinder ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ full-video mode ಟಾಗಲ್ ಮಾಡಿ. live camera + detection boxes—ಒಂದು ಅಥವಾ ಹೆಚ್ಚು items ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ Segment. camera ಮರೆಮಾಡಿ cutouts 3D room ಮೇಲೆ composite. segment mode ಬಿಡಲು ಅಥವಾ Fit ಬಿಡಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "faq.howToScreenshot" = "ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಹೇಗೆ ತೆಗೆಯುವುದು?";
-"faq.howToScreenshotAnswer" = "SmartyPants ಸಕ್ರಿಯವಾಗಿದ್ದಾಗ (ಮೆದುಳಿನ ಐಕಾನ್ ಹಸಿರು), ಕೆಳಗೆ-ಬಲಭಾಗದಲ್ಲಿ ಹಂಚಿಕೆ ಐಕಾನ್ ಕಾಣಿಸುತ್ತದೆ. AI ಪತ್ತೆಗಳೊಂದಿಗೆ ನೋಟದ ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಅನ್ನು ನಿಮ್ಮ ಫೋಟೋ ಲೈಬ್ರರಿಗೆ ಉಳಿಸಲು ಅದನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ.";
+"faq.howToScreenshotAnswer" = "ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ, ನಂತರ Capture ಟ್ಯಾಪ್ ಮಾಡಿ. Fit ಆನ್ ಇದ್ದಾಗ furniture overlays ಸೇರಿ ಪ್ರಸ್ತುತ ನೋಟವನ್ನು Photos ಲೈಬ್ರರಿಗೆ ಉಳಿಸುತ್ತದೆ.";
 "faq.howToSaveRoom" = "ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ಉಳಿಸುವುದು?";
-"faq.howToSaveRoomAnswer" = "3D ಕೊಠಡಿಯನ್ನು ರಚಿಸಿದ ನಂತರ, ಕಸ್ಟಮ್ ಹೆಸರಿನೊಂದಿಗೆ ಉಳಿಸಲು ಟೂಲ್‌ಬಾರ್‌ನಲ್ಲಿ ಉಳಿಸು ಐಕಾನ್ (ಡೌನ್‌ಲೋಡ್ ಬಾಣ) ಟ್ಯಾಪ್ ಮಾಡಿ. ಉಳಿಸದ ಕೊಠಡಿಗಳು ಹಿಂದೆ ಟ್ಯಾಪ್ ಮಾಡಿದಾಗ ಅಳಿಸಲ್ಪಡುತ್ತವೆ.";
+"faq.howToSaveRoomAnswer" = "3D ಕೊಠಡಿ ರಚಿಸಿದ ನಂತರ, ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ನಿಯಂತ್ರಣಗಳನ್ನು ತೋರಿಸಿ, ನಂತರ ಉಳಿಸು ಐಕಾನ್ (ಡೌನ್‌ಲೋಡ್ ಬಾಣ) ಟ್ಯಾಪ್ ಮಾಡಿ ಹೆಸರು ನಮೂದಿಸಿ. ಉಳಿಸದೆ ಪ್ರಿವ್ಯೂ ಬಿಟ್ಟರೆ ಆ ಕೊಠಡಿ ತ್ಯಜಿಸಲಾಗುತ್ತದೆ.";
 
 // FAQ - 3D Room Controls (added)
 "faq.roomControls" = "3D ಕೊಠಡಿ ನಿಯಂತ್ರಣಗಳು";
 "faq.howToNavigate" = "ಕೊಠಡಿಯೊಳಗೆ ಹೇಗೆ ನ್ಯಾವಿಗೇಟ್ ಮಾಡುವುದು?";
-"faq.howToNavigateAnswer" = "ಪರದೆಯ ಕೆಳಗಿನ ಮಧ್ಯಭಾಗದಲ್ಲಿ ಜಾಯ್‌ಸ್ಟಿಕ್ ಬಳಸಿ ಚಲಿಸಿ. ಕೊಠಡಿಯ ಮೂಲಕ ಹಾರಲು ಯಾವುದೇ ದಿಕ್ಕಿನಲ್ಲಿ ಎಳೆಯಿರಿ. ಕ್ಯಾಮೆರಾ ಸ್ಥಾನವನ್ನು ಮರುಹೊಂದಿಸಲು ರೀಸೆಂಟರ್ ಬಟನ್ (ವ್ಯೂಫೈಂಡರ್ ಐಕಾನ್) ಟ್ಯಾಪ್ ಮಾಡಿ.";
-"faq.whatDoArrowsDo" = "ಬಾಣ ಬಟನ್‌ಗಳು ಏನು ಮಾಡುತ್ತವೆ?";
-"faq.whatDoArrowsDoAnswer" = "3D ವೀಕ್ಷಣೆಯ ಪಕ್ಕದ ಬಾಣ ಬಟನ್‌ಗಳು ಕ್ಯಾಮೆರಾವನ್ನು ಚಲಿಸುತ್ತವೆ: ಮೇಲೆ ಮತ್ತು ಕೆಳಗೆ ನೋಟದ ಎತ್ತರ ಬದಲಾಯಿಸುತ್ತವೆ; ಎಡ ಮತ್ತು ಬಲ ಪ್ಯಾನ್ ಮಾಡುತ್ತವೆ. ಕೊಠಡಿಯನ್ನು ಕಕ್ಷೆಗೆ ಸೆಳೆಯಲು ಪರದೆಯ ಮೇಲೆ ಎಳೆಯಬಹುದು ಮತ್ತು ನೋಟ ಮರುಹೊಂದಿಸಲು ರೀಸೆಂಟರ್ ಬಟನ್ (ವ್ಯೂಫೈಂಡರ್ ಐಕಾನ್) ಬಳಸಬಹುದು.";
+"faq.howToNavigateAnswer" = "ಕೊಠಡಿಯ ಮೇಲೆ ಎಳೆದು camera orbit ಮಾಡಿ, ಚಿಮುಡಿಸಿ ಜೂಮ್ ಮಾಡಿ. ಪರದೆ ಟ್ಯಾಪ್ ಮಾಡಿ toolbar summon ಮಾಡಿ, recenter ಗಾಗಿ viewfinder ಐಕಾನ್ ಬಳಸಿ. ಕೆಳಗೆ-ಎಡದ quiet summon disk ಮರೆಮಾಡಿದ ನಿಯಂತ್ರಣಗಳನ್ನು ಮರಳಿ ತರುತ್ತದೆ.";
+"faq.whatDoArrowsDo" = "Viewer ನಿಯಂತ್ರಣಗಳನ್ನು ಹೇಗೆ ತೋರಿಸುವುದು ಅಥವಾ ಮರೆಮಾಡುವುದು?";
+"faq.whatDoArrowsDoAnswer" = "Room viewer immersive mode ಬಳಸುತ್ತದೆ—ನಿಯಂತ್ರಣಗಳು ಸ್ವಚ್ಛ ನೋಟಕ್ಕಾಗಿ ಮರೆಮಾಡಲಾಗುತ್ತವೆ. toolbar summon ಮಾಡಲು ಕೊಠಡಿ ಟ್ಯಾಪ್ ಮಾಡಿ. ಕೆಳಗೆ-ಬಲದ ಚಿನ್ನದ Fit ಬಟನ್ ಯಾವಾಗಲೂ ಕಾಣಿಸುತ್ತದೆ. Fit ಸಕ್ರಿಯವಾಗಿರುವಾಗ segmentation ಬಿಡಲು ಮೇಲೆ-ಬಲ Done ಕಾಣಿಸುತ್ತದೆ.";
 "faq.whatIsMemoryDisplay" = "MB ಸಂಖ್ಯೆ ಏನು ಅರ್ಥ?";
 "faq.whatIsMemoryDisplayAnswer" = "ಕೊಠಡಿಗಳಲ್ಲಿ ತೋರಿಸಲಾದ MB (ಮೆಗಾಬೈಟ್‌ಗಳು) ಫೈಲ್ ಗಾತ್ರವನ್ನು ಸೂಚಿಸುತ್ತದೆ. ಇದು ಸಂಗ್ರಹಣೆಯನ್ನು ನಿರ್ವಹಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. ಎಲ್ಲಾ ಕೊಠಡಿಗಳು ಬಳಸಿದ ಒಟ್ಟು ಸಂಗ್ರಹಣೆ ಮುಖಪುಟ ಪರದೆಯ ಮೇಲ್ಭಾಗದಲ್ಲಿ ತೋರಿಸಲಾಗುತ್ತದೆ.";
 
@@ -508,13 +508,13 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "ಅಳತೆ ಸೂಚನೆ";
 "help.measurementAccuracyBody" = "AR depth ಬೆಂಬಲವಿಲ್ಲದ ಫೋನ್‌ಗಳಲ್ಲಿಯೂ ಕೊಠಡಿ ಮತ್ತು ಫರ್ನಿಚರ್ ಪ್ರಿವ್ಯೂ ಕಾಣಿಸುತ್ತದೆ, ಆದರೆ ಕೊಠಡಿ ಅಳತೆಗಳು ಮತ್ತು ವಿಶೇಷವಾಗಿ ಫರ್ನಿಚರ್ ಅಳತೆಗಳು ಕೇವಲ ಅಂದಾಜು ಮಾತ್ರ.";
-"faq.whatIsBrainIconAnswer" = "ಬ್ರೇನ್ ಐಕಾನ್ room viewer ನಲ್ಲಿ SmartyPants ಆರಂಭಿಸುತ್ತದೆ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಅತ್ಯಧಿಕ-confidence furniture ಅನ್ನು 3D ಕೊಠಡಿಯ ಮೇಲೆ ಪಾರದರ್ಶಕ cutout ಆಗಿ auto-segment ಮಾಡುತ್ತದೆ. tap-to-select ಗಾಗಿ ಮೊದಲು viewfinder ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ.";
-"faq.howToSegmentAnswer" = "Room viewer ನಲ್ಲಿ brain icon ಟ್ಯಾಪ್. quick check ಗಾಗಿ main item auto-segment. specific pieces: viewfinder, camera furniture ಕಡೆ, boxes ಟ್ಯಾಪ್, Segment. Stop live identifications.";
+"faq.whatIsBrainIconAnswer" = "Room viewer ನಲ್ಲಿ ಕೆಳಗೆ-ಬಲದ ಚಿನ್ನದ Fit ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ SmartyPants ಪೀಠೋಪಕರಣ segmentation ಪ್ರಾರಂಭಿಸಿ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಅತ್ಯಧಿಕ-confidence ವಸ್ತುವನ್ನು 3D ಕೊಠಡಿಯ ಮೇಲೆ ಪಾರದರ್ಶಕ cutout ಆಗಿ auto-segment ಮಾಡುತ್ತದೆ. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ. ನಿರ್ದಿಷ್ಟ pieces ಆಯ್ಕೆಗಾಗಿ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ಮೊದಲು full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ.";
+"faq.howToSegmentAnswer" = "Room viewer ನಲ್ಲಿ Fit ಟ್ಯಾಪ್ ಮಾಡಿ. quick check ಗಾಗಿ main item auto-segment. ನಿರ್ದಿಷ್ಟ pieces: ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ, full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ, camera furniture ಕಡೆ ಹಿಡಿದು boxes ಟ್ಯಾಪ್ ಮಾಡಿ, Segment. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "faq.accuracyAnswer" = "3D ಕೊಠಡಿ ಒಂದು ಫೋಟೋದಿಂದ ಮಾಡಿದ ಅಂದಾಜು. ಕೊಠಡಿಯ ಅಳತೆಗಳು ಮಾರ್ಗದರ್ಶನಕ್ಕೆ ಸಹಾಯ ಮಾಡಬಹುದು, ಆದರೆ ಅವು ಸಮೀಕ್ಷಾ-ಮಟ್ಟದಷ್ಟು ಖಚಿತವಾಗಿರುವುದಿಲ್ಲ. ಫರ್ನಿಚರ್ ಅಳತೆಗಳು AR ಅಥವಾ depth ಬೆಂಬಲ ಇರುವ ಫೋನ್‌ಗಳಲ್ಲಿ ಹೆಚ್ಚು ವಿಶ್ವಾಸಾರ್ಹವಾಗಿರುತ್ತವೆ.";
-"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ಮಾಡಲಾಗುವುದಿಲ್ಲ. ruler ಟ್ಯಾಪ್ ಮಾಡಿ estimated width, height, depth ನೋಡಿ. clear corners photo; manual rooms ನಿಮ್ಮ boundaries ಅನುಸರಿಸುತ್ತವೆ.";
-"faq.arAssistedSizingAnswer" = "ಮೊದಲು brain icon ನಿಂದ furniture segment. room-relative scale ಗಾಗಿ sizing control. AR/depth phones live camera depth; ಇಲ್ಲದಿದ್ದರೆ approximate.";
+"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ಮಾಡಲಾಗುವುದಿಲ್ಲ. ಉಳಿಸಿದ ನಂತರ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ruler ಟ್ಯಾಪ್ ಮಾಡಿ estimated width, height, depth ನೋಡಿ. pre-save preview ನಲ್ಲಿ dimension chips ಮರೆಮಾಡಲಾಗುತ್ತವೆ—ಮೊದಲು ಉಳಿಸಿ, ನಂತರ ಮತ್ತೆ ತೆರೆದು ಅಳತೆಗಳನ್ನು ನೋಡಿ. manual rooms ನಿಮ್ಮ boundaries ಅನುಸರಿಸುತ್ತವೆ.";
+"faq.arAssistedSizingAnswer" = "ಮೊದಲು Fit ಟ್ಯಾಪ್ ಮಾಡಿ furniture segment ಮಾಡಿ. room-relative scale ಗಾಗಿ summoned toolbar ನಲ್ಲಿ sizing control ಬಳಸಿ. AR/depth phones live camera depth; ಇಲ್ಲದಿದ್ದರೆ approximate.";
 "faq.measurementPillAnswer" = "ಫರ್ನಿಚರ್ ಗಾತ್ರ ಪಿಲ್ sizing mode ಆನ್ ಆಗಿ, ಆಪ್‌ಗೆ ಬಳಸಬಹುದಾದ live height estimate ಸಿಕ್ಕಾಗ ಮಾತ್ರ ಕಾಣಿಸುತ್ತದೆ. ruler ಬಟನ್ ಕೊಠಡಿಯ ಪ್ರಸ್ತುತ ಅಗಲ, ಎತ್ತರ ಮತ್ತು ಆಳವನ್ನು ಸಣ್ಣ ಕಾರ್ಡ್‌ನಲ್ಲಿ ತೋರಿಸುತ್ತದೆ. non-AR ಫೋನ್‌ಗಳಲ್ಲಿ ಈ ಅಳತೆಗಳು, ವಿಶೇಷವಾಗಿ ಫರ್ನಿಚರ್‌ಗೆ, ಕಡಿಮೆ ವಿಶ್ವಾಸಾರ್ಹವಾಗಿರುತ್ತವೆ.";
-"faq.resetOverlayScaleAnswer" = "ಈಗ ಓವರ್‌ಫ್ಲೋ ಮೆನು ಇಲ್ಲ. ಓವರ್‌ಲೆ ತಪ್ಪಾಗಿ ಕಾಣಿಸಿದರೆ ಬ್ರೇನ್ ಐಕಾನ್ ಆಫ್ ಮಾಡಿ ಮತ್ತೆ ಆನ್ ಮಾಡಿ, ಅಥವಾ pinch ಬಳಸಿ ಫರ್ನಿಚರ್ ಗಾತ್ರವನ್ನು ಕೈಯಾರೆ ಸರಿಪಡಿಸಿ.";
+"faq.resetOverlayScaleAnswer" = "ಈಗ overflow menu ಇಲ್ಲ. overlay ತಪ್ಪಾಗಿ ಕಾಣಿಸಿದರೆ Done ಟ್ಯಾಪ್ ಮಾಡಿ Fit ಬಿಡಿ ಮತ್ತು ಮತ್ತೆ Fit ಟ್ಯಾಪ್ ಮಾಡಿ, ಅಥವಾ pinch ಬಳಸಿ ಗಾತ್ರ ಸರಿಪಡಿಸಿ.";
 
 "faq.pinchOverlaySize" = "ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿದ ಫರ್ನಿಚರ್ ಅನ್ನು pinch ಮಾಡಿದರೆ ಏನಾಗುತ್ತದೆ?";
 "faq.pinchOverlaySizeAnswer" = "pinch ಮಾಡಿದರೆ ಫರ್ನಿಚರ್ ಓವರ್‌ಲೆ ದೊಡ್ಡದಾಗಬಹುದು ಅಥವಾ ಚಿಕ್ಕದಾಗಬಹುದು. sizing mode ಆನ್ ಆಗಿ Furni pill ಕಾಣುತ್ತಿದ್ದರೆ, ಆ pill ಕೊಠಡಿಗೆ ಹೊಂದುವಂತೆ ಈಗಿನ resized ಫರ್ನಿಚರ್ ಅಂದಾಜಿಗೆ ಅಪ್‌ಡೇಟ್ ಆಗುತ್ತದೆ. sizing mode ಆಫ್ ಆಗಿದ್ದರೆ, pinch ಸ್ಕ್ರೀನ್ ಮೇಲಿನ ಓವರ್‌ಲೆ ಗಾತ್ರವನ್ನೇ ಮಾತ್ರ ಬದಲಾಯಿಸುತ್ತದೆ.";

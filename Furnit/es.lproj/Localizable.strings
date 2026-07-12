@@ -192,9 +192,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "Creación de habitaciones";
 "faq.howToCreate" = "¿Cómo creo una habitación 3D?";
-"faq.howToCreateAnswer" = "Toca Photo → 3D en la esquina superior izquierda de la pantalla de inicio, luego toma o selecciona una foto de tu habitación. Verás dos opciones para crear tu habitación 3D.";
+"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "¿Cómo tomo una foto para crear una habitación?";
-"faq.howToTakePhotoAnswer" = "Toca el icono de cámara en la pantalla de inicio para tomar una foto directamente. Puedes elegir entre lente Estándar (1x) o Gran Angular (0.5x ultra ancho). Mantén tu dispositivo firme y toca el botón de captura. La foto se usará para crear tu habitación 3D.";
+"faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.depthAwareRoomPhoto" = "¿Ayuda tomar la foto dentro de la app?";
 "faq.depthAwareRoomPhotoAnswer" = "Sí. En dispositivos compatibles, «Tomar una foto» (en lugar de la galería) usa la cámara de la app con profundidad si está disponible, lo que puede mejorar la escala y reconstrucción 3D.";
 "faq.twoMethods" = "¿Cuáles son las dos opciones para crear una habitación?";
@@ -215,13 +215,13 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentación de muebles";
 "faq.whatIsSegmentation" = "¿Qué es la segmentación de muebles?";
-"faq.whatIsSegmentationAnswer" = "La segmentación de muebles funciona desde el visor en vivo. El icono del cerebro segmenta automáticamente un objeto principal por defecto. En modo vídeo completo, selecciona primero los elementos detectados; Segmentar crea recortes transparentes solo para esas piezas.";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "¿Cómo segmento muebles en el visor de la habitación?";
-"faq.howToSegmentAnswer" = "Toca el icono del cerebro en el visor. Para una comprobación rápida, segmenta automáticamente el objeto principal sobre tu habitación 3D. Para elegir piezas concretas: toca viewfinder, apunta la cámara, toca uno o más cuadros y luego Segmentar. Detener vuelve a identificaciones en vivo.";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "¿Por qué no se detectan mis muebles?";
 "faq.notDetectedAnswer" = "La detección de muebles funciona mejor con fotos claras y bien iluminadas donde los muebles son claramente visibles. Asegúrate de que los muebles no estén parcialmente ocultos o se confundan con el fondo.";
 "faq.multiplePieces" = "¿Puedo segmentar múltiples muebles?";
-"faq.multiplePiecesAnswer" = "¡Sí! En modo vídeo completo puedes tocar varios cuadros y luego Segmentar una vez para recortar todas las piezas seleccionadas juntas sobre tu habitación 3D. También puedes segmentar de una en una con el flujo predeterminado del cerebro.";
+"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "¿Cómo compruebo si el mueble encaja?";
@@ -230,7 +230,7 @@
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "Inteligencia de colocación y estética";
 "faq.whatIsPlacementIntelligence" = "¿Qué es Placement Intelligence?";
-"faq.whatIsPlacementIntelligenceAnswer" = "Con SmartyPants activo en visores 3D compatibles, una tarjeta de Placement Intelligence resume si el tamaño del objeto detectado cabe en los límites de la habitación, muestra pistas de hueco en el suelo y sugerencias de esquinas cuando hay datos, e indica si la profundidad es estimada. Toca la cabecera para ver todos los detalles o déjala plegada para ahorrar espacio.";
+"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "¿Cómo elige la app un color para la puntuación estética?";
 "faq.furnitureColorAestheticAnswer" = "La app promedia el RGB de los píxeles visibles dentro del recorte IA del mueble (la misma superposición segmentada). Ese color medio se compara con colores muestreados del suelo, paredes y techo. Si el recorte aún no está listo, se usa un color de reserva de la paleta de la habitación hasta que la segmentación aporte una muestra real.";
 "faq.whatDoHarmonyContrastMean" = "¿Qué significan armonía, contraste y ajuste de estilo?";
@@ -239,7 +239,7 @@
 "faq.whenDoesAestheticScoreLowAnswer" = "Los objetos muy saturados suelen puntuar peor si su matiz no encaja con los esquemas armónicos de la app frente a tu habitación: por ejemplo verde ácido, magenta, morado o naranja de seguridad en salones cálidos beige o tostados, o primarios chillones cuando la muestra del espacio es casi monocromática. Un brillo muy parecido al suelo o la pared (marrón sobre marrón, gris sobre gris) puede bajar el contraste aunque te guste el resultado. Las habitaciones inferidas como rústicas o tradicionales pueden mostrar menos ajuste de estilo porque el perfil del mueble usa etiquetas modernas/minimal por defecto. Promedios grises o sucios con fondos cargados pueden caer en una banda \"neutral\" en lugar de clash. Las puntuaciones son solo orientativas: para decorar de verdad, confía también en tu ojo.";
 
 "faq.howToView" = "¿Cómo veo mi habitación 3D?";
-"faq.howToViewAnswer" = "Toca cualquier habitación en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por la habitación usando gestos táctiles.";
+"faq.howToViewAnswer" = "Toca cualquier habitación en inicio para abrir el visor 3D. Arrastra para mirar y pellizca para zoom. Toca la habitación para más controles (recentrar, regla, Capturar). El botón Fit dorado permanece visible abajo a la derecha.";
 "faq.howToPlace" = "¿Cómo coloco muebles en mi habitación?";
 "faq.howToPlaceAnswer" = "Después de tocar Segmentar, el mueble seleccionado aparece como una superposición en la habitación. Arrástralo para colocarlo, pellizca para cambiar el tamaño y gíralo para ajustar la orientación.";
 "faq.sampleRoom" = "¿Puedo usar una habitación de ejemplo en lugar de la mía?";
@@ -247,14 +247,14 @@
 "faq.accuracy" = "¿Qué tan preciso es el modelo 3D?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "¿Puedo ajustar las dimensiones de la habitación?";
-"faq.adjustDimensionsAnswer" = "No puedes editar manualmente las dimensiones de una habitación IA. Toca la regla en el visor para ver ancho, alto y profundidad estimados. Para mejores resultados, captura una foto clara con esquinas visibles; las habitaciones manuales siguen los límites que dibujes.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "Muebles y medidas";
 "faq.arAssistedSizing" = "¿Qué es el tamaño de muebles asistido por AR?";
-"faq.arAssistedSizingAnswer" = "Toca primero el icono del cerebro para segmentar muebles. Usa el control de tamaño para escala relativa a la habitación. En teléfonos con AR/profundidad, la app usa profundidad de cámara en vivo; sin profundidad, las medidas son aproximadas.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "¿Qué es la pequeña lectura de medidas?";
 "faq.measurementPillAnswer" = "La pastilla de tamaño del mueble solo aparece cuando el modo de tamaño está activado y la app tiene una estimación de altura en vivo válida. El botón de regla muestra el ancho, alto y fondo actuales de la habitación en una tarjeta pequeña. En teléfonos sin AR, estas lecturas son menos fiables, especialmente para los muebles.";
 "faq.resetOverlayScale" = "La máscara parece mal ampliada — ¿qué hago?";
-"faq.resetOverlayScaleAnswer" = "Ya no hay un menú adicional. Si la superposición se ve mal, apaga y vuelve a encender el icono del cerebro, o pellizca el mueble manualmente para ajustar mejor su tamaño.";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "Límites de habitación";
@@ -411,21 +411,21 @@
 
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "Funciones de IA";
-"faq.whatIsBrainIcon" = "¿Qué hace el icono del cerebro?";
-"faq.whatIsBrainIconAnswer" = "El icono del cerebro inicia SmartyPants en el visor de la habitación. Por defecto segmenta automáticamente el mueble de mayor confianza como recorte transparente sobre tu habitación 3D. Para elegir tocando, toca primero el botón viewfinder.";
-"faq.whatIsViewfinderButton" = "¿Qué hace el botón viewfinder en el visor de la habitación?";
-"faq.whatIsViewfinderButtonAnswer" = "Con SmartyPants activo, el botón viewfinder (arriba a la derecha) activa el modo vídeo completo. Ves la cámara en vivo con cuadros de detección, toca uno o más elementos y luego Segmentar. La cámara se oculta y recortes transparentes se componen sobre tu habitación 3D. Toca Detener para volver a identificaciones en vivo.";
+"faq.whatIsBrainIcon" = "¿Qué hace el botón Fit?";
+"faq.whatIsBrainIconAnswer" = "Toca el botón Fit dorado (abajo a la derecha) en el visor para iniciar la segmentación SmartyPants. Por defecto segmenta automáticamente el objeto de mayor confianza como recorte transparente sobre tu habitación 3D. Toca Hecho (arriba a la derecha) para salir. Para elegir piezas concretas, muestra los controles y activa el modo full-video primero.";
+"faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
+"faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "¿Cómo tomo una captura de pantalla?";
-"faq.howToScreenshotAnswer" = "Cuando SmartyPants está activo (icono del cerebro verde), aparece un icono de compartir en la parte inferior derecha. Tócalo para guardar una captura de pantalla con las detecciones de IA en tu biblioteca de fotos.";
+"faq.howToScreenshotAnswer" = "Toca la habitación para mostrar controles y luego Capturar. Guarda la vista actual (incluidos overlays de muebles con Fit activo) en Fotos.";
 "faq.howToSaveRoom" = "¿Cómo guardo una habitación?";
-"faq.howToSaveRoomAnswer" = "Después de generar una habitación 3D, toca el icono de guardar (flecha de descarga) en la barra de herramientas para guardarla con un nombre personalizado. Las habitaciones no guardadas se eliminarán al tocar Atrás.";
+"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - 3D Room Controls (added)
 "faq.roomControls" = "Controles de Habitación 3D";
 "faq.howToNavigate" = "¿Cómo navego dentro de la habitación?";
-"faq.howToNavigateAnswer" = "Usa el joystick en la parte inferior central de la pantalla para moverte. Arrástralo en cualquier dirección para volar por la habitación. Usa el botón de recentrar (icono del visor) para restablecer la posición de la cámara.";
-"faq.whatDoArrowsDo" = "¿Qué hacen los botones de flechas?";
-"faq.whatDoArrowsDoAnswer" = "Los botones de flechas al lado de la vista 3D mueven la cámara: arriba y abajo cambian la altura de la vista; izquierda y derecha hacen paneo. También puedes arrastrar en la pantalla para orbitar la habitación y usar el botón de recentrar (icono del visor) para restablecer la vista.";
+"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
+"faq.whatDoArrowsDo" = "¿Cómo mostrar u ocultar los controles del visor?";
+"faq.whatDoArrowsDoAnswer" = "El visor usa modo inmersivo—los controles se ocultan para una vista limpia. Toca la habitación para mostrar la barra. El botón Fit dorado abajo a la derecha siempre está visible. Con Fit activo, Hecho aparece arriba a la derecha para salir de la segmentación.";
 "faq.whatIsMemoryDisplay" = "¿Qué significa el número MB?";
 "faq.whatIsMemoryDisplayAnswer" = "El MB (megabytes) mostrado en las habitaciones indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todas las habitaciones se muestra en la parte superior de la pantalla de inicio.";
 

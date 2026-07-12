@@ -190,9 +190,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "房间建立";
 "faq.howToCreate" = "如何建立3D房间？";
-"faq.howToCreateAnswer" = "点击主屏幕左上角的 Photo → 3D，然后拍摄或选择房间照片。您将看到两个创建 3D 房间的选项。";
+"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "如何拍照来创建房间？";
-"faq.howToTakePhotoAnswer" = "点击主屏幕上的相机图标直接拍照。您可以选择标准(1x)或广角(0.5x超广角)镜头。保持设备稳定并点击拍摄按钮。照片将用于创建您的3D房间。";
+"faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.depthAwareRoomPhoto" = "用应用内相机拍照会更好吗？";
 "faq.depthAwareRoomPhotoAnswer" = "会。在支持的设备上，创建房间时选择拍照而非从相册选取，可使用内置相机与深度信息（若设备提供），有助于构建与比例。";
 "faq.twoMethods" = "两种房间创建方式是什么？";
@@ -213,13 +213,13 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "家具分割";
 "faq.whatIsSegmentation" = "什么是家具分割？";
-"faq.whatIsSegmentationAnswer" = "家具分割在实时房间查看器中进行。大脑图标默认自动分割一个主要物体。全视频模式下先选择检测到的物体，分割只为所选物体生成透明抠图。";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "如何在房间查看器中分割家具？";
-"faq.howToSegmentAnswer" = "在房间查看器中点大脑图标。快速检查时它会自动分割主要物体。若要指定多件：点 viewfinder，对准家具，点一个或多个检测框，再点分割。点停止返回实时识别。";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "为什么我的家具没有被侦测到？";
 "faq.notDetectedAnswer" = "家具侦测在清晰、光线充足且家具明显可见的照片中效果最佳。确保家具没有被部分遮挡或与背景融合。";
 "faq.multiplePieces" = "我可以分割多件家具嗎？";
-"faq.multiplePiecesAnswer" = "可以！全视频模式下可点多个检测框，再点一次分割，将所有选中物体一起抠图到 3D 房间上。也可用默认大脑流程逐个分割。";
+"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "如何查看家具是否合适？";
@@ -228,7 +228,7 @@
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "摆放智能与美学";
 "faq.whatIsPlacementIntelligence" = "什么是「摆放智能」（Placement Intelligence）？";
-"faq.whatIsPlacementIntelligenceAnswer" = "在支持的 3D 房间查看器中开启 SmartyPants 时，「摆放智能」卡片会汇总：检测到的物体尺寸是否在房间边界内、在可用时给出地面可放区域与角落建议，并标明深度是否为估算值。点击标题可展开全部说明，保持折叠可节省屏幕空间。";
+"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "美学评分用的颜色是怎么来的？";
 "faq.furnitureColorAestheticAnswer" = "应用会对你看到的 AI 家具抠图（与实时分割叠加层相同）里、不透明像素的颜色做 RGB 平均，再与从地面、墙面、天花板采样的颜色比较。若抠图尚未就绪，会暂用房间调色板的推断色，直到分割给出真实采样。";
 "faq.whatDoHarmonyContrastMean" = "和谐度、对比度、风格匹配是什么意思？";
@@ -237,7 +237,7 @@
 "faq.whenDoesAestheticScoreLowAnswer" = "高饱和物体若色相与应用内的和谐配色规则、以及你房间采样色不协调，分数往往更低——例如酸绿、品红、紫色、安全橙放在偏米色、暖棕调房间里，或空间采样几乎单色时仍用刺眼原色。与地板或墙面亮度非常接近（棕上棕、灰上灰）也可能拉低对比度，即便你主观上喜欢。若房间被推断为乡村风、传统风，风格匹配可能偏低，因为家具档案默认带现代/简约标签。杂乱背景下得到的灰蒙蒙平均色有时会落在「中性」区间而非冲突。分数仅供提示，实际搭配请以肉眼为准。";
 
 "faq.howToView" = "如何检视我的3D房间？";
-"faq.howToViewAnswer" = "点擊主画面上的任何房间以开启3D检视器。你可以使用触控手势旋转、缩放和平移房间。";
+"faq.howToViewAnswer" = "在主屏幕点击任意房间打开 3D 查看器。拖动环视，捏合缩放。点击房间可唤出更多控件（重新居中、尺子、Capture）。右下角金色 Fit 按钮始终可见。";
 "faq.howToPlace" = "如何在房间中放置家具？";
 "faq.howToPlaceAnswer" = "点击分割后，选中的家具会以叠层形式出现在房间里。拖动可定位，双指缩放可调整大小，旋转可调整方向。";
 "faq.sampleRoom" = "我可以使用范例房间嗎？";
@@ -245,14 +245,14 @@
 "faq.accuracy" = "3D模型有多准确？";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "我可以调整房间尺寸嗎？";
-"faq.adjustDimensionsAnswer" = "无法手动编辑 AI 房间尺寸。点房间查看器中的尺子查看估计的宽、高、深。请拍摄角落清晰的照片；手动房间遵循您绘制的边界。";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "家具与测量";
 "faq.arAssistedSizing" = "什么是 AR 辅助家具尺寸？";
-"faq.arAssistedSizingAnswer" = "先点大脑图标分割家具。需要相对房间比例时使用尺寸控制。支持 AR/深度的手机会用实时相机深度；无深度时测量仅为近似值。";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "画面上小小的测量提示是什么？";
 "faq.measurementPillAnswer" = "SmartyPants 开启时，可能会显示预估的家具高度和房间高度。点击可输入实际尺寸以提高准确度。若房间照片用广角（0.5×）拍摄，请一并标记，画面构图才会一致。";
 "faq.resetOverlayScale" = "检测遮罩缩放看起来不对怎么办？";
-"faq.resetOverlayScaleAnswer" = "在 3D 房间打开右上角菜单（⋮），选择重置叠加缩放，可清除套在检测遮罩上的自动缩放，便于移动后重新稳定。";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "房间边界";
@@ -409,21 +409,21 @@
 
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "AI 功能";
-"faq.whatIsBrainIcon" = "大脑图标有什么作用？";
-"faq.whatIsBrainIconAnswer" = "大脑图标在房间查看器中启动 SmartyPants。默认会自动分割置信度最高的家具，并以透明抠图叠加在 3D 房间上。若要点选，请先点 viewfinder 按钮。";
-"faq.whatIsViewfinderButton" = "房间查看器中的 viewfinder 按钮有什么作用？";
-"faq.whatIsViewfinderButtonAnswer" = "SmartyPants 开启时，viewfinder 按钮（右上角）切换全视频模式。您会看到带检测框的实时相机画面，点选一个或多个物体，再点分割。相机会隐藏，透明家具抠图叠加在 3D 房间上以便检查是否合适。点停止返回实时识别。";
+"faq.whatIsBrainIcon" = "Fit 按钮有什么作用？";
+"faq.whatIsBrainIconAnswer" = "在房间查看器中点击右下角金色 Fit 按钮即可启动 SmartyPants 家具分割。默认会自动分割置信度最高的物品，并以透明抠图叠加在 3D 房间上。点击右上角完成退出。要选择特定物品，请先唤出控件并开启 full-video 模式。";
+"faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
+"faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "如何截屏？";
-"faq.howToScreenshotAnswer" = "当 SmartyPants 激活时（大脑图标变绿），右下角会出现分享图标。点击它将带有 AI 检测的视图截图保存到您的照片库。";
+"faq.howToScreenshotAnswer" = "点击房间唤出控件，然后点按 Capture。可将当前视图（Fit 开启时含家具叠加层）保存到照片图库。";
 "faq.howToSaveRoom" = "如何保存房间？";
-"faq.howToSaveRoomAnswer" = "生成 3D 房间后，点击工具栏中的保存图标（下载箭头）以自定义名称保存。未保存的房间在点击返回时将被删除。";
+"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - 3D Room Controls (added)
 "faq.roomControls" = "3D 房间控制";
 "faq.howToNavigate" = "如何在房间内导航？";
-"faq.howToNavigateAnswer" = "使用屏幕底部中央的操纵杆移动。向任意方向拖动可在房间内飞行。点击重新居中按钮（取景器图标）可重置相机位置。";
-"faq.whatDoArrowsDo" = "箭头按钮有什么作用？";
-"faq.whatDoArrowsDoAnswer" = "3D 视图侧边的箭头按钮用于移动相机：上下改变视角高度，左右平移相机。您也可以拖动屏幕来环绕房间，并使用重新居中按钮（取景器图标）重置视图。";
+"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
+"faq.whatDoArrowsDo" = "如何显示或隐藏查看器控件？";
+"faq.whatDoArrowsDoAnswer" = "房间查看器为沉浸模式—控件会隐藏以保持画面简洁。点击房间唤出工具栏。右下角金色 Fit 按钮始终可见。Fit 激活时，右上角会显示完成以退出分割。";
 "faq.whatIsMemoryDisplay" = "MB 数字是什么意思？";
 "faq.whatIsMemoryDisplayAnswer" = "房间中显示的 MB（兆字节）表示文件大小。这有助于您管理存储空间。所有房间使用的总存储空间显示在主屏幕顶部。";
 
@@ -509,13 +509,13 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "测量提示";
 "help.measurementAccuracyBody" = "没有 AR 深度支持的手机仍然可以预览房间和家具，但房间尺寸，尤其是家具尺寸，只能作为近似参考。";
-"faq.whatIsBrainIconAnswer" = "大脑图标在房间查看器中启动 SmartyPants。默认会自动分割置信度最高的家具，并以透明抠图叠加在 3D 房间上。若要点选，请先点 viewfinder 按钮。";
-"faq.howToSegmentAnswer" = "在房间查看器中点大脑图标。快速检查时它会自动分割主要物体。若要指定多件：点 viewfinder，对准家具，点一个或多个检测框，再点分割。点停止返回实时识别。";
+"faq.whatIsBrainIconAnswer" = "在房间查看器中点击右下角金色 Fit 按钮即可启动 SmartyPants 家具分割。默认会自动分割置信度最高的物品，并以透明抠图叠加在 3D 房间上。点击右上角完成退出。要选择特定物品，请先唤出控件并开启 full-video 模式。";
+"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.accuracyAnswer" = "3D 房间是基于一张照片生成的估计结果。房间尺寸可以作为参考，但不是专业测绘级精度。家具测量在支持 AR 或深度的手机上最可靠。";
-"faq.adjustDimensionsAnswer" = "无法手动编辑 AI 房间尺寸。点房间查看器中的尺子查看估计的宽、高、深。请拍摄角落清晰的照片；手动房间遵循您绘制的边界。";
-"faq.arAssistedSizingAnswer" = "先点大脑图标分割家具。需要相对房间比例时使用尺寸控制。支持 AR/深度的手机会用实时相机深度；无深度时测量仅为近似值。";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
+"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPillAnswer" = "家具尺寸小标签只会在尺寸模式开启且应用拿到可用的实时高度估计时出现。尺子按钮会以小卡片形式显示当前房间的宽度、高度和深度。在不支持 AR 的手机上，这些读数会更不可靠，尤其是家具尺寸。";
-"faq.resetOverlayScaleAnswer" = "现在已经没有更多菜单了。如果叠层看起来不对，请先关闭再重新打开大脑图标，或者手动双指缩放家具来微调大小。";
+"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 "faq.pinchOverlaySize" = "双指缩放已分割的家具时会发生什么？";
 "faq.pinchOverlaySizeAnswer" = "双指缩放会让家具叠层变大或变小。如果尺寸模式已开启且 Furni 小标签可见，这个小标签会更新为当前按房间比例调整后的家具估计尺寸。如果尺寸模式未开启，双指缩放只会改变屏幕上叠层的视觉大小。";
