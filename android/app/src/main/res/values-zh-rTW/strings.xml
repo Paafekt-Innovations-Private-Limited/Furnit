@@ -47,7 +47,7 @@
     <string name="settings_auto_orbit_description">閒置時緩慢旋轉相機</string>
     <string name="settings_licenses">授權條款</string>
     <string name="licenses_title">授權與歸屬</string>
-    <string name="licenses_phase1_notice">Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
+    <string name="licenses_phase1_notice">Current release: This app is currently offered for commercial use.</string>
     <string name="licenses_open_source_section">開源授權</string>
     <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
     <string name="licenses_view_full_license">檢視完整授權</string>
@@ -245,7 +245,7 @@
     <string name="room_viewer_preview_unavailable">房間預覽不可用</string>
     <string name="room_viewer_created_success">房間建立成功！</string>
     <string name="room_viewer_created_message">您的房間材質已從照片中擷取。點擊儲存以保留此房間。</string>
-    <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="approximate_room_height">Est. height - %.2f m</string>
     <string name="room_viewer_dimensions">尺寸：%s</string>
     <string name="room_viewer_saved_toast">房間已儲存！</string>
 

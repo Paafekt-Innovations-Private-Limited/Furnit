@@ -141,7 +141,7 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "உரிமங்கள் மற்றும் அடிப்படைகள்";
-"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "திறந்த மூல உரிமங்கள்";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "முழு உரிமத்தைக் காண்க";

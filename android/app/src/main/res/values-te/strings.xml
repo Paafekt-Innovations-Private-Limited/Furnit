@@ -47,7 +47,7 @@
     <string name="settings_auto_orbit_description">నిష్క్రియంగా ఉన్నప్పుడు కెమెరాను నెమ్మదిగా తిప్పండి</string>
     <string name="settings_licenses">లైసెన్సులు</string>
     <string name="licenses_title">లైసెన్స్‌లు మరియు ఆకృతులు</string>
-    <string name="licenses_phase1_notice">Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
+    <string name="licenses_phase1_notice">Current release: This app is currently offered for commercial use.</string>
     <string name="licenses_open_source_section">ఓపెన్ సోర్స్ లైసెన్స్‌లు</string>
     <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
     <string name="licenses_view_full_license">పూర్తి లైసెన్స్ చూడండి</string>
@@ -245,7 +245,7 @@
     <string name="room_viewer_preview_unavailable">గది ప్రివ్యూ అందుబాటులో లేదు</string>
     <string name="room_viewer_created_success">గది విజయవంతంగా సృష్టించబడింది!</string>
     <string name="room_viewer_created_message">మీ గది టెక్స్చర్‌లు ఫోటో నుండి సంగ్రహించబడ్డాయి. ఉంచడానికి సేవ్ ట్యాప్ చేయండి.</string>
-    <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="approximate_room_height">Est. height - %.2f m</string>
     <string name="room_viewer_dimensions">డైమెన్షన్‌లు: %s</string>
     <string name="room_viewer_saved_toast">గది సేవ్ చేయబడింది!</string>
 

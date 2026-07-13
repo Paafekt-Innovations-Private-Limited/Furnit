@@ -55,12 +55,11 @@ def main() -> None:
 
     doc.add_heading("Notice at top of Licenses screen", level=2)
     doc.add_paragraph(
-        "“Current release: This app is currently offered for non-commercial use only. "
-        "A future commercial release may be subject to different terms.”"
+        "“Current release: This app is currently offered for commercial use.”"
     )
     doc.add_paragraph(
         "This is the app’s own policy text — not a standard open-source license. "
-        "Flag if the company plans a normal paid App Store launch."
+        "Confirm it matches how the app is sold (e.g. paid App Store launch)."
     )
 
     doc.add_heading("Open-source items listed in the app", level=2)
@@ -203,7 +202,7 @@ def main() -> None:
         "Firebase — official LICENSE is Apache 2.0.",
         "RTMDet / MMDetection — official LICENSE is Apache 2.0.",
         "Three.js — official LICENSE is MIT.",
-        "Top notice (“non-commercial use only”) is acceptable for how the app will be sold.",
+        "Top notice (“commercial use”) matches how the app will be sold.",
         "Anything unclear → escalated to a lawyer.",
     ]
     add_table(

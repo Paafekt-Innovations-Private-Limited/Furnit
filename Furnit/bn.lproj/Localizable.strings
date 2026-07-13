@@ -141,7 +141,7 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "লাইসেন্স এবং অ্যাট্রিবিউশন";
-"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "ওপেন সোর্স লাইসেন্স";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "সম্পূর্ণ লাইসেন্স দেখুন";

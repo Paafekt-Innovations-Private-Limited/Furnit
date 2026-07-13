@@ -10,8 +10,7 @@
 |---|------|---------|----------------------|
 | 1 | **Depth Anything V2 Metric Indoor Small — training data** | **AMBIGUOUS — needs lawyer** | Metric Small weights are **Apache-2.0** per upstream README, but fine-tuning uses **Hypersim** (**CC-BY-SA 3.0**). Share-Alike may affect redistribution of derived weights; not resolved in any model card we found. |
 | 2 | **GeoCalib pinhole weights — training data** | **AMBIGUOUS — needs lawyer** | Code + release weights have **no separate NC terms**, but training uses **OpenPano** (HDRMAPS + Poly Haven CC0 + Laval HDR). **HDRMAPS** and **Laval** commercial terms were **not found** in primary sources reviewed. |
-| 3 | **In-app `licenses.phase1Notice`** | **Product / legal mismatch — needs lawyer** | App UI states **“non-commercial use only”** (iOS `LicensesView`, Android `LicensesActivity`). This is a **product decision**, not a model license — but it **conflicts** with shipping commercially while models above may permit commercial use. |
-| 4 | **HF license tag missing** | **Documentation gap** | Hugging Face API returns `"license": null` for `depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf` (queried 2026-07-11). Resolved for **Small** via GitHub README; still document in diligence. |
+| 3 | **HF license tag missing** | **Documentation gap** | Hugging Face API returns `"license": null` for `depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf` (queried 2026-07-11). Resolved for **Small** via GitHub README; still document in diligence. |
 
 **Not blockers (confirmed):** Inria 3DGS **not** in ship path; MiDaS **removed**; SparkJS **removed** (iOS + Android, 2026-07-11); MetalSplatter / Three.js / ONNX Runtime / RTMDet code **permissive** with attribution.
 
@@ -172,10 +171,11 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | `4ef4e10` | 2026-02-26 | **Added** Phase 1 notice with YOLO-E / **SHARP** attributions and in-app Licenses screens. Message: *“Phase 1 release: … non-commercial use only.”* |
 | `3c15aec` | 2026-06-16 | **Removed notice from UI** ahead of commercial release; kept string keys. Commit message: RTMDet attribution added; phase1 “unused”. |
 | `e2aac05` | 2026-07-08 | **Re-displayed** notice; text changed to *“Current release: … non-commercial use only.”* |
+| *(working tree)* | 2026-07-13 | **Updated** notice to *“Current release: This app is currently offered for commercial use.”* (iOS + Android string resources). |
 
 **Displayed today:** iOS `Furnit/Views/ContentView.swift` (`LicensesView`); Android `LicensesActivity.kt`.
 
-**Conclusion:** **Product / release-phase policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Likely carried from early Phase 1 (SHARP/YOLO-era legal posture). **Remove or replace before commercial launch** — lawyer should align with model audit above.
+**Conclusion:** **Product / release-phase policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Originally carried from early Phase 1 (SHARP/YOLO-era legal posture). **Updated 2026-07-13** to state commercial use; aligns with intended commercial launch. Lawyer should still align full terms with model audit above.
 
 ---
 
@@ -200,8 +200,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 1. **Hypersim CC-BY-SA 3.0** → Depth Anything Metric **Small** exported weights in commercial app.
 2. **GeoCalib OpenPano** training mix (HDRMAPS / Laval) → commercial weights.
-3. **`phase1Notice`** vs intended commercial launch.
-4. **RTMDet + COCO** (optional; lower risk than #1–2).
+3. **RTMDet + COCO** (optional; lower risk than #1–2).
 
 ---
 
@@ -210,5 +209,5 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 - [ ] New `.mlpackage` / `.onnx` / checkpoint ID change
 - [ ] New SPM / Gradle ML dependency
 - [ ] M-LSD, Whisper, SHARP, or ExecuTorch promoted on-device
-- [ ] `phase1Notice` removed or commercial terms published
+- [x] `phase1Notice` updated to commercial use (2026-07-13)
 - [x] SparkJS bundle removed — iOS + Android (2026-07-11)

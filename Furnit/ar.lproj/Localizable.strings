@@ -141,7 +141,7 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "التراخيص والإسناد";
-"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "تراخيص المصدر المفتوح";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "عرض الترخيص الكامل";

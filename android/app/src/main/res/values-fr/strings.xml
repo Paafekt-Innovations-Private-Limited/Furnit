@@ -47,7 +47,7 @@
     <string name="settings_auto_orbit_description">Faire pivoter lentement la caméra en veille</string>
     <string name="settings_licenses">Licences</string>
     <string name="licenses_title">Licences et attributions</string>
-    <string name="licenses_phase1_notice">Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
+    <string name="licenses_phase1_notice">Current release: This app is currently offered for commercial use.</string>
     <string name="licenses_open_source_section">Licences open source</string>
     <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
     <string name="licenses_view_full_license">Voir la licence complète</string>
@@ -244,7 +244,7 @@
     <string name="room_viewer_preview_unavailable">Aperçu non disponible</string>
     <string name="room_viewer_created_success">Pièce créée avec succès !</string>
     <string name="room_viewer_created_message">Les textures de votre pièce ont été extraites de la photo. Appuyez sur Enregistrer pour la conserver.</string>
-    <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="approximate_room_height">Est. height - %.2f m</string>
     <string name="room_viewer_dimensions">Dimensions : %s</string>
     <string name="room_viewer_saved_toast">Pièce enregistrée !</string>
 

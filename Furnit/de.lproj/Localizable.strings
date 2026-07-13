@@ -141,7 +141,7 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "Lizenzen & Zuschreibungen";
-"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "Open-Source-Lizenzen";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "Vollständige Lizenz anzeigen";
@@ -367,7 +367,7 @@
 "roomViewer.arSizingEnable" = "Kameragestützte Möbelgröße aktivieren";
 "roomViewer.arSizingDisable" = "Kameragestützte Möbelgröße deaktivieren";
 "roomViewer.gestureHintToggleAccessibility" = "Tippe auf dieses Symbol, um diesen Hinweis ein- oder auszublenden.";
-"roomViewer.approximateRoomHeight" = "App. Höhe - %.2f m";
+"roomViewer.approximateRoomHeight" = "Est. Höhe - %.2f m";
 "roomViewer.checkMeasurement" = "Messung prüfen";
 "roomViewer.roomDimensionsDefaultValues" = "Standardwerte";
 "roomViewer.roomDimensionsWHDWithDefault" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";

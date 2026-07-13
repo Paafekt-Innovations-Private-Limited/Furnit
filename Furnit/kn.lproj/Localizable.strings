@@ -141,7 +141,7 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "ಲೈಸೆನ್ಸ್‌ಗಳು ಮತ್ತು ಆಕೃತಿಗಳು";
-"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ";

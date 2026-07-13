@@ -47,7 +47,7 @@
     <string name="settings_auto_orbit_description">تدوير الكاميرا ببطء عند الخمول</string>
     <string name="settings_licenses">التراخيص</string>
     <string name="licenses_title">التراخيص والإسناد</string>
-    <string name="licenses_phase1_notice">Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
+    <string name="licenses_phase1_notice">Current release: This app is currently offered for commercial use.</string>
     <string name="licenses_open_source_section">تراخيص المصدر المفتوح</string>
     <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
     <string name="licenses_view_full_license">عرض الترخيص الكامل</string>
@@ -245,7 +245,7 @@
     <string name="room_viewer_preview_unavailable">معاينة الغرفة غير متاحة</string>
     <string name="room_viewer_created_success">تم إنشاء الغرفة بنجاح!</string>
     <string name="room_viewer_created_message">تم استخراج نسيج غرفتك من الصورة. انقر على حفظ للاحتفاظ بهذه الغرفة.</string>
-    <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="approximate_room_height">Est. height - %.2f m</string>
     <string name="room_viewer_dimensions">الأبعاد: %s</string>
     <string name="room_viewer_saved_toast">تم حفظ الغرفة!</string>
 

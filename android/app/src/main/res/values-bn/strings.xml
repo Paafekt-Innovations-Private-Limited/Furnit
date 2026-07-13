@@ -47,7 +47,7 @@
     <string name="settings_auto_orbit_description">নিষ্ক্রিয় থাকলে ক্যামেরা ধীরে ধীরে ঘোরান</string>
     <string name="settings_licenses">লাইসেন্স</string>
     <string name="licenses_title">লাইসেন্স এবং অ্যাট্রিবিউশন</string>
-    <string name="licenses_phase1_notice">Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
+    <string name="licenses_phase1_notice">Current release: This app is currently offered for commercial use.</string>
     <string name="licenses_open_source_section">ওপেন সোর্স লাইসেন্স</string>
     <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
     <string name="licenses_view_full_license">সম্পূর্ণ লাইসেন্স দেখুন</string>
@@ -245,7 +245,7 @@
     <string name="room_viewer_preview_unavailable">রুম প্রিভিউ উপলব্ধ নেই</string>
     <string name="room_viewer_created_success">রুম সফলভাবে তৈরি হয়েছে!</string>
     <string name="room_viewer_created_message">আপনার রুমের টেক্সচার ফটো থেকে নেওয়া হয়েছে। এটি রাখতে সংরক্ষণ ট্যাপ করুন।</string>
-    <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="approximate_room_height">Est. height - %.2f m</string>
     <string name="room_viewer_dimensions">মাত্রা: %s</string>
     <string name="room_viewer_saved_toast">রুম সংরক্ষিত!</string>
 

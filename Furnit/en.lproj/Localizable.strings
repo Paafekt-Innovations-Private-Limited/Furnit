@@ -150,7 +150,7 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";
-"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "Open Source Licenses";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "View full license";
@@ -426,7 +426,7 @@
 "roomViewer.arSizingDisable" = "Disable camera-assisted furniture sizing";
 "roomViewer.gestureHintToggleAccessibility" = "Tap this icon to show or hide this tip.";
 "roomViewer.checkMeasurement" = "Check measurement";
-"roomViewer.approximateRoomHeight" = "App. height - %.2f m";
+"roomViewer.approximateRoomHeight" = "Est. height - %.2f m";
 "roomViewer.roomDimensionsDefaultValues" = "Default Values";
 "roomViewer.roomDimensionsWHDWithDefault" = "W × H × D\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "W × H\n%.2f × %.2f m (%@)";

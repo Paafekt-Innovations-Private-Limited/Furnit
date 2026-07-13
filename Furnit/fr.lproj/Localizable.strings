@@ -141,7 +141,7 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licences et attributions";
-"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "Licences open source";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "Voir la licence complète";

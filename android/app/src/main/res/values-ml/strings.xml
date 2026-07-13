@@ -47,7 +47,7 @@
     <string name="settings_auto_orbit_description">നിഷ്ക്രിയമായിരിക്കുമ്പോൾ ക്യാമറ സാവധാനം തിരിക്കുക</string>
     <string name="settings_licenses">ലൈസൻസുകൾ</string>
     <string name="licenses_title">ലൈസൻസുകളും അടിസ്ഥാനകാരണങ്ങളും</string>
-    <string name="licenses_phase1_notice">Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
+    <string name="licenses_phase1_notice">Current release: This app is currently offered for commercial use.</string>
     <string name="licenses_open_source_section">ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ</string>
     <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
     <string name="licenses_view_full_license">പൂർണ്ണ ലൈസൻസ് കാണുക</string>
@@ -245,7 +245,7 @@
     <string name="room_viewer_preview_unavailable">മുറി പ്രിവ്യൂ ലഭ്യമല്ല</string>
     <string name="room_viewer_created_success">മുറി വിജയകരമായി സൃഷ്ടിച്ചു!</string>
     <string name="room_viewer_created_message">നിങ്ങളുടെ മുറിയുടെ ടെക്സ്ചറുകൾ ഫോട്ടോയിൽ നിന്ന് എടുത്തു. സൂക്ഷിക്കാൻ സേവ് ടാപ്പ് ചെയ്യുക.</string>
-    <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="approximate_room_height">Est. height - %.2f m</string>
     <string name="room_viewer_dimensions">അളവുകൾ: %s</string>
     <string name="room_viewer_saved_toast">മുറി സേവ് ചെയ്തു!</string>
 
