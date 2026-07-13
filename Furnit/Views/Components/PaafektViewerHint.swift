@@ -213,31 +213,6 @@ struct PaafektImmersiveFitClusterRows<Content: View>: View {
     }
 }
 
-// MARK: - Bottom scrim variant
-
-/// Soft bottom gradient scrim with a hint chip floated above the toolbar region.
-struct PaafektBottomScrimHint<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            LinearGradient(
-                colors: [.clear, Theme.Palette.background.opacity(0.88)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 120)
-            .frame(maxWidth: .infinity)
-            .allowsHitTesting(false)
-
-            content()
-                .padding(.horizontal, Theme.Space.lg)
-                .padding(.bottom, Theme.Space.lg)
-        }
-        .allowsHitTesting(false)
-    }
-}
-
 // MARK: - First-run coach mark (centered card over dimmed room)
 
 enum PaafektViewerOnboarding {

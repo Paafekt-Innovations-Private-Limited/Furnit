@@ -387,7 +387,6 @@ enum L10n {
         static let heroFitFurniture = "roomViewer.heroFitFurniture".localized
         static let heroCapture = "roomViewer.heroCapture".localized
         static let immersiveShowControls = "roomViewer.immersiveShowControls".localized
-        static let immersiveTapToHide = "roomViewer.immersiveTapToHide".localized
         static let immersiveFitShort = "roomViewer.immersiveFitShort".localized
         static let immersiveCaptureShort = "roomViewer.immersiveCaptureShort".localized
         static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
@@ -395,7 +394,6 @@ enum L10n {
         static let fullVideoFurnitureTapHint = "roomViewer.fullVideoFurnitureTapHint".localized
         static let displayAllHelpers = "roomViewer.displayAllHelpers".localized
         static let segmentFurnitureAction = "roomViewer.segmentFurnitureAction".localized
-        static let stopSegmentationAction = "roomViewer.stopSegmentationAction".localized
         static let segmentationDone = "roomViewer.segmentationDone".localized
         static let segmentFurnitureAccessibility = "roomViewer.segmentFurnitureAccessibility".localized
         static let snapshotGestureHintExplanation = "roomViewer.snapshotGestureHintExplanation".localized

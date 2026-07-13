@@ -319,13 +319,11 @@
 "roomViewer.heroFitFurniture" = "தளபாடம் பொருத்து";
 "roomViewer.heroCapture" = "பிடி";
 "roomViewer.immersiveShowControls" = "கட்டுப்பாடுகளைக் காட்டு";
-"roomViewer.immersiveTapToHide" = "மறைக்க தட்டவும்";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "பிடி";
 "roomViewer.segmentationDone" = "முடிந்தது";
 "roomViewer.brainGestureHintExplanation" = "மரச்சாமானை அடையாளம் காண 🧠 தட்டவும்";
 "roomViewer.segmentFurnitureAction" = "பிரித்தெடு";
-"roomViewer.stopSegmentationAction" = "நிறுத்து";
 "roomViewer.segmentFurnitureAccessibility" = "தேர்ந்தெடுத்த தளபாடத்தைப் பிரித்தெடு";
 "roomViewer.snapshotGestureHintExplanation" = "சேமிக்க 📷 தட்டவும்";
 "roomViewer.arFurnitureSizingHint" = "சிறந்த அளவு பொருத்தத்திற்கு";

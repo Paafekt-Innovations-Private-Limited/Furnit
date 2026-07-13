@@ -502,13 +502,6 @@ struct SplatRoomView: View {
         .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
     }
 
-    /// Kept for API compatibility; the button is now rendered inside
-    /// ``topTrailingActionButtonsOverlay`` so it stacks cleanly with the AR
-    /// sizing button and hint.
-    private var fullVideoModeFloatingButtonOverlay: some View {
-        EmptyView()
-    }
-
     private var navigationBarSaveButton: some View {
         Button(action: {
             roomName = ""

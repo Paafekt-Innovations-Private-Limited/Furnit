@@ -408,7 +408,6 @@
 "roomViewer.heroFitFurniture" = "Fit Furniture";
 "roomViewer.heroCapture" = "Capture";
 "roomViewer.immersiveShowControls" = "Show controls";
-"roomViewer.immersiveTapToHide" = "Tap to hide";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "Capture";
 "roomViewer.brainGestureHintExplanation" = "Tap 🧠 to identify furniture";
@@ -416,7 +415,6 @@
 "roomGeneration.runInBackground" = "Run in Background";
 "roomViewer.displayAllHelpers" = "Display all helpers";
 "roomViewer.segmentFurnitureAction" = "Segment";
-"roomViewer.stopSegmentationAction" = "Stop";
 "roomViewer.segmentationDone" = "Done";
 "roomViewer.segmentFurnitureAccessibility" = "Segment selected furniture";
 "roomViewer.snapshotGestureHintExplanation" = "Tap 📷 to save";

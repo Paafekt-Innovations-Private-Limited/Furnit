@@ -319,13 +319,11 @@
 "roomViewer.heroFitFurniture" = "ഫർണിച്ചർ ഫിറ്റ്";
 "roomViewer.heroCapture" = "ക്യാപ്ചർ";
 "roomViewer.immersiveShowControls" = "നിയന്ത്രണങ്ങൾ കാണിക്കുക";
-"roomViewer.immersiveTapToHide" = "മറയ്ക്കാൻ ടാപ്പ് ചെയ്യുക";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "ക്യാപ്ചർ";
 "roomViewer.segmentationDone" = "പൂർത്തിയായി";
 "roomViewer.brainGestureHintExplanation" = "ഫർണിച്ചർ തിരിച്ചറിയാൻ 🧠 ടാപ്പ് ചെയ്യുക";
 "roomViewer.segmentFurnitureAction" = "സെഗ്മെന്റ്";
-"roomViewer.stopSegmentationAction" = "നിർത്തുക";
 "roomViewer.segmentFurnitureAccessibility" = "തിരഞ്ഞെടുത്ത ഫർണിച്ചർ സെഗ്മെന്റ് ചെയ്യുക";
 "roomViewer.snapshotGestureHintExplanation" = "സേവ് ചെയ്യാൻ 📷 ടാപ്പ് ചെയ്യുക";
 "roomViewer.arFurnitureSizingHint" = "മികച്ച വലിപ്പ പൊരുത്തത്തിന്";

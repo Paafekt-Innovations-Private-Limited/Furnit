@@ -213,39 +213,6 @@ struct PaafektMorphingPrimaryFAB: View {
     }
 }
 
-/// Tier-0 persistent Fit action — always visible, bottom-trailing, above room and camera overlays.
-struct PaafektImmersiveFitFAB: View {
-    var isActive: Bool = false
-    var isDisabled: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Theme.Space.sm) {
-                Image("PaafektIconAI")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 18, height: 18)
-                Text(L10n.RoomViewer.immersiveFitShort)
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(Theme.Palette.accentText)
-            .padding(.horizontal, Theme.Space.lg)
-            .frame(height: 44)
-            .background(
-                Capsule().fill(isActive ? Theme.Palette.accentPressed : Theme.Palette.accent)
-            )
-            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
-            .opacity(isDisabled ? 0.5 : 1)
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityLabel(L10n.RoomViewer.heroFitFurniture)
-    }
-}
-
 /// Tier-0 persistent Save action — creation flow only, same gold treatment as Fit.
 struct PaafektImmersiveSaveFAB: View {
     var isDisabled: Bool = false
@@ -286,98 +253,6 @@ struct PaafektImmersiveRestingMeasurementPill: View {
             .padding(.vertical, Theme.Space.sm)
             .paafektGlassCapsuleSurface()
             .allowsHitTesting(false)
-    }
-}
-
-/// Always-on exit while full-video segmentation is active — independent of resting vs summoned chrome.
-struct PaafektSegmentationDoneButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(L10n.RoomViewer.segmentationDone)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Theme.Palette.accentText)
-                .padding(.horizontal, Theme.Space.lg)
-                .frame(height: 44)
-                .background(Capsule().fill(Theme.Palette.accent))
-                .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.RoomViewer.segmentationDone)
-    }
-}
-
-/// Top-trailing Done for Furniture Fit — default brain flow (segmentPrimary) and full-video segment mode.
-struct PaafektFurnitureFitDonePersistentOverlay: View {
-    let showingFurnitureFit: Bool
-    let showFullVideoWithIdentifications: Bool
-    let segmentationMode: FurnitureFitSegmentationMode
-    let viewerLabel: String
-    let onExitFullVideoSegmentation: () -> Void
-    let onExitFurnitureFit: () -> Void
-
-    private var isActive: Bool {
-        guard showingFurnitureFit else { return false }
-        if showFullVideoWithIdentifications {
-            return segmentationMode == .segmentSelected
-        }
-        return true
-    }
-
-    var body: some View {
-        Group {
-            if isActive {
-                PaafektSegmentationDoneButton {
-                    if showFullVideoWithIdentifications, segmentationMode == .segmentSelected {
-                        onExitFullVideoSegmentation()
-                    } else {
-                        onExitFurnitureFit()
-                    }
-                }
-            }
-        }
-        #if DEBUG
-        .onChange(of: isActive) { _, active in
-            logDebug(
-                "SEGMENT_DONE: persistent visible=\(active) fit=\(showingFurnitureFit) " +
-                "fullVideo=\(showFullVideoWithIdentifications) mode=\(segmentationMode) viewer=\(viewerLabel)"
-            )
-        }
-        #endif
-    }
-}
-
-/// Renders above UIKit `FurnitureFitUIView` (z ~9000). SwiftUI chrome at ~99998 can sit under the camera layer.
-struct PaafektFullVideoSegmentationExitLayer: View {
-    let isActive: Bool
-    let viewerLabel: String
-    let onDone: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                if isActive {
-                    PaafektSegmentationDoneButton(action: onDone)
-                }
-            }
-            .padding(.horizontal, Theme.Space.lg)
-            .padding(.top, Theme.Space.sm)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        .allowsHitTesting(isActive)
-        #if DEBUG
-        .onChange(of: isActive) { _, active in
-            logDebug("SEGMENT_DONE: overlay visible=\(active) viewer=\(viewerLabel)")
-        }
-        .onAppear {
-            if isActive {
-                logDebug("SEGMENT_DONE: overlay mounted visible=true viewer=\(viewerLabel)")
-            }
-        }
-        #endif
     }
 }
 
@@ -492,24 +367,6 @@ extension View {
                 onRestingTap: onRestingTap
             )
         )
-    }
-}
-
-// MARK: - Tap-to-toggle layer (legacy — prefer paafektImmersiveRoomSummonTap on room content)
-
-struct PaafektImmersiveTapToggleLayer: View {
-    @ObservedObject var chrome: PaafektViewerChromeController
-    var enabled: Bool = true
-
-    var body: some View {
-        Group {
-            if enabled {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { chrome.toggle() }
-            }
-        }
-        .allowsHitTesting(enabled)
     }
 }
 

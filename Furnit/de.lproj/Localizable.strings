@@ -353,13 +353,11 @@
 "roomViewer.heroFitFurniture" = "Möbel platzieren";
 "roomViewer.heroCapture" = "Aufnahme";
 "roomViewer.immersiveShowControls" = "Steuerung anzeigen";
-"roomViewer.immersiveTapToHide" = "Tippen zum Ausblenden";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "Aufnahme";
 "roomViewer.segmentationDone" = "Fertig";
 "roomViewer.brainGestureHintExplanation" = "Tippe auf 🧠, um Möbel zu erkennen";
 "roomViewer.segmentFurnitureAction" = "Segmentieren";
-"roomViewer.stopSegmentationAction" = "Stopp";
 "roomViewer.segmentFurnitureAccessibility" = "Ausgewählte Möbel segmentieren";
 "roomViewer.snapshotGestureHintExplanation" = "Zum Speichern 📷 tippen";
 "roomViewer.arFurnitureSizingHint" = "Für bessere Größenanpassung";

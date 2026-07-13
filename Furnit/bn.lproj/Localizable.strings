@@ -339,13 +339,11 @@
 "roomViewer.heroFitFurniture" = "আসবাব ফিট";
 "roomViewer.heroCapture" = "ক্যাপচার";
 "roomViewer.immersiveShowControls" = "নিয়ন্ত্রণ দেখান";
-"roomViewer.immersiveTapToHide" = "লুকাতে ট্যাপ করুন";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "ক্যাপচার";
 "roomViewer.segmentationDone" = "সম্পন্ন";
 "roomViewer.brainGestureHintExplanation" = "ফার্নিচার শনাক্ত করতে 🧠 ট্যাপ করুন";
 "roomViewer.segmentFurnitureAction" = "সেগমেন্ট";
-"roomViewer.stopSegmentationAction" = "থামুন";
 "roomViewer.segmentFurnitureAccessibility" = "নির্বাচিত ফার্নিচার সেগমেন্ট করুন";
 "roomViewer.snapshotGestureHintExplanation" = "সেভ করতে 📷 ট্যাপ করুন";
 "roomViewer.arFurnitureSizingHint" = "আরও ভালো আকার মিলের জন্য";

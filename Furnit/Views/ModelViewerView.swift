@@ -320,10 +320,6 @@ struct ModelViewerView: View {
         )
     }
 
-    private var segmentModeToggleChrome: some View {
-        EmptyView()
-    }
-
     private var modelViewerBottomHeroChrome: some View {
         VStack {
             Spacer()

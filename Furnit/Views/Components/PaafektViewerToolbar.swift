@@ -73,7 +73,7 @@ struct PaafektViewerHeroButton: View {
     }
 }
 
-/// Capture-only hero action for legacy / summoned toolbars (Fit uses persistent FAB).
+/// Capture-only hero action for legacy / suppress-built-in-top-chrome toolbars.
 struct PaafektViewerCaptureHeroButton: View {
     var isDisabled: Bool = false
     let action: () -> Void
@@ -85,75 +85,6 @@ struct PaafektViewerCaptureHeroButton: View {
             isDisabled: isDisabled,
             action: action
         )
-    }
-}
-/// Side-by-side hero actions anchored above the home indicator (legacy embedded chrome).
-struct PaafektViewerHeroActionsBar: View {
-    var fitActive: Bool = false
-    var fitDisabled: Bool = false
-    var captureDisabled: Bool = false
-    let onFit: () -> Void
-    let onCapture: () -> Void
-
-    var body: some View {
-        HStack(spacing: Theme.Space.md) {
-            PaafektViewerHeroButton(
-                assetName: "PaafektIconAI",
-                title: L10n.RoomViewer.heroFitFurniture,
-                isActive: fitActive,
-                isDisabled: fitDisabled,
-                action: onFit
-            )
-            PaafektViewerHeroButton(
-                assetName: "PaafektIconSnapshot",
-                title: L10n.RoomViewer.heroCapture,
-                isDisabled: captureDisabled,
-                action: onCapture
-            )
-        }
-    }
-}
-
-/// Bottom-bar AI / snapshot actions — Paafekt monoline assets, gold when active.
-struct PaafektViewerBottomActionButton: View {
-    let assetName: String
-    var isActive: Bool = false
-    var isDisabled: Bool = false
-    let accessibilityLabel: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(assetName)
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 22, height: 22)
-                .foregroundStyle(isActive ? Theme.Palette.accent : Theme.Palette.textPrimary)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(Theme.Palette.viewerCapsuleFill))
-                .overlay(Circle().stroke(Theme.Palette.hairline, lineWidth: 1))
-                .opacity(isDisabled ? 0.5 : 1)
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityLabel(accessibilityLabel)
-    }
-}
-
-struct PaafektViewerBackButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Theme.Palette.textPrimary)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(Theme.Palette.viewerCapsuleFill))
-                .overlay(Circle().stroke(Theme.Palette.hairline, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 }
 

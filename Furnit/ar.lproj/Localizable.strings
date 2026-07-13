@@ -339,13 +339,11 @@
 "roomViewer.heroFitFurniture" = "ملاءمة الأثاث";
 "roomViewer.heroCapture" = "التقاط";
 "roomViewer.immersiveShowControls" = "إظهار عناصر التحكم";
-"roomViewer.immersiveTapToHide" = "اضغط للإخفاء";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "التقاط";
 "roomViewer.segmentationDone" = "تم";
 "roomViewer.brainGestureHintExplanation" = "اضغط 🧠 للتعرف على الأثاث";
 "roomViewer.segmentFurnitureAction" = "تجزئة";
-"roomViewer.stopSegmentationAction" = "إيقاف";
 "roomViewer.segmentFurnitureAccessibility" = "تجزئة الأثاث المحدد";
 "roomViewer.snapshotGestureHintExplanation" = "اضغط 📷 للحفظ";
 "roomViewer.arFurnitureSizingHint" = "لمطابقة حجم أفضل";

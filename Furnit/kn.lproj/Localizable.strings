@@ -319,13 +319,11 @@
 "roomViewer.heroFitFurniture" = "ಪೀಠೋಪಕರಣ ಹೊಂದಿಸಿ";
 "roomViewer.heroCapture" = "ಸೆರೆಹಿಡಿ";
 "roomViewer.immersiveShowControls" = "ನಿಯಂತ್ರಣಗಳನ್ನು ತೋರಿಸಿ";
-"roomViewer.immersiveTapToHide" = "ಮರೆಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "Capture";
 "roomViewer.segmentationDone" = "ಮುಗಿಯಿತು";
 "roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಗುರುತಿಸಲು 🧠 ಟ್ಯಾಪ್ ಮಾಡಿ";
 "roomViewer.segmentFurnitureAction" = "ಸೆಗ್ಮೆಂಟ್";
-"roomViewer.stopSegmentationAction" = "ನಿಲ್ಲಿಸಿ";
 "roomViewer.segmentFurnitureAccessibility" = "ಆಯ್ಕೆಮಾಡಿದ ಫರ್ಣಿಚರ್ ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿ";
 "roomViewer.snapshotGestureHintExplanation" = "ಉಳಿಸಲು 📷 ಟ್ಯಾಪ್ ಮಾಡಿ";
 "roomViewer.arFurnitureSizingHint" = "ಉತ್ತಮ ಗಾತ್ರ ಹೊಂದಾಣಿಕೆಗೆ";

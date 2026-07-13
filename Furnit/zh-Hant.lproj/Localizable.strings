@@ -320,13 +320,11 @@
 "roomViewer.heroFitFurniture" = "搭配家具";
 "roomViewer.heroCapture" = "截圖";
 "roomViewer.immersiveShowControls" = "顯示控制項";
-"roomViewer.immersiveTapToHide" = "點按隱藏";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "截圖";
 "roomViewer.segmentationDone" = "完成";
 "roomViewer.brainGestureHintExplanation" = "點按 🧠 識別家具";
 "roomViewer.segmentFurnitureAction" = "分割";
-"roomViewer.stopSegmentationAction" = "停止";
 "roomViewer.segmentFurnitureAccessibility" = "分割所選家具";
 "roomViewer.snapshotGestureHintExplanation" = "點按 📷 儲存";
 "roomViewer.arFurnitureSizingHint" = "更好的尺寸匹配";

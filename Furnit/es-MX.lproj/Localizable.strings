@@ -322,13 +322,11 @@
 "roomViewer.heroFitFurniture" = "Colocar muebles";
 "roomViewer.heroCapture" = "Capturar";
 "roomViewer.immersiveShowControls" = "Mostrar controles";
-"roomViewer.immersiveTapToHide" = "Toca para ocultar";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "Capturar";
 "roomViewer.segmentationDone" = "Listo";
 "roomViewer.brainGestureHintExplanation" = "Toca 🧠 para identificar muebles";
 "roomViewer.segmentFurnitureAction" = "Segmentar";
-"roomViewer.stopSegmentationAction" = "Detener";
 "roomViewer.segmentFurnitureAccessibility" = "Segmentar muebles seleccionados";
 "roomViewer.snapshotGestureHintExplanation" = "Toca 📷 para guardar";
 "roomViewer.arFurnitureSizingHint" = "Para mejor ajuste de tamaño";

@@ -142,12 +142,6 @@ object PaafektHintViews {
             )
         }
     }
-
-    fun setCompactHeroActive(button: LinearLayout, active: Boolean) {
-        if (button.tag == active) return
-        button.tag = active
-        button.background = PaafektDrawables.compactHeroButton(active)
-    }
 }
 
 /**

@@ -313,7 +313,6 @@
     <string name="segment_furniture_action">Segment</string>
     <string name="room_viewer_segmentation_done">Done</string>
     <string name="room_viewer_furniture_height_estimate">Furniture height ~ %.2f m</string>
-    <string name="segment_stop_action">Stop</string>
     <string name="smartypants_camera_ready">Camera ready - detecting furniture…</string>
     <string name="smartypants_scanning_for_furniture">Scanning for furniture…</string>
 
@@ -400,7 +399,6 @@
     <string name="room_viewer_immersive_fit_short">Fit</string>
     <string name="room_viewer_immersive_capture_short">Capture</string>
     <string name="room_viewer_immersive_show_controls">Show controls</string>
-    <string name="room_viewer_immersive_tap_to_hide">Tap to hide</string>
     <string name="room_viewer_full_video_furniture_tap_hint">Tap all objects which you want to check with room</string>
     <string name="room_viewer_full_video_selection_helper">Tap another item</string>
     <string name="room_viewer_recenter">Recenter view</string>

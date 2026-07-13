@@ -2,15 +2,10 @@ package com.furnit.android.theme
 
 import android.content.Context
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.graphics.PorterDuff
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -84,51 +79,6 @@ object PaafektViewerToolbar {
         }
     }
 
-    /** Floating circle for trailing actions outside the capsule (recenter, AR sizing). */
-    fun createFloatingIconButton(
-        context: Context,
-        @DrawableRes iconResId: Int,
-        contentDescription: CharSequence? = null,
-        isActive: Boolean = false,
-        activeFillColor: Int? = null,
-        onClick: () -> Unit,
-    ): ImageButton {
-        return ImageButton(context).apply {
-            setImageResource(iconResId)
-            imageTintList = ContextCompat.getColorStateList(context, android.R.color.white)
-            background = if (isActive && activeFillColor != null) {
-                android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(activeFillColor)
-                }
-            } else {
-                PaafektDrawables.toolbarCircle()
-            }
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(context, 7), dp(context, 7), dp(context, 7), dp(context, 7))
-            layoutParams = LinearLayout.LayoutParams(dp(context, 36), dp(context, 36)).apply {
-                marginStart = dp(context, 4)
-            }
-            contentDescription?.let { this.contentDescription = it }
-            setOnClickListener { onClick() }
-        }
-    }
-
-    fun createToolbarCapsule(context: Context): LinearLayout {
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = PaafektDrawables.toolbarCapsule()
-            setPadding(PaafektSpace.sm(context), dp(context, 4), PaafektSpace.sm(context), dp(context, 4))
-        }
-    }
-
-    fun createTopChromeRow(context: Context): FrameLayout {
-        return FrameLayout(context).apply {
-            setPadding(PaafektSpace.lg(context), PaafektSpace.viewerTopInset(context), PaafektSpace.lg(context), 0)
-        }
-    }
-
     /**
      * Resting summon affordance — quieter glass disk (bottom-leading). Fit FAB owns bottom-trailing gold.
      */
@@ -177,54 +127,10 @@ object PaafektViewerToolbar {
         }
     }
 
-    /**
-     * Tier-0 persistent Fit FAB — always visible bottom-trailing (matches iOS `PaafektImmersiveFitFAB`).
-     */
-    fun createPersistentFitFab(
-        context: Context,
-        label: CharSequence,
-        onClick: () -> Unit,
-    ): LinearLayout {
-        return PaafektHintViews.createHeroButton(
-            context,
-            R.drawable.ic_ai,
-            label,
-            isActive = false,
-            onClick = onClick,
-        ).apply {
-            layoutParams = persistentFitFabLayoutParams(context)
-            tag = false
-        }
-    }
-
     fun setPersistentFitFabActive(button: LinearLayout, active: Boolean) {
         if (button.tag == active) return
         button.tag = active
         button.background = PaafektDrawables.heroButton(active)
-    }
-
-    /**
-     * Tier-0 persistent Save FAB — creation/preview flow only (matches iOS `PaafektImmersiveSaveFAB`).
-     */
-    fun createPersistentSaveFab(
-        context: Context,
-        label: CharSequence,
-        onClick: () -> Unit,
-    ): LinearLayout {
-        return PaafektHintViews.createHeroButton(
-            context,
-            R.drawable.ic_download,
-            label,
-            isActive = false,
-            onClick = onClick,
-        ).apply {
-            layoutParams = persistentFitFabLayoutParams(context)
-            contentDescription = context.getString(R.string.common_save)
-        }
-    }
-
-    fun setPersistentPrimaryFabVisible(button: View?, visible: Boolean) {
-        button?.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     class PersistentPrimaryActionsHolder(
@@ -386,81 +292,6 @@ object PaafektViewerToolbar {
         (holder.container.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
             lp.bottomMargin = systemBarBottomInset + PaafektSpace.lg(holder.container.context)
             holder.container.layoutParams = lp
-        }
-    }
-
-    /** Bottom-trailing placement for persistent Fit FAB. */
-    fun persistentFitFabLayoutParams(
-        context: Context,
-        systemBarBottomInset: Int = 0,
-    ): FrameLayout.LayoutParams {
-        return FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            gravity = Gravity.END or Gravity.BOTTOM
-            bottomMargin = systemBarBottomInset + PaafektSpace.lg(context)
-            marginEnd = PaafektSpace.lg(context)
-        }
-    }
-
-    /**
-     * Resting summon affordance — mirrors iOS `PaafektImmersiveGoldSummonButton`:
-     * 46dp gold disk, 22dp PaafektIconChevronUp (PNG template), dark glyph, drop shadow.
-     * @deprecated Use [createQuietSummonButton]; gold anchor is the persistent Fit FAB.
-     */
-    @Deprecated("Use createQuietSummonButton; Fit FAB is the gold anchor")
-    fun createGoldSummonButton(
-        context: Context,
-        contentDescription: CharSequence,
-        onClick: () -> Unit,
-    ): FrameLayout {
-        val size = dp(context, 46)
-        val iconSize = dp(context, 22)
-        val shadowColor = Color.argb(89, 0, 0, 0) // iOS .black.opacity(0.35)
-        return FrameLayout(context).apply {
-            layoutParams = goldSummonButtonLayoutParams(context)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(PaafektColors.accent)
-            }
-            ViewCompat.setElevation(this, dp(context, 6).toFloat())
-            outlineProvider = ViewOutlineProvider.BACKGROUND
-            clipToOutline = false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                outlineAmbientShadowColor = shadowColor
-                outlineSpotShadowColor = shadowColor
-            }
-
-            addView(
-                ImageView(context).apply {
-                    setImageResource(R.drawable.ic_chevron_up)
-                    imageTintList = ColorStateList.valueOf(PaafektColors.accentText)
-                    imageTintMode = PorterDuff.Mode.SRC_IN
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                },
-                FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER),
-            )
-
-            minimumWidth = size
-            minimumHeight = size
-            this.contentDescription = contentDescription
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { onClick() }
-        }
-    }
-
-    /** Bottom-right placement — iOS `.padding(.horizontal/.bottom, Theme.Space.lg)`. */
-    fun goldSummonButtonLayoutParams(
-        context: Context,
-        systemBarBottomInset: Int = 0,
-    ): FrameLayout.LayoutParams {
-        return FrameLayout.LayoutParams(dp(context, 46), dp(context, 46)).apply {
-            gravity = Gravity.END or Gravity.BOTTOM
-            bottomMargin = systemBarBottomInset + PaafektSpace.lg(context)
-            marginEnd = PaafektSpace.lg(context)
         }
     }
 

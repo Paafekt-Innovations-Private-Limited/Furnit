@@ -133,8 +133,6 @@ class GLBRoomActivity : AppCompatActivity() {
     private var brainAcceptingUpdates = false
     private var summonedToolbar: ImmersiveSummonedToolbarHolder? = null
     private var inlineBrainArAssistedSizingEnabled = false
-    private var brainSegmentButton: TextView? = null
-    private var brainSegmentationDoneButton: TextView? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
     @Volatile private var inlineBrainFullVideoEnabled = false
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
@@ -363,41 +361,12 @@ class GLBRoomActivity : AppCompatActivity() {
             onDetectionTapped = { detection -> toggleInlineBrainSelectedCluster(detection) }
         }
         brainDetectionOverlay.addView(brainDetectionOverlayView)
-        brainSegmentButton = createInlineBrainSegmentButton().apply {
-            visibility = View.GONE
-        }
-        brainDetectionOverlay.addView(
-            brainSegmentButton,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                bottomMargin = dpToPx(120)
-            },
-        )
         rootLayout.addView(
             brainDetectionOverlay,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
-        )
-
-        brainSegmentationDoneButton = createSegmentationDoneButton().apply {
-            visibility = View.GONE
-            elevation = 39f
-        }
-        rootLayout.addView(
-            brainSegmentationDoneButton,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity = Gravity.TOP or Gravity.END
-                topMargin = PaafektSpace.sm(this@GLBRoomActivity)
-                marginEnd = PaafektSpace.lg(this@GLBRoomActivity)
-            },
         )
 
         setContentView(rootLayout)
@@ -470,12 +439,6 @@ class GLBRoomActivity : AppCompatActivity() {
             if (lp is FrameLayout.LayoutParams) {
                 lp.bottomMargin = bars.bottom + PaafektSpace.lg(this)
                 immersiveSummonButton?.layoutParams = lp
-            }
-        }
-        brainSegmentationDoneButton?.layoutParams?.let { lp ->
-            if (lp is FrameLayout.LayoutParams) {
-                lp.topMargin = bars.top + PaafektSpace.sm(this)
-                brainSegmentationDoneButton?.layoutParams = lp
             }
         }
     }
@@ -688,13 +651,11 @@ class GLBRoomActivity : AppCompatActivity() {
             immersiveRestingChrome.elevation = 36f
         }
         immersiveFitFab?.elevation = 40f
-        brainSegmentationDoneButton?.elevation = 39f
         rootLayout.bringChildToFront(bottomControls)
         if (::immersiveRestingChrome.isInitialized) {
             rootLayout.bringChildToFront(immersiveRestingChrome)
         }
         immersivePersistentActions?.container?.let { rootLayout.bringChildToFront(it) }
-        brainSegmentationDoneButton?.let { rootLayout.bringChildToFront(it) }
         if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
             rootLayout.bringChildToFront(brainProgressOverlay)
         }
@@ -949,41 +910,6 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun createInlineBrainSegmentButton(): TextView {
-        return TextView(this).apply {
-            text = getString(R.string.segment_furniture_action)
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpToPx(24).toFloat()
-                setColor(Color.parseColor("#FF9500"))
-            }
-            setOnClickListener { toggleInlineBrainSegmentMode() }
-        }
-    }
-
-    private fun createSegmentationDoneButton(): TextView {
-        return TextView(this).apply {
-            text = getString(R.string.room_viewer_segmentation_done)
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(PaafektColors.accentText)
-            gravity = Gravity.CENTER
-            setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpToPx(24).toFloat()
-                setColor(PaafektColors.accent)
-            }
-            setOnClickListener { onSegmentationDonePressed() }
-            contentDescription = getString(R.string.room_viewer_segmentation_done)
-        }
-    }
-
     private fun onSegmentationDonePressed() {
         if (inlineBrainFullVideoEnabled && inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED) {
             toggleInlineBrainSegmentMode()
@@ -1119,15 +1045,9 @@ class GLBRoomActivity : AppCompatActivity() {
             action,
             segmentEnabled,
         )
-        brainSegmentButton?.visibility = View.GONE
-        brainSegmentationDoneButton?.visibility = View.GONE
     }
 
     private fun updateInlineBrainSegmentButton() {
-        updateMorphingPrimaryFitState()
-    }
-
-    private fun updateSegmentationDoneButton() {
         updateMorphingPrimaryFitState()
     }
 
@@ -1316,8 +1236,6 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
         brainDetectionOverlayView.setDetectionBoxVisibility(false)
         brainDetectionOverlayView.setIdentifySelectionState(false, emptyList())
-        brainSegmentButton?.visibility = View.GONE
-        brainSegmentationDoneButton?.visibility = View.GONE
         boundPreview?.setSurfaceProvider(null)
         boundPreview = null
         if (::brainCameraPreview.isInitialized) {

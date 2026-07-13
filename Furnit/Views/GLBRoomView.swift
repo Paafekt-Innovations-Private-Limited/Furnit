@@ -435,15 +435,6 @@ struct GLBRoomView: View {
         }
     }
 
-    @ViewBuilder
-    private var glbRoomOrientationControls: some View {
-        if photoOrientation == .landscape {
-            landscapeControls
-        } else {
-            portraitControls
-        }
-    }
-
     private var glbRoomMainZStack: some View {
         ZStack {
             GLBWebGLView(
@@ -482,7 +473,6 @@ struct GLBRoomView: View {
             // Full-video task helper stays visible even after chrome auto-hides.
             fullVideoFurnitureTapHintOverlay
             if immersiveChrome.isSummoned {
-                fullVideoModeFloatingButtonOverlay
                 fullVideoToolbarHelperOverlay
             }
             glbRoomCalibrationGateOverlay
@@ -905,10 +895,6 @@ struct GLBRoomView: View {
         .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
     }
 
-    private var fullVideoModeFloatingButtonOverlay: some View {
-        EmptyView()
-    }
-
     private var navigationBarARButton: some View {
         Button(action: toggleBrainArAssistedSizingOrShowHint) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -1287,32 +1273,6 @@ struct GLBRoomView: View {
         .zIndex(99998)
     }
 
-    private var glbRoomBottomHeroChrome: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 10) {
-                if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                    furnitureMeasurementPillContent(showTapHint: false)
-                }
-                glbViewerHeroActionsBar
-            }
-            if showingFurnitureFit {
-                roomIntelligencePlacementCardResetOnExit
-                    .padding(.bottom, 56)
-            }
-        }
-        .padding(.horizontal, Theme.Space.lg)
-    }
-
-    private var glbViewerHeroActionsBar: some View {
-        PaafektViewerHeroActionsBar(
-            fitActive: showingFurnitureFit,
-            fitDisabled: isLoading,
-            captureDisabled: isLoading,
-            onFit: toggleGlbFurnitureFit,
-            onCapture: { takeScreenshot() }
-        )
-    }
-
     private func toggleGlbFurnitureFit() {
         if showingFurnitureFit {
             dismissFullVideoFurnitureTapHint()
@@ -1596,65 +1556,6 @@ struct GLBRoomView: View {
     }
 
     // MARK: - RTMDet model loaded via RTMDetModelService
-
-    // MARK: - Portrait Controls
-    private var portraitControls: some View {
-        VStack {
-            Spacer()
-
-            // Orientation label
-            HStack(spacing: 6) {
-                Image(systemName: "iphone")
-                    .font(.caption)
-                Text(NSLocalizedString("orientation.heldVertically", comment: ""))
-                    .font(.caption2)
-                Text("-")
-                    .font(.caption2)
-                Text(NSLocalizedString("orientation.portrait", comment: ""))
-                    .font(.caption2)
-                    .fontWeight(.medium)
-            }
-            .foregroundColor(.white.opacity(0.9))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.5))
-            .cornerRadius(8)
-            .padding(.bottom, 12)
-
-            glbRoomBottomHeroChrome
-                .padding(.bottom, 20)
-        }
-        .zIndex(99998)
-    }
-
-    // MARK: - Landscape Controls
-    private var landscapeControls: some View {
-        VStack {
-            Spacer()
-
-            HStack(spacing: 6) {
-                Image(systemName: "iphone.landscape")
-                    .font(.caption)
-                Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
-                    .font(.caption2)
-                Text("-")
-                    .font(.caption2)
-                Text(NSLocalizedString("orientation.landscape", comment: ""))
-                    .font(.caption2)
-                    .fontWeight(.medium)
-            }
-            .foregroundColor(.white.opacity(0.9))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.5))
-            .cornerRadius(8)
-            .padding(.bottom, 12)
-
-            glbRoomBottomHeroChrome
-                .padding(.bottom, 20)
-        }
-        .zIndex(99997)
-    }
 
     // MARK: - Take Screenshot
     private func takeScreenshot() {

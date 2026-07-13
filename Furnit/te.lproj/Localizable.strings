@@ -319,13 +319,11 @@
 "roomViewer.heroFitFurniture" = "ఫర్నిచర్ ఫిట్";
 "roomViewer.heroCapture" = "క్యాప్చర్";
 "roomViewer.immersiveShowControls" = "నియంత్రణలు చూపించు";
-"roomViewer.immersiveTapToHide" = "దాచడానికి ట్యాప్ చేయండి";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "క్యాప్చర్";
 "roomViewer.segmentationDone" = "పూర్తయింది";
 "roomViewer.brainGestureHintExplanation" = "ఫర్నిచర్ గుర్తించడానికి 🧠 ట్యాప్ చేయండి";
 "roomViewer.segmentFurnitureAction" = "సెగ్మెంట్";
-"roomViewer.stopSegmentationAction" = "ఆపు";
 "roomViewer.segmentFurnitureAccessibility" = "ఎంచుకున్న ఫర్నిచర్‌ను సెగ్మెంట్ చేయి";
 "roomViewer.snapshotGestureHintExplanation" = "సేవ్ చేయడానికి 📷 ట్యాప్ చేయండి";
 "roomViewer.arFurnitureSizingHint" = "మెరుగైన పరిమాణ సరిపోలికకు";

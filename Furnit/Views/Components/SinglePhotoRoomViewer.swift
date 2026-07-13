@@ -1562,11 +1562,6 @@ private struct DepthAnythingPreviewRoomView: View {
         return "\(labels.count) selected"
     }
 
-    @ViewBuilder
-    private var previewSegmentModeToggleChrome: some View {
-        EmptyView()
-    }
-
     private var previewFullVideoToolbarHelperOverlay: some View {
         ZStack(alignment: .topTrailing) {
             Color.clear

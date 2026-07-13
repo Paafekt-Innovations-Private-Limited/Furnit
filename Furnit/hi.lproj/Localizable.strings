@@ -319,13 +319,11 @@
 "roomViewer.heroFitFurniture" = "फर्नीचर फिट करें";
 "roomViewer.heroCapture" = "कैप्चर";
 "roomViewer.immersiveShowControls" = "नियंत्रण दिखाएँ";
-"roomViewer.immersiveTapToHide" = "छिपाने के लिए टैप करें";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "कैप्चर";
 "roomViewer.segmentationDone" = "हो गया";
 "roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचानने के लिए 🧠 टैप करें";
 "roomViewer.segmentFurnitureAction" = "सेगमेंट";
-"roomViewer.stopSegmentationAction" = "रोकें";
 "roomViewer.segmentFurnitureAccessibility" = "चयनित फर्नीचर सेगमेंट करें";
 "roomViewer.snapshotGestureHintExplanation" = "सेव करने के लिए 📷 टैप करें";
 "roomViewer.arFurnitureSizingHint" = "बेहतर आकार मिलान के लिए";

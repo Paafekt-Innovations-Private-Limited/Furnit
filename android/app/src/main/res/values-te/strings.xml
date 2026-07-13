@@ -263,7 +263,6 @@
     <string name="otp_code_sent">కోడ్ పంపబడింది!</string>
     <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
-    <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">కృతజ్ఞతలు</string>
     <string name="credits_title">కృతజ్ఞతలు</string>
     <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.</string>
