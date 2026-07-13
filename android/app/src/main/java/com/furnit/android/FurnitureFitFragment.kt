@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.utils.FurnitureFitThermalCadence
 import com.furnit.android.utils.LogUtil
 import android.view.*
 import android.widget.FrameLayout
@@ -94,6 +95,7 @@ class FurnitureFitFragment : Fragment() {
     private var cameraPathRoot: FrameLayout? = null
     private lateinit var manager: FurnitureFitManager
     private var isProcessing = false
+    private val thermalCadence = FurnitureFitThermalCadence(logTag = "FurnitureFitThermal")
     private val pendingCameraBitmapLock = Any()
     private var pendingCameraBitmap: Bitmap? = null
     private var hasFirstDetection = false
@@ -141,6 +143,7 @@ class FurnitureFitFragment : Fragment() {
             "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder dims=${selectedRoomWidth}x${selectedRoomHeight}x${selectedRoomDepth} orientation=$selectedPhotoOrientation arAssist=$selectedArAssistedSizingRequested",
         )
         cameraExecutor = Executors.newSingleThreadExecutor()
+        thermalCadence.start(requireContext())
         manager = FurnitureFitManager(requireContext())
         // Initialize the ONNX segmentation backend.
         LogUtil.d("FurnitureFit", "Calling initializeAuto...")
@@ -383,7 +386,9 @@ class FurnitureFitFragment : Fragment() {
         controller.glSurfaceView.alpha = if (hasRoomBackground) 0.01f else 1f
         previewView.visibility = View.GONE
 
-        controller.shouldPostBitmapFrame = { !isProcessing }
+        controller.shouldPostBitmapFrame = {
+            !isProcessing && thermalCadence.shouldAcceptInference()
+        }
         controller.onBitmapFrame = { bitmap -> processArCoreFrame(bitmap) }
 
         activity?.runOnUiThread {
@@ -403,6 +408,11 @@ class FurnitureFitFragment : Fragment() {
             return
         }
         if (isProcessing) {
+            return
+        }
+        if (!thermalCadence.tryBeginInference()) {
+            bitmap.recycle()
+            arCameraController?.onInferenceFinished()
             return
         }
         isProcessing = true
@@ -944,6 +954,10 @@ class FurnitureFitFragment : Fragment() {
             }
             return
         }
+        if (!thermalCadence.tryBeginInference()) {
+            imageProxy.close()
+            return
+        }
         isProcessing = true
 
         val bitmap = imageProxy.toBitmapSafe()
@@ -998,7 +1012,13 @@ class FurnitureFitFragment : Fragment() {
                 pendingBitmap
             }
             if (nextCameraBitmap != null) {
-                runCameraXSegmentation(nextCameraBitmap)
+                if (thermalCadence.tryBeginInference()) {
+                    runCameraXSegmentation(nextCameraBitmap)
+                } else {
+                    nextCameraBitmap.recycle()
+                    isProcessing = false
+                    arCameraController?.onInferenceFinished()
+                }
             } else {
                 isProcessing = false
                 arCameraController?.onInferenceFinished()
@@ -1071,6 +1091,7 @@ class FurnitureFitFragment : Fragment() {
         lockedFurnitureHeightMeters = null
         releaseCameraUseCases()
         releaseArCameraController()
+        thermalCadence.stop()
         cameraExecutor.shutdown()
         manager.close()
         super.onDestroy()

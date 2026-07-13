@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.utils.FurnitureFitThermalCadence
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektDrawables
@@ -131,6 +132,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private val isBrainInferenceRunning = AtomicBoolean(false)
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
+    private val inlineBrainThermalCadence = FurnitureFitThermalCadence(logTag = "GLBRoomInlineBrainThermal")
     private var summonedToolbar: ImmersiveSummonedToolbarHolder? = null
     private var inlineBrainArAssistedSizingEnabled = false
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
@@ -938,6 +940,7 @@ class GLBRoomActivity : AppCompatActivity() {
         inlineBrainSelectedPins = emptyList()
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
+        inlineBrainThermalCadence.start(this)
         brainDetectionOverlay.visibility = View.VISIBLE
         updateSummonedToolbarState()
         ensureNavigationChromeOnTop()
@@ -1103,6 +1106,8 @@ class GLBRoomActivity : AppCompatActivity() {
             try {
                 if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@setAnalyzer
                 if (isBrainInferenceRunning.get()) return@setAnalyzer
+                // Match iOS RTMDet live cadence (200/400ms) + thermal-critical pause for both Fit modes.
+                if (!inlineBrainThermalCadence.tryBeginInference()) return@setAnalyzer
                 val rawBitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
                 val (bitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
                 if (bitmap !== rawBitmap) rawBitmap.recycle()
@@ -1228,6 +1233,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainSessionGeneration.incrementAndGet()
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
+        inlineBrainThermalCadence.stop()
         inlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
         inlineBrainFullVideoEnabled = false
         inlineBrainSelectedPins = emptyList()
