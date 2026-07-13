@@ -76,8 +76,8 @@ object PaafektViewerToolbar {
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(context, 7), dp(context, 7), dp(context, 7), dp(context, 7))
             layoutParams = LinearLayout.LayoutParams(dp(context, 36), dp(context, 36)).apply {
-                marginStart = dp(context, 4)
-                marginEnd = dp(context, 4)
+                marginStart = dp(context, 6)
+                marginEnd = dp(context, 6)
             }
             contentDescription?.let { this.contentDescription = it }
             setOnClickListener { onClick() }
@@ -203,6 +203,192 @@ object PaafektViewerToolbar {
         button.background = PaafektDrawables.heroButton(active)
     }
 
+    /**
+     * Tier-0 persistent Save FAB — creation/preview flow only (matches iOS `PaafektImmersiveSaveFAB`).
+     */
+    fun createPersistentSaveFab(
+        context: Context,
+        label: CharSequence,
+        onClick: () -> Unit,
+    ): LinearLayout {
+        return PaafektHintViews.createHeroButton(
+            context,
+            R.drawable.ic_download,
+            label,
+            isActive = false,
+            onClick = onClick,
+        ).apply {
+            layoutParams = persistentFitFabLayoutParams(context)
+            contentDescription = context.getString(R.string.common_save)
+        }
+    }
+
+    fun setPersistentPrimaryFabVisible(button: View?, visible: Boolean) {
+        button?.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    class PersistentPrimaryActionsHolder(
+        val container: LinearLayout,
+        val fitButton: LinearLayout?,
+        val saveButton: LinearLayout?,
+    )
+
+    enum class MorphingPrimaryAction {
+        FIT_ENTER,
+        FIT_EXIT_ACTIVE,
+        SEGMENT,
+        DONE,
+    }
+
+    object MorphingPrimaryActionResolver {
+        fun resolve(
+            showingFurnitureFit: Boolean,
+            showFullVideoWithIdentifications: Boolean,
+            segmentationModeSegmentSelected: Boolean,
+            hasSelectedObject: Boolean,
+        ): MorphingPrimaryAction {
+            if (!showingFurnitureFit) return MorphingPrimaryAction.FIT_ENTER
+            if (segmentationModeSegmentSelected) return MorphingPrimaryAction.DONE
+            if (showFullVideoWithIdentifications && hasSelectedObject) return MorphingPrimaryAction.SEGMENT
+            return MorphingPrimaryAction.FIT_EXIT_ACTIVE
+        }
+    }
+
+    fun updateMorphingPrimaryFitButton(
+        button: LinearLayout?,
+        action: MorphingPrimaryAction,
+        segmentEnabled: Boolean = true,
+    ) {
+        button ?: return
+        val context = button.context
+        val iconView = (button.getChildAt(0) as? ImageView)
+        val labelView = (button.getChildAt(1) as? TextView)
+        when (action) {
+            MorphingPrimaryAction.FIT_ENTER, MorphingPrimaryAction.FIT_EXIT_ACTIVE -> {
+                iconView?.visibility = View.VISIBLE
+                iconView?.setImageResource(R.drawable.ic_ai)
+                labelView?.text = context.getString(R.string.room_viewer_immersive_fit_short)
+                button.contentDescription = context.getString(R.string.room_viewer_immersive_fit_short)
+            }
+            MorphingPrimaryAction.SEGMENT -> {
+                iconView?.visibility = View.GONE
+                labelView?.text = context.getString(R.string.segment_furniture_action)
+                button.contentDescription = context.getString(R.string.segment_furniture_action)
+            }
+            MorphingPrimaryAction.DONE -> {
+                iconView?.visibility = View.GONE
+                labelView?.text = context.getString(R.string.room_viewer_segmentation_done)
+                button.contentDescription = context.getString(R.string.room_viewer_segmentation_done)
+            }
+        }
+        val isActive = action == MorphingPrimaryAction.FIT_EXIT_ACTIVE
+        setPersistentFitFabActive(button, isActive)
+        button.isEnabled = action != MorphingPrimaryAction.SEGMENT || segmentEnabled
+        button.alpha = if (button.isEnabled) 1f else 0.5f
+    }
+
+    /**
+     * Bottom-trailing row for persistent Fit (+ optional Save in creation flow).
+     * Save is trailing (dominant); Fit sits to its left.
+     */
+    fun createPersistentPrimaryActionsRow(
+        context: Context,
+        showFit: Boolean,
+        showSave: Boolean,
+        fitLabel: CharSequence,
+        saveLabel: CharSequence,
+        onFit: () -> Unit,
+        onSave: () -> Unit,
+        systemBarBottomInset: Int = 0,
+    ): PersistentPrimaryActionsHolder {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.END or Gravity.BOTTOM
+                bottomMargin = systemBarBottomInset + PaafektSpace.lg(context)
+                marginEnd = PaafektSpace.lg(context)
+            }
+        }
+
+        var fitButton: LinearLayout? = null
+        var saveButton: LinearLayout? = null
+
+        if (showFit) {
+            fitButton = createPersistentActionButton(
+                context,
+                R.drawable.ic_ai,
+                fitLabel,
+                onFit,
+            )
+            container.addView(
+                fitButton,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        if (showSave) {
+            saveButton = createPersistentActionButton(
+                context,
+                R.drawable.ic_download,
+                saveLabel,
+                onSave,
+            ).apply {
+                contentDescription = context.getString(R.string.common_save)
+            }
+            container.addView(
+                saveButton,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    if (showFit) {
+                        marginStart = PaafektSpace.sm(context)
+                    }
+                },
+            )
+        }
+
+        return PersistentPrimaryActionsHolder(container, fitButton, saveButton)
+    }
+
+    private fun createPersistentActionButton(
+        context: Context,
+        @DrawableRes iconRes: Int,
+        label: CharSequence,
+        onClick: () -> Unit,
+    ): LinearLayout {
+        return PaafektHintViews.createHeroButton(
+            context,
+            iconRes,
+            label,
+            isActive = false,
+            onClick = onClick,
+        ).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            tag = false
+        }
+    }
+
+    fun updatePersistentPrimaryActionsInsets(
+        holder: PersistentPrimaryActionsHolder?,
+        systemBarBottomInset: Int,
+    ) {
+        holder ?: return
+        (holder.container.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+            lp.bottomMargin = systemBarBottomInset + PaafektSpace.lg(holder.container.context)
+            holder.container.layoutParams = lp
+        }
+    }
+
     /** Bottom-trailing placement for persistent Fit FAB. */
     fun persistentFitFabLayoutParams(
         context: Context,
@@ -319,7 +505,6 @@ object PaafektImmersiveSummonedToolbar {
 
     fun createBottomChrome(
         context: Context,
-        onTapToHide: () -> Unit,
         onRecenter: () -> Unit,
         onRuler: () -> Unit,
         onPinchHint: () -> Unit,
@@ -328,7 +513,6 @@ object PaafektImmersiveSummonedToolbar {
         onArSizing: () -> Unit,
         onCapture: () -> Unit,
         includeFurnitureFitExtras: Boolean = true,
-        onPreviewSave: (() -> Unit)? = null,
     ): ImmersiveSummonedToolbarHolder {
         val outer = FrameLayout(context).apply {
             setPadding(
@@ -350,25 +534,17 @@ object PaafektImmersiveSummonedToolbar {
             }
         }
 
-        val tapToHide = TextView(context).apply {
-            text = context.getString(R.string.room_viewer_immersive_tap_to_hide)
-            textSize = 11f
-            setTextColor(PaafektColors.textSecondary)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, PaafektSpace.sm(context))
-            setOnClickListener { onTapToHide() }
-        }
-        column.addView(tapToHide)
-
         val capsule = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = PaafektDrawables.toolbarCapsule()
             setPadding(PaafektSpace.sm(context), dp(context, 4), PaafektSpace.sm(context), dp(context, 4))
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
         }
 
         val navRow = LinearLayout(context).apply {
@@ -407,16 +583,6 @@ object PaafektImmersiveSummonedToolbar {
                 onClick = onDisplayAllHelpers,
             ),
         )
-        onPreviewSave?.let { saveAction ->
-            navRow.addView(
-                PaafektViewerToolbar.createCapsuleIconButton(
-                    context,
-                    R.drawable.ic_download,
-                    contentDescription = context.getString(R.string.common_save),
-                    onClick = saveAction,
-                ),
-            )
-        }
 
         var fullVideoButton: ImageButton? = null
         var arSizingButton: ImageButton? = null

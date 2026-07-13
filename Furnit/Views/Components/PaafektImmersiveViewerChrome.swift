@@ -97,6 +97,122 @@ struct PaafektImmersiveQuietSummonButton: View {
     }
 }
 
+/// Morphing persistent primary action — Fit → Segment → Done on one gold button.
+enum PaafektMorphingPrimaryAction: Equatable {
+    case fitEnter
+    case fitExitActive
+    case segment
+    case done
+}
+
+enum PaafektMorphingPrimaryActionResolver {
+    static func resolve(
+        showingFurnitureFit: Bool,
+        showFullVideoWithIdentifications: Bool,
+        segmentationMode: FurnitureFitSegmentationMode,
+        hasSelectedObject: Bool
+    ) -> PaafektMorphingPrimaryAction {
+        guard showingFurnitureFit else { return .fitEnter }
+        if segmentationMode == .segmentSelected { return .done }
+        if showFullVideoWithIdentifications, hasSelectedObject { return .segment }
+        return .fitExitActive
+    }
+}
+
+enum PaafektMorphingPrimaryActionHandler {
+    static func perform(
+        _ action: PaafektMorphingPrimaryAction,
+        enterFit: () -> Void,
+        exitFit: () -> Void,
+        segment: () -> Void,
+        finishSegmentation: () -> Void
+    ) {
+        switch action {
+        case .fitEnter:
+            enterFit()
+        case .fitExitActive:
+            exitFit()
+        case .segment:
+            segment()
+        case .done:
+            finishSegmentation()
+        }
+    }
+}
+
+/// Tier-0 persistent primary — morphs Fit / Segment / Done; always visible, never auto-hides.
+struct PaafektMorphingPrimaryFAB: View {
+    let action: PaafektMorphingPrimaryAction
+    var isDisabled: Bool = false
+    let onTap: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var showsFitIcon: Bool {
+        switch action {
+        case .fitEnter, .fitExitActive:
+            return true
+        case .segment, .done:
+            return false
+        }
+    }
+
+    private var labelText: String {
+        switch action {
+        case .fitEnter, .fitExitActive:
+            return L10n.RoomViewer.immersiveFitShort
+        case .segment:
+            return L10n.RoomViewer.segmentFurnitureAction
+        case .done:
+            return L10n.RoomViewer.segmentationDone
+        }
+    }
+
+    private var isActiveHighlight: Bool {
+        action == .fitExitActive
+    }
+
+    private var accessibilityText: String {
+        switch action {
+        case .fitEnter, .fitExitActive:
+            return L10n.RoomViewer.heroFitFurniture
+        case .segment:
+            return L10n.RoomViewer.segmentFurnitureAccessibility
+        case .done:
+            return L10n.RoomViewer.segmentationDone
+        }
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: Theme.Space.sm) {
+                if showsFitIcon {
+                    Image("PaafektIconAI")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                }
+                Text(labelText)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Theme.Palette.accentText)
+            .padding(.horizontal, Theme.Space.lg)
+            .frame(height: 44)
+            .background(
+                Capsule().fill(isActiveHighlight ? Theme.Palette.accentPressed : Theme.Palette.accent)
+            )
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+            .opacity(isDisabled ? 0.5 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(accessibilityText)
+        .animation(PaafektImmersiveChromeMotion.animation(reduceMotion: reduceMotion), value: action)
+    }
+}
+
 /// Tier-0 persistent Fit action — always visible, bottom-trailing, above room and camera overlays.
 struct PaafektImmersiveFitFAB: View {
     var isActive: Bool = false
@@ -130,6 +246,33 @@ struct PaafektImmersiveFitFAB: View {
     }
 }
 
+/// Tier-0 persistent Save action — creation flow only, same gold treatment as Fit.
+struct PaafektImmersiveSaveFAB: View {
+    var isDisabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Space.sm) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 16, weight: .semibold))
+                Text(L10n.Common.save)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Theme.Palette.accentText)
+            .padding(.horizontal, Theme.Space.lg)
+            .frame(height: 44)
+            .background(Capsule().fill(Theme.Palette.accent))
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+            .opacity(isDisabled ? 0.5 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(L10n.RoomViewer.saveRoom)
+    }
+}
+
 struct PaafektImmersiveRestingMeasurementPill: View {
     let text: String
 
@@ -137,6 +280,8 @@ struct PaafektImmersiveRestingMeasurementPill: View {
         Text(text)
             .font(Theme.Typo.caption())
             .foregroundStyle(Theme.Palette.textSecondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, Theme.Space.sm)
             .paafektGlassCapsuleSurface()
@@ -260,29 +405,19 @@ struct PaafektImmersiveSummonedToolbar<NavContent: View, HeroContent: View>: Vie
     @ViewBuilder let heroContent: () -> HeroContent
 
     var body: some View {
-        VStack(spacing: Theme.Space.sm) {
-            Button {
-                chrome.immerse()
-            } label: {
-                Text(L10n.RoomViewer.immersiveTapToHide)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.Palette.textSecondary.opacity(0.85))
-            }
-            .buttonStyle(.plain)
-
-            PaafektViewerToolbarCapsule {
-                HStack(spacing: Theme.Space.sm) {
-                    navContent()
-                    Spacer(minLength: Theme.Space.sm)
-                    heroContent()
-                }
+        PaafektViewerToolbarCapsule {
+            HStack(spacing: Theme.Space.md) {
+                navContent()
+                Spacer(minLength: Theme.Space.sm)
+                heroContent()
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .onTapGesture { chrome.noteChromeInteraction() }
     }
 }
 
-/// Compact gold action for summoned toolbar (icon + short label).
+/// Compact gold action for summoned toolbar — icon-only to avoid truncation in the glass capsule.
 struct PaafektImmersiveCompactHeroAction: View {
     let assetName: String
     let title: String
@@ -292,29 +427,22 @@ struct PaafektImmersiveCompactHeroAction: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                Image(assetName)
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 18, height: 18)
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(Theme.Palette.accent)
-            .padding(.horizontal, Theme.Space.md)
-            .padding(.vertical, Theme.Space.sm)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Space.md, style: .continuous)
-                    .stroke(Theme.Palette.accent, lineWidth: 1.5)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.Space.md, style: .continuous)
-                            .fill(isActive ? Theme.Palette.accent.opacity(0.18) : Color.clear)
-                    )
-            )
-            .opacity(isDisabled ? 0.5 : 1)
+            Image(assetName)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(Theme.Palette.accent)
+                .frame(width: 40, height: 40)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Space.md, style: .continuous)
+                        .stroke(Theme.Palette.accent, lineWidth: 1.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Space.md, style: .continuous)
+                                .fill(isActive ? Theme.Palette.accent.opacity(0.18) : Color.clear)
+                        )
+                )
+                .opacity(isDisabled ? 0.5 : 1)
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -397,15 +525,23 @@ struct PaafektImmersiveViewerChromeStack<
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let onBack: () -> Void
-    let onFit: () -> Void
-    var fitActive: Bool = false
-    var fitDisabled: Bool = false
+    let morphingPrimaryAction: PaafektMorphingPrimaryAction
+    let onMorphingPrimary: () -> Void
+    var morphingPrimaryDisabled: Bool = false
+    var onSave: (() -> Void)? = nil
+    var saveDisabled: Bool = false
     var measurementText: String? = nil
     var hideForCapture: Bool = false
     @ViewBuilder let summonedToolbar: () -> SummonedToolbar
     @ViewBuilder let summonedExtras: () -> SummonedExtras
     @ViewBuilder let restingAccessory: () -> RestingAccessory
     @ViewBuilder let persistentOverlay: () -> PersistentOverlay
+
+    private var persistentActionsTrailingReserve: CGFloat {
+        let buttonWidth: CGFloat = 88
+        let showsSave = onSave != nil
+        return showsSave ? buttonWidth * 2 + Theme.Space.sm : buttonWidth
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -432,7 +568,7 @@ struct PaafektImmersiveViewerChromeStack<
                     }
                 }
                 .overlay(alignment: .bottom) {
-                    VStack(spacing: Theme.Space.sm) {
+                    VStack(spacing: Theme.Space.md) {
                         if chrome.isSummoned {
                             summonedExtras()
                                 .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
@@ -451,19 +587,28 @@ struct PaafektImmersiveViewerChromeStack<
                                 .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
                         }
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, Theme.Space.lg)
                     .padding(.bottom, Theme.Space.lg)
-                    .padding(.trailing, 88)
+                    .padding(.trailing, max(persistentActionsTrailingReserve, 88))
                     .animation(PaafektImmersiveChromeMotion.animation(reduceMotion: reduceMotion), value: chrome.phase)
                 }
                 .opacity(hideForCapture ? 0 : 1)
                 .allowsHitTesting(!hideForCapture)
 
-            PaafektImmersiveFitFAB(
-                isActive: fitActive,
-                isDisabled: fitDisabled,
-                action: onFit
-            )
+            HStack(spacing: Theme.Space.sm) {
+                PaafektMorphingPrimaryFAB(
+                    action: morphingPrimaryAction,
+                    isDisabled: morphingPrimaryDisabled,
+                    onTap: onMorphingPrimary
+                )
+                if let onSave {
+                    PaafektImmersiveSaveFAB(
+                        isDisabled: saveDisabled,
+                        action: onSave
+                    )
+                }
+            }
             .padding(.horizontal, Theme.Space.lg)
             .padding(.bottom, Theme.Space.lg)
         }
@@ -474,9 +619,11 @@ extension PaafektImmersiveViewerChromeStack where RestingAccessory == EmptyView,
     init(
         chrome: PaafektViewerChromeController,
         onBack: @escaping () -> Void,
-        onFit: @escaping () -> Void,
-        fitActive: Bool = false,
-        fitDisabled: Bool = false,
+        morphingPrimaryAction: PaafektMorphingPrimaryAction,
+        onMorphingPrimary: @escaping () -> Void,
+        morphingPrimaryDisabled: Bool = false,
+        onSave: (() -> Void)? = nil,
+        saveDisabled: Bool = false,
         measurementText: String? = nil,
         hideForCapture: Bool = false,
         @ViewBuilder summonedToolbar: @escaping () -> SummonedToolbar,
@@ -484,9 +631,11 @@ extension PaafektImmersiveViewerChromeStack where RestingAccessory == EmptyView,
     ) {
         self.chrome = chrome
         self.onBack = onBack
-        self.onFit = onFit
-        self.fitActive = fitActive
-        self.fitDisabled = fitDisabled
+        self.morphingPrimaryAction = morphingPrimaryAction
+        self.onMorphingPrimary = onMorphingPrimary
+        self.morphingPrimaryDisabled = morphingPrimaryDisabled
+        self.onSave = onSave
+        self.saveDisabled = saveDisabled
         self.measurementText = measurementText
         self.hideForCapture = hideForCapture
         self.summonedToolbar = summonedToolbar

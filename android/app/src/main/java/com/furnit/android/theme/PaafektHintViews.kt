@@ -112,7 +112,7 @@ object PaafektHintViews {
         return row
     }
 
-    /** Compact gold-outline hero for summoned toolbar — iOS `PaafektImmersiveCompactHeroAction`. */
+    /** Compact gold-outline hero for summoned toolbar — icon-only (matches iOS). */
     fun createCompactHeroAction(
         context: Context,
         @DrawableRes iconRes: Int,
@@ -124,32 +124,20 @@ object PaafektHintViews {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             background = PaafektDrawables.compactHeroButton(isActive)
-            setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
+            setPadding(dp(context, 10), dp(context, 10), dp(context, 10), dp(context, 10))
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
             tag = isActive
+            contentDescription = label
 
             addView(
                 ImageView(context).apply {
                     setImageResource(iconRes)
                     imageTintList = ContextCompat.getColorStateList(context, R.color.paafekt_accent)
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
-                    layoutParams = LinearLayout.LayoutParams(dp(context, 18), dp(context, 18))
+                    layoutParams = LinearLayout.LayoutParams(dp(context, 20), dp(context, 20))
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                },
-            )
-            addView(
-                TextView(context).apply {
-                    text = label
-                    textSize = 11f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(PaafektColors.accent)
-                    gravity = Gravity.CENTER
-                    maxLines = 1
-                    ellipsize = TextUtils.TruncateAt.END
-                    includeFontPadding = false
-                    setPadding(0, dp(context, 4), 0, 0)
                 },
             )
         }
@@ -170,6 +158,8 @@ class PaafektHintController(
     private val topMarginDp: Int = 96,
 ) {
     private var chipView: View? = null
+    /** Persistent task helper (e.g. full-video tap cue) — not auto-dismissed, not touch-dismissed. */
+    private var stickyChipView: View? = null
     private val dismissRunnable = Runnable { hide(animated = true) }
     private var interactionHookInstalled = false
 
@@ -190,6 +180,72 @@ class PaafektHintController(
         durationMs: Long = 3500L,
     ) {
         showPositioned(context, iconRes, textRes, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, bottomMarginDp = bottomMarginDp, durationMs = durationMs)
+    }
+
+    /**
+     * Top-centered task chip that stays until [hideSticky] — mirrors iOS full-video
+     * `fullVideoFurnitureTapHint` (not gated by summoned chrome / auto-hide).
+     */
+    fun showStickyTop(
+        context: Context,
+        @DrawableRes iconRes: Int,
+        @StringRes textRes: Int,
+        topMarginDp: Int = this.topMarginDp,
+    ) {
+        val desired = context.getString(textRes)
+        stickyChipView?.let { existing ->
+            if (existing.tag == desired) {
+                host.bringChildToFront(existing)
+                return
+            }
+            hideSticky(animated = false)
+        }
+
+        val chip = PaafektHintViews.createChip(context, iconRes, desired).apply {
+            tag = desired
+            elevation = 48f
+            (getChildAt(1) as? TextView)?.let { text ->
+                text.ellipsize = null
+                text.maxLines = 2
+            }
+        }
+        chip.alpha = 0f
+        val params = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            topMargin = dp(context, topMarginDp)
+            marginStart = dp(context, 16)
+            marginEnd = dp(context, 16)
+        }
+        host.addView(chip, params)
+        stickyChipView = chip
+        host.bringChildToFront(chip)
+        val fadeMs = if (areAnimationsEnabled(context)) 200L else 0L
+        if (fadeMs > 0L) {
+            chip.animate().alpha(1f).setDuration(fadeMs).start()
+        } else {
+            chip.alpha = 1f
+        }
+    }
+
+    fun hideSticky(animated: Boolean = true) {
+        val chip = stickyChipView ?: return
+        stickyChipView = null
+        if (animated && areAnimationsEnabled(host.context)) {
+            chip.animate()
+                .alpha(0f)
+                .setDuration(150)
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        host.removeView(chip)
+                    }
+                })
+                .start()
+        } else {
+            host.removeView(chip)
+        }
     }
 
     private fun showPositioned(
@@ -219,6 +275,7 @@ class PaafektHintController(
         host.addView(chip, params)
         chipView = chip
         host.bringChildToFront(chip)
+        stickyChipView?.let { host.bringChildToFront(it) }
         val fadeMs = if (areAnimationsEnabled(context)) 200L else 0L
         if (fadeMs > 0L) {
             chip.animate().alpha(1f).setDuration(fadeMs).start()
@@ -227,7 +284,9 @@ class PaafektHintController(
         }
 
         host.removeCallbacks(dismissRunnable)
-        host.postDelayed(dismissRunnable, durationMs)
+        if (durationMs > 0L) {
+            host.postDelayed(dismissRunnable, durationMs)
+        }
         ensureInteractionDismiss(host)
     }
 
@@ -270,6 +329,7 @@ class PaafektHintController(
         host.addView(chip, params)
         chipView = chip
         host.bringChildToFront(chip)
+        stickyChipView?.let { host.bringChildToFront(it) }
         val fadeMs = if (areAnimationsEnabled(context)) 200L else 0L
         if (fadeMs > 0L) {
             chip.animate().alpha(1f).setDuration(fadeMs).start()
@@ -277,7 +337,9 @@ class PaafektHintController(
             chip.alpha = 1f
         }
         host.removeCallbacks(dismissRunnable)
-        host.postDelayed(dismissRunnable, durationMs)
+        if (durationMs > 0L) {
+            host.postDelayed(dismissRunnable, durationMs)
+        }
         ensureInteractionDismiss(host)
     }
 
@@ -301,16 +363,18 @@ class PaafektHintController(
     }
 
     val isVisible: Boolean
-        get() = chipView != null
+        get() = chipView != null || stickyChipView != null
 
     fun bringToFront() {
         chipView?.let { host.bringChildToFront(it) }
+        stickyChipView?.let { host.bringChildToFront(it) }
     }
 
     private fun ensureInteractionDismiss(root: View) {
         if (interactionHookInstalled) return
         interactionHookInstalled = true
         root.setOnTouchListener { _, event ->
+            // Only transient teaching chips dismiss on touch — sticky full-video helper stays.
             if (event.action == MotionEvent.ACTION_DOWN && chipView != null) {
                 hide(animated = areAnimationsEnabled(root.context))
             }

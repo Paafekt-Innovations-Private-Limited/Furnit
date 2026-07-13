@@ -442,7 +442,7 @@
 "roomViewer.calibrateByWallTitle" = "Calibrate by wall";
 "roomViewer.enterWallDimensionsHint" = "Enter tape-measured front wall (meters), e.g. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "Tap to calibrate";
-"roomViewer.fullVideoSelectionHelper" = "Not this one? Tap to pick another.";
+"roomViewer.fullVideoSelectionHelper" = "Tap another item";
 "roomViewer.detectedMeters" = "Detected: %.2f m";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "Furniture height should be less than room height (%.2f m).";
 "roomViewer.roomMetersShort" = "Room: %.2f m";

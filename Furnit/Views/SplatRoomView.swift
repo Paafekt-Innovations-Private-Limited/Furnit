@@ -549,8 +549,7 @@ struct SplatRoomView: View {
             if isHintVisible(.pickAnother) {
                 PaafektHintChip(
                     systemImage: "text.viewfinder",
-                    text: L10n.RoomViewer.fullVideoSelectionHelper,
-                    maxWidth: 220
+                    text: L10n.RoomViewer.fullVideoSelectionHelper
                 )
                 .padding(.top, 6)
                 .padding(.trailing, 20)
@@ -608,9 +607,7 @@ struct SplatRoomView: View {
                     if isHintVisible(.arSizing) {
                         PaafektHintChip(
                             systemImage: "arrow.up.left.and.arrow.down.right",
-                            text: L10n.RoomViewer.arFurnitureSizingRequiresBrainHint,
-                            maxWidth: 220
-                        )
+                            text: L10n.RoomViewer.arFurnitureSizingRequiresBrainHint                        )
                         .transition(.opacity)
                     }
                 }
@@ -1145,7 +1142,7 @@ struct SplatRoomView: View {
         }
         .allowsHitTesting(false)
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(105)
+        .zIndex(99_999)
     }
 
     private var splatRestingMeasurementPillText: String? {
@@ -1158,16 +1155,45 @@ struct SplatRoomView: View {
         )
     }
 
+    private var splatMorphingPrimaryAction: PaafektMorphingPrimaryAction {
+        PaafektMorphingPrimaryActionResolver.resolve(
+            showingFurnitureFit: showingFurnitureFit,
+            showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+            segmentationMode: furnitureFitSegmentationMode,
+            hasSelectedObject: !selectedFurnitureFitLabels.isEmpty
+        )
+    }
+
+    private var splatMorphingPrimaryDisabled: Bool {
+        isLoading || (splatMorphingPrimaryAction == .segment && !canSegmentSelectedFurniture)
+    }
+
+    private func handleSplatMorphingPrimaryTap() {
+        immersiveChrome.noteChromeInteraction()
+        let action = splatMorphingPrimaryAction
+        guard action != .segment || canSegmentSelectedFurniture else { return }
+        PaafektMorphingPrimaryActionHandler.perform(
+            action,
+            enterFit: toggleFurnitureFit,
+            exitFit: toggleFurnitureFit,
+            segment: activateSelectedFurnitureSegmentation,
+            finishSegmentation: activateSelectedFurnitureSegmentation
+        )
+    }
+
     private var splatImmersiveChromeOverlay: some View {
         PaafektImmersiveViewerChromeStack(
             chrome: immersiveChrome,
             onBack: handleSplatRoomBackTap,
-            onFit: {
+            morphingPrimaryAction: splatMorphingPrimaryAction,
+            onMorphingPrimary: handleSplatMorphingPrimaryTap,
+            morphingPrimaryDisabled: splatMorphingPrimaryDisabled,
+            onSave: allowSave ? {
                 immersiveChrome.noteChromeInteraction()
-                toggleFurnitureFit()
-            },
-            fitActive: showingFurnitureFit,
-            fitDisabled: isLoading,
+                roomName = ""
+                showRoomNameInput = true
+            } : nil,
+            saveDisabled: isLoading || isSavingRoom,
             measurementText: splatRestingMeasurementPillText,
             hideForCapture: isCapturingSnapshot
         ) {
@@ -1241,16 +1267,6 @@ struct SplatRoomView: View {
                             }
                         }
                     }
-                    if allowSave {
-                        PaafektViewerToolbarIconButton(
-                            systemName: "square.and.arrow.down",
-                            accessibilityLabel: L10n.RoomViewer.saveRoom
-                        ) {
-                            immersiveChrome.noteChromeInteraction()
-                            roomName = ""
-                            showRoomNameInput = true
-                        }
-                    }
                 }
             } heroContent: {
                 PaafektImmersiveCompactHeroAction(
@@ -1263,54 +1279,20 @@ struct SplatRoomView: View {
                 }
             }
         } summonedExtras: {
-            VStack(spacing: 10) {
-                if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                    furnitureMeasurementPillContent(showTapHint: false)
-                }
-                segmentButton
+            PaafektImmersiveFitClusterRows {
                 if showingFurnitureFit {
                     roomIntelligencePlacementCardResetOnExit
                 }
+                if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                    furnitureMeasurementPillContent(showTapHint: false)
+                }
             }
-            .padding(.horizontal, Theme.Space.lg)
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            PaafektFurnitureFitDonePersistentOverlay(
-                showingFurnitureFit: showingFurnitureFit,
-                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
-                segmentationMode: furnitureFitSegmentationMode,
-                viewerLabel: "SplatRoomView",
-                onExitFullVideoSegmentation: activateSelectedFurnitureSegmentation,
-                onExitFurnitureFit: toggleFurnitureFit
-            )
+            EmptyView()
         }
         .zIndex(99998)
-    }
-
-    @ViewBuilder
-    private var segmentButton: some View {
-        if showingFurnitureFit && showFullVideoWithIdentifications,
-           furnitureFitSegmentationMode != .segmentSelected {
-            Button(action: activateSelectedFurnitureSegmentation) {
-                Text(L10n.RoomViewer.segmentFurnitureAction)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .frame(height: 44)
-                    .background(
-                        Capsule().fill(
-                            canSegmentSelectedFurniture
-                                ? Color.orange
-                                : Color.black.opacity(0.45)
-                        )
-                    )
-                    .shadow(radius: 4)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSegmentSelectedFurniture)
-            .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
-        }
     }
 
     private var loadingOverlayView: some View {
@@ -2002,41 +1984,16 @@ struct SplatRoomView: View {
            let aesthetic = latestAestheticScore {
             let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
             let fit = latestFitCheckResult
-            VStack(spacing: 10) {
-                if isPlacementIntelligenceExpanded {
-                    placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-                Button {
+            PaafektImmersivePlacementIntelligenceRow(
+                isExpanded: isPlacementIntelligenceExpanded,
+                ringColor: placementIntelligenceRingColor(fit: fit),
+                onToggle: {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         isPlacementIntelligenceExpanded.toggle()
                     }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(white: 0.22), Color(white: 0.12)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 46, height: 46)
-                            .overlay(
-                                Circle()
-                                    .stroke(placementIntelligenceRingColor(fit: fit), lineWidth: 2.5)
-                            )
-                            .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
-                        Image(systemName: "square.split.2x2.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .symbolRenderingMode(.hierarchical)
-                            .accessibilityHidden(true)
-                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.RoomViewer.placementIntelligenceTitle)
-                .accessibilityAddTraits(.isButton)
+            ) {
+                placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
             }
         }
     }
@@ -2058,10 +2015,13 @@ struct SplatRoomView: View {
 
     @ViewBuilder private var allOverlaysLayer: some View {
         ZStack {
+            // Full-video task helper stays visible even after chrome auto-hides.
+            if !isLoading {
+                fullVideoModePillOverlay
+            }
             if !isLoading, immersiveChrome.isSummoned {
                 topTrailingPinchHintOverlay
                 topTrailingActionButtonsOverlay
-                fullVideoModePillOverlay
                 fullVideoToolbarHelperOverlay
             }
             if isLoading { loadingOverlayView }

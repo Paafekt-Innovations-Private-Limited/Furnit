@@ -401,6 +401,8 @@
     <string name="room_viewer_immersive_capture_short">Capture</string>
     <string name="room_viewer_immersive_show_controls">Show controls</string>
     <string name="room_viewer_immersive_tap_to_hide">Tap to hide</string>
+    <string name="room_viewer_full_video_furniture_tap_hint">Tap all objects which you want to check with room</string>
+    <string name="room_viewer_full_video_selection_helper">Tap another item</string>
     <string name="room_viewer_recenter">Recenter view</string>
     <string name="room_viewer_display_all_helpers">Show gesture hints</string>
     <string name="room_viewer_ar_sizing_enable">Enable camera-assisted furniture sizing</string>

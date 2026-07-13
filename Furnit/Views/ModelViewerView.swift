@@ -241,7 +241,7 @@ struct ModelViewerView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
                 .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(9002)
+                .zIndex(99_999)
             }
         }
     }
@@ -283,33 +283,45 @@ struct ModelViewerView: View {
         furnitureFitShowIdentifyLivePreview = true
     }
 
-    private var segmentModeToggleChrome: some View {
-        Group {
-            if showingFurnitureFit && showFullVideoWithIdentifications,
-               furnitureFitSegmentationMode != .segmentSelected {
-                Button(action: {
-                    guard canSegmentSelectedFurniture else { return }
-                    furnitureFitSegmentationMode = .segmentSelected
-                    dismissFullVideoFurnitureTapHint()
-                }) {
-                    Text(L10n.RoomViewer.segmentFurnitureAction)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .frame(height: 44)
-                        .background(
-                            Capsule().fill(
-                                canSegmentSelectedFurniture
-                                    ? Color.orange
-                                    : Color.black.opacity(0.45)
-                            )
-                        )
-                        .shadow(radius: 4)
-                }
-                .disabled(!canSegmentSelectedFurniture)
-                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
-            }
+    private func activateModelViewerSelectedFurnitureSegmentation() {
+        if furnitureFitSegmentationMode == .segmentSelected {
+            exitFullVideoSegmentation()
+            return
         }
+        guard canSegmentSelectedFurniture else { return }
+        furnitureFitSegmentationMode = .segmentSelected
+        dismissFullVideoFurnitureTapHint()
+    }
+
+    private var modelViewerMorphingPrimaryAction: PaafektMorphingPrimaryAction {
+        PaafektMorphingPrimaryActionResolver.resolve(
+            showingFurnitureFit: showingFurnitureFit,
+            showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+            segmentationMode: furnitureFitSegmentationMode,
+            hasSelectedObject: !selectedFurnitureFitLabels.isEmpty
+        )
+    }
+
+    private var modelViewerMorphingPrimaryDisabled: Bool {
+        isCapturingSnapshot ||
+            (modelViewerMorphingPrimaryAction == .segment && !canSegmentSelectedFurniture)
+    }
+
+    private func handleModelViewerMorphingPrimaryTap() {
+        immersiveChrome.noteChromeInteraction()
+        let action = modelViewerMorphingPrimaryAction
+        guard action != .segment || canSegmentSelectedFurniture else { return }
+        PaafektMorphingPrimaryActionHandler.perform(
+            action,
+            enterFit: toggleFurnitureFit,
+            exitFit: toggleFurnitureFit,
+            segment: activateModelViewerSelectedFurnitureSegmentation,
+            finishSegmentation: activateModelViewerSelectedFurnitureSegmentation
+        )
+    }
+
+    private var segmentModeToggleChrome: some View {
+        EmptyView()
     }
 
     private var modelViewerBottomHeroChrome: some View {
@@ -318,7 +330,6 @@ struct ModelViewerView: View {
             ZStack(alignment: .bottomTrailing) {
                 ZStack(alignment: .bottom) {
                     VStack(spacing: 10) {
-                        segmentModeToggleChrome
                         PaafektViewerCaptureHeroButton(
                             isDisabled: isCapturingSnapshot,
                             action: saveFurnitureFitSnapshot
@@ -333,10 +344,10 @@ struct ModelViewerView: View {
                 .opacity(isCapturingSnapshot ? 0 : 1)
                 .allowsHitTesting(!isCapturingSnapshot)
 
-                PaafektImmersiveFitFAB(
-                    isActive: showingFurnitureFit,
-                    isDisabled: isCapturingSnapshot,
-                    action: toggleFurnitureFit
+                PaafektMorphingPrimaryFAB(
+                    action: modelViewerMorphingPrimaryAction,
+                    isDisabled: modelViewerMorphingPrimaryDisabled,
+                    onTap: handleModelViewerMorphingPrimaryTap
                 )
                 .padding(.horizontal, Theme.Space.lg)
                 .padding(.bottom, 20)
@@ -366,12 +377,9 @@ struct ModelViewerView: View {
                     presentationMode.wrappedValue.dismiss()
                 }
             },
-            onFit: {
-                immersiveChrome.noteChromeInteraction()
-                toggleFurnitureFit()
-            },
-            fitActive: showingFurnitureFit,
-            fitDisabled: isCapturingSnapshot,
+            morphingPrimaryAction: modelViewerMorphingPrimaryAction,
+            onMorphingPrimary: handleModelViewerMorphingPrimaryTap,
+            morphingPrimaryDisabled: modelViewerMorphingPrimaryDisabled,
             measurementText: modelViewerRestingMeasurementPillText,
             hideForCapture: isCapturingSnapshot
         ) {
@@ -439,24 +447,15 @@ struct ModelViewerView: View {
                 }
             }
         } summonedExtras: {
-            VStack(spacing: 10) {
-                segmentModeToggleChrome
+            PaafektImmersiveFitClusterRows {
                 if showingFurnitureFit {
                     roomIntelligencePlacementCardResetOnExit
                 }
             }
-            .padding(.horizontal, Theme.Space.lg)
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            PaafektFurnitureFitDonePersistentOverlay(
-                showingFurnitureFit: showingFurnitureFit,
-                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
-                segmentationMode: furnitureFitSegmentationMode,
-                viewerLabel: "ModelViewerView",
-                onExitFullVideoSegmentation: exitFullVideoSegmentation,
-                onExitFurnitureFit: toggleFurnitureFit
-            )
+            EmptyView()
         }
         .zIndex(99998)
     }
@@ -465,11 +464,12 @@ struct ModelViewerView: View {
         ZStack {
             modelViewerRealityAndFurnitureUnderlay
             modelViewerRoomDimensionsHintLayer
+            // Full-video task helper stays visible even after chrome auto-hides.
+            fullVideoFurnitureTapBubbleOverlay
             if suppressBuiltInTopChrome || immersiveChrome.isSummoned {
                 fullVideoToolbarHelperOverlay
                 topTrailingPinchAndSizingHintsOverlay
                 navigationTeachingHintBottomOverlay
-                fullVideoFurnitureTapBubbleOverlay
             }
             if suppressBuiltInTopChrome {
                 fullVideoModeFloatingButtonOverlay
@@ -786,9 +786,7 @@ struct ModelViewerView: View {
                 fullVideoSelectionHelperVisible {
                 PaafektHintChip(
                     systemImage: "text.viewfinder",
-                    text: L10n.RoomViewer.fullVideoSelectionHelper,
-                    maxWidth: 220
-                )
+                    text: L10n.RoomViewer.fullVideoSelectionHelper                )
                 .padding(.top, 6)
                 .padding(.trailing, 54)
                 .offset(y: 108)
@@ -868,13 +866,14 @@ struct ModelViewerView: View {
 
     private func toggleFullVideoIdentifications() {
         showFullVideoWithIdentifications.toggle()
-        dismissFullVideoFurnitureTapHint()
         if showFullVideoWithIdentifications {
             cancelFullVideoSelectionHelper()
             // Enter the tap-to-segment flow: show live identifications and wait for a tap.
             furnitureFitSegmentationMode = .identifyOnly
             furnitureFitShowIdentifyLivePreview = true
+            presentFullVideoFurnitureTapHintIfNeeded()
         } else {
+            dismissFullVideoFurnitureTapHint()
             // Back to the brain default: auto-segment the highest-confidence primary.
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
@@ -1136,39 +1135,18 @@ struct ModelViewerView: View {
         if showingFurnitureFit, authoritativeRoomModelForMetrics != nil {
             let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
             let fit = latestFitCheckResult
-            VStack(spacing: 10) {
-                if isPlacementIntelligenceExpanded, let aesthetic = latestAestheticScore {
-                    placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-                Button {
+            PaafektImmersivePlacementIntelligenceRow(
+                isExpanded: isPlacementIntelligenceExpanded,
+                ringColor: placementIntelligenceRingColor(fit: fit),
+                onToggle: {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         isPlacementIntelligenceExpanded.toggle()
                     }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(white: 0.22), Color(white: 0.12)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 46, height: 46)
-                            .overlay(
-                                Circle()
-                                    .stroke(placementIntelligenceRingColor(fit: fit), lineWidth: 2.5)
-                            )
-                        Image(systemName: "square.split.2x2.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .symbolRenderingMode(.hierarchical)
-                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.RoomViewer.placementIntelligenceTitle)
-                .accessibilityAddTraits(.isButton)
+            ) {
+                if let aesthetic = latestAestheticScore {
+                    placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
+                }
             }
             .onChange(of: showingFurnitureFit) { _, isShowing in
                 if !isShowing { isPlacementIntelligenceExpanded = false }

@@ -112,6 +112,8 @@ class GLBRoomActivity : AppCompatActivity() {
     private var immersiveBackButton: View? = null
     private var immersiveSummonButton: View? = null
     private var immersiveFitFab: LinearLayout? = null
+    private var immersiveSaveFab: LinearLayout? = null
+    private var immersivePersistentActions: PaafektViewerToolbar.PersistentPrimaryActionsHolder? = null
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveTapDetector: GestureDetector
     private lateinit var brainDetectionOverlay: FrameLayout
@@ -313,16 +315,25 @@ class GLBRoomActivity : AppCompatActivity() {
             ),
         )
 
-        val fitFab = PaafektViewerToolbar.createPersistentFitFab(
+        val persistentActions = PaafektViewerToolbar.createPersistentPrimaryActionsRow(
             this@GLBRoomActivity,
-            getString(R.string.room_viewer_immersive_fit_short),
-        ) {
-            immersiveChrome.noteChromeInteraction()
-            toggleInlineBrainSegmentation()
-        }
-        immersiveFitFab = fitFab
-        fitFab.elevation = 40f
-        rootLayout.addView(fitFab)
+            showFit = true,
+            showSave = isPreviewMode,
+            fitLabel = getString(R.string.room_viewer_immersive_fit_short),
+            saveLabel = getString(R.string.common_save),
+            onFit = {
+                onMorphingPrimaryFitPressed()
+            },
+            onSave = {
+                immersiveChrome.noteChromeInteraction()
+                showSaveDialog()
+            },
+        )
+        immersivePersistentActions = persistentActions
+        immersiveFitFab = persistentActions.fitButton
+        immersiveSaveFab = persistentActions.saveButton
+        persistentActions.container.elevation = 40f
+        rootLayout.addView(persistentActions.container)
 
         immersiveChrome.onPhaseChanged = { refreshImmersiveChromeVisibility() }
         refreshImmersiveChromeVisibility(animate = false)
@@ -454,6 +465,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 immersiveFitFab?.layoutParams = lp
             }
         }
+        PaafektViewerToolbar.updatePersistentPrimaryActionsInsets(immersivePersistentActions, bars.bottom)
         immersiveSummonButton?.layoutParams?.let { lp ->
             if (lp is FrameLayout.LayoutParams) {
                 lp.bottomMargin = bars.bottom + PaafektSpace.lg(this)
@@ -681,7 +693,7 @@ class GLBRoomActivity : AppCompatActivity() {
         if (::immersiveRestingChrome.isInitialized) {
             rootLayout.bringChildToFront(immersiveRestingChrome)
         }
-        immersiveFitFab?.let { rootLayout.bringChildToFront(it) }
+        immersivePersistentActions?.container?.let { rootLayout.bringChildToFront(it) }
         brainSegmentationDoneButton?.let { rootLayout.bringChildToFront(it) }
         if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
             rootLayout.bringChildToFront(brainProgressOverlay)
@@ -734,7 +746,13 @@ class GLBRoomActivity : AppCompatActivity() {
         val toolbar = summonedToolbar ?: return
         val brainActive = ::brainDetectionOverlay.isInitialized &&
             brainDetectionOverlay.visibility == View.VISIBLE
-        immersiveFitFab?.let { PaafektViewerToolbar.setPersistentFitFabActive(it, brainActive) }
+        immersiveFitFab?.let {
+            PaafektViewerToolbar.updateMorphingPrimaryFitButton(
+                it,
+                resolveMorphingPrimaryAction(),
+                inlineBrainSelectedPins.isNotEmpty(),
+            )
+        }
         toolbar.setFullVideoVisible(brainActive)
         toolbar.setFullVideoActive(inlineBrainFullVideoEnabled)
         toolbar.setArSizingVisible(brainActive)
@@ -745,7 +763,6 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun createBottomControls(): FrameLayout {
         val holder = PaafektImmersiveSummonedToolbar.createBottomChrome(
             this@GLBRoomActivity,
-            onTapToHide = { immersiveChrome.immerse() },
             onRecenter = {
                 immersiveChrome.noteChromeInteraction()
                 recenterCamera()
@@ -781,14 +798,6 @@ class GLBRoomActivity : AppCompatActivity() {
             onCapture = {
                 immersiveChrome.noteChromeInteraction()
                 takeScreenshot()
-            },
-            onPreviewSave = if (isPreviewMode) {
-                {
-                    immersiveChrome.noteChromeInteraction()
-                    showSaveDialog()
-                }
-            } else {
-                null
             },
         )
         summonedToolbar = holder
@@ -903,8 +912,11 @@ class GLBRoomActivity : AppCompatActivity() {
         )
         if (inlineBrainFullVideoEnabled) {
             hideBrainProgress()
+            presentFullVideoFurnitureTapHint()
         } else {
+            dismissFullVideoFurnitureTapHint()
             showBrainProgress(getString(R.string.smartypants_detecting_furniture))
+            presentFullVideoSelectionHelper()
         }
         updateInlineBrainSegmentButton()
         updateSummonedToolbarState()
@@ -1011,10 +1023,11 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setDetectionBoxVisibility(inlineBrainFullVideoEnabled)
         brainDetectionOverlayView.setIdentifySelectionState(inlineBrainFullVideoEnabled, inlineBrainSelectedPins)
         showBrainProgress(getString(R.string.detector_loading_model), 20)
-        setBrainButtonActive(true)
+        refreshMorphingPrimaryFitButton()
         updateSummonedToolbarState()
         updateInlineBrainSegmentButton()
         ensureNavigationChromeOnTop()
+        presentFullVideoSelectionHelper()
 
         lifecycleScope.launch {
             val manager = furnitureFitManager ?: withContext(Dispatchers.IO) {
@@ -1022,7 +1035,7 @@ class GLBRoomActivity : AppCompatActivity() {
             }
             if (manager == null) {
                 hideBrainProgress()
-                setBrainButtonActive(false)
+                refreshMorphingPrimaryFitButton()
                 Toast.makeText(this@GLBRoomActivity, getString(R.string.detector_model_unavailable), Toast.LENGTH_SHORT).show()
                 return@launch
             }
@@ -1058,11 +1071,14 @@ class GLBRoomActivity : AppCompatActivity() {
             )
             brainDetectionOverlayView.setDetectionBoxVisibility(true)
             brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
+            presentFullVideoFurnitureTapHint()
         } else if (inlineBrainSelectedPins.isNotEmpty()) {
             inlineBrainMode = InlineBrainMode.SEGMENT_SELECTED
             brainDetectionOverlayView.setDetectionBoxVisibility(false)
             brainDetectionOverlayView.setIdentifySelectionState(false, inlineBrainSelectedPins)
             showBrainProgress(getString(R.string.detector_segmenting_selection))
+            // Keep sticky helper visible during segment (same as iOS full-video mode pill).
+            presentFullVideoFurnitureTapHint()
         }
         updateInlineBrainSegmentButton()
         updateInlineBrainCameraPreviewVisibility()
@@ -1070,47 +1086,49 @@ class GLBRoomActivity : AppCompatActivity() {
         // thread and delays the first selected-segmentation frame; hiding PreviewView is enough.
     }
 
+    private fun resolveMorphingPrimaryAction(): PaafektViewerToolbar.MorphingPrimaryAction {
+        val showingFurnitureFit = ::brainDetectionOverlay.isInitialized &&
+            brainDetectionOverlay.visibility == View.VISIBLE
+        return PaafektViewerToolbar.MorphingPrimaryActionResolver.resolve(
+            showingFurnitureFit = showingFurnitureFit,
+            showFullVideoWithIdentifications = inlineBrainFullVideoEnabled,
+            segmentationModeSegmentSelected = inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED,
+            hasSelectedObject = inlineBrainSelectedPins.isNotEmpty(),
+        )
+    }
+
+    private fun onMorphingPrimaryFitPressed() {
+        immersiveChrome.noteChromeInteraction()
+        when (resolveMorphingPrimaryAction()) {
+            PaafektViewerToolbar.MorphingPrimaryAction.FIT_ENTER ->
+                toggleInlineBrainSegmentation()
+            PaafektViewerToolbar.MorphingPrimaryAction.FIT_EXIT_ACTIVE ->
+                stopInlineBrainSegmentation()
+            PaafektViewerToolbar.MorphingPrimaryAction.SEGMENT ->
+                toggleInlineBrainSegmentMode()
+            PaafektViewerToolbar.MorphingPrimaryAction.DONE ->
+                onSegmentationDonePressed()
+        }
+    }
+
+    private fun updateMorphingPrimaryFitState() {
+        val action = resolveMorphingPrimaryAction()
+        val segmentEnabled = inlineBrainSelectedPins.isNotEmpty()
+        PaafektViewerToolbar.updateMorphingPrimaryFitButton(
+            immersiveFitFab,
+            action,
+            segmentEnabled,
+        )
+        brainSegmentButton?.visibility = View.GONE
+        brainSegmentationDoneButton?.visibility = View.GONE
+    }
+
     private fun updateInlineBrainSegmentButton() {
-        updateSegmentationDoneButton()
-        val button = brainSegmentButton ?: return
-        if (!inlineBrainFullVideoEnabled || brainDetectionOverlay.visibility != View.VISIBLE) {
-            button.visibility = View.GONE
-            return
-        }
-        if (inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED) {
-            button.visibility = View.GONE
-            return
-        }
-        if (immersiveChrome.phase != PaafektImmersiveChromeController.Phase.SUMMONED) {
-            button.visibility = View.GONE
-            return
-        }
-        button.visibility = View.VISIBLE
-        button.text = getString(R.string.segment_furniture_action)
-        val background = (button.background as? GradientDrawable) ?: GradientDrawable().apply {
-            cornerRadius = dpToPx(24).toFloat()
-        }
-        if (inlineBrainSelectedPins.isNotEmpty()) {
-            background.setColor(Color.parseColor("#FF9500"))
-            button.setTextColor(Color.WHITE)
-            button.alpha = 1f
-        } else {
-            background.setColor(Color.parseColor("#73000000"))
-            button.setTextColor(Color.WHITE)
-            button.alpha = 0.55f
-        }
-        button.background = background
+        updateMorphingPrimaryFitState()
     }
 
     private fun updateSegmentationDoneButton() {
-        val button = brainSegmentationDoneButton ?: return
-        val overlayVisible = ::brainDetectionOverlay.isInitialized &&
-            brainDetectionOverlay.visibility == View.VISIBLE
-        val isActive = overlayVisible && (
-            !inlineBrainFullVideoEnabled ||
-                inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED
-            )
-        button.visibility = if (isActive) View.VISIBLE else View.GONE
+        updateMorphingPrimaryFitState()
     }
 
     private fun detectionIoU(first: DetectionResult, second: DetectionResult): Float {
@@ -1224,7 +1242,7 @@ class GLBRoomActivity : AppCompatActivity() {
         } catch (e: Exception) {
             brainAcceptingUpdates = false
             hideBrainProgress()
-            setBrainButtonActive(false)
+            refreshMorphingPrimaryFitButton()
             updateInlineBrainCameraPreviewVisibility()
             LogUtil.e(TAG, "Inline brain camera bind failed", e)
             Toast.makeText(this, getString(R.string.smartypants_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
@@ -1305,7 +1323,7 @@ class GLBRoomActivity : AppCompatActivity() {
         if (::brainCameraPreview.isInitialized) {
             brainCameraPreview.visibility = View.GONE
         }
-        setBrainButtonActive(false)
+        refreshMorphingPrimaryFitButton()
         inlineBrainArAssistedSizingEnabled = false
         updateSummonedToolbarState()
         try {
@@ -1313,11 +1331,42 @@ class GLBRoomActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         cameraProvider = null
+        dismissFullVideoFurnitureTapHint()
+        hintController.hide(animated = false)
         ensureNavigationChromeOnTop()
     }
 
-    private fun setBrainButtonActive(active: Boolean) {
-        immersiveFitFab?.let { PaafektViewerToolbar.setPersistentFitFabActive(it, active) }
+    private fun presentFullVideoFurnitureTapHint() {
+        if (!inlineBrainFullVideoEnabled) return
+        if (!::brainDetectionOverlay.isInitialized || brainDetectionOverlay.visibility != View.VISIBLE) return
+        hintController.showStickyTop(
+            this,
+            R.drawable.ic_gesture_tap,
+            R.string.room_viewer_full_video_furniture_tap_hint,
+            topMarginDp = 52,
+        )
+    }
+
+    private fun dismissFullVideoFurnitureTapHint() {
+        hintController.hideSticky(animated = true)
+    }
+
+    /** Matches iOS `presentFullVideoSelectionHelperIfNeeded` — transient when Fit is on, full video off. */
+    private fun presentFullVideoSelectionHelper() {
+        val fitActive = ::brainDetectionOverlay.isInitialized &&
+            brainDetectionOverlay.visibility == View.VISIBLE
+        if (!fitActive || inlineBrainFullVideoEnabled) return
+        if (inlineBrainMode != InlineBrainMode.DEFAULT_SEGMENT) return
+        hintController.show(
+            this,
+            R.drawable.ic_text_viewfinder,
+            R.string.room_viewer_full_video_selection_helper,
+            durationMs = 3000L,
+        )
+    }
+
+    private fun refreshMorphingPrimaryFitButton() {
+        updateMorphingPrimaryFitState()
     }
 
     private fun createLoadingOverlay(): FrameLayout {

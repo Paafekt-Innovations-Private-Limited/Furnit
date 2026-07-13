@@ -91,6 +91,8 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var hintController: PaafektHintController
     private lateinit var firstRunCoachController: PaafektFirstRunCoachMarkController
     private var immersiveFitFab: LinearLayout? = null
+    private var immersiveSaveFab: LinearLayout? = null
+    private var immersivePersistentActions: PaafektViewerToolbar.PersistentPrimaryActionsHolder? = null
     private var heroFitAction: () -> Unit = {}
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveRestingChrome: FrameLayout
@@ -188,16 +190,14 @@ class ModelDetailActivity : AppCompatActivity() {
             modelTitle.text = getString(R.string.model_detail_preview)
             LogUtil.d(TAG, "Preview mode - GLB path: $directGlbPath")
 
-            // In preview mode, show save button (down arrow), hide share button
-            saveButton.visibility = View.VISIBLE
-            saveButton.setOnClickListener { showSaveDialog() }
+            // Persistent Save FAB handles preview save; hide legacy toolbar save icon.
+            saveButton.visibility = View.GONE
             shareButton.visibility = View.GONE
 
             // Brain button prompts to save first in preview mode
             brainButton.visibility = View.GONE
             heroFitAction = {
-                LogUtil.d(TAG, "Brain button clicked in preview mode")
-                Toast.makeText(this, getString(R.string.model_detail_save_first), Toast.LENGTH_SHORT).show()
+                launchPreviewFurnitureFit()
             }
 
             // Screenshot works in preview mode
@@ -283,16 +283,26 @@ class ModelDetailActivity : AppCompatActivity() {
             ),
         )
 
-        val fitFab = PaafektViewerToolbar.createPersistentFitFab(
+        val persistentActions = PaafektViewerToolbar.createPersistentPrimaryActionsRow(
             this@ModelDetailActivity,
-            getString(R.string.room_viewer_immersive_fit_short),
-        ) {
-            immersiveChrome.noteChromeInteraction()
-            heroFitAction()
-        }
-        immersiveFitFab = fitFab
-        fitFab.elevation = 40f
-        viewerRootLayout.addView(fitFab)
+            showFit = true,
+            showSave = intent.getStringExtra(EXTRA_GLB_PATH) != null,
+            fitLabel = getString(R.string.room_viewer_immersive_fit_short),
+            saveLabel = getString(R.string.common_save),
+            onFit = {
+                immersiveChrome.noteChromeInteraction()
+                heroFitAction()
+            },
+            onSave = {
+                immersiveChrome.noteChromeInteraction()
+                showSaveDialog()
+            },
+        )
+        immersivePersistentActions = persistentActions
+        immersiveFitFab = persistentActions.fitButton
+        immersiveSaveFab = persistentActions.saveButton
+        persistentActions.container.elevation = 40f
+        viewerRootLayout.addView(persistentActions.container)
 
         immersiveTapDetector = GestureDetector(
             this,
@@ -440,7 +450,7 @@ class ModelDetailActivity : AppCompatActivity() {
         )
         summonedBottomChrome.elevation = 40f
         immersiveFitFab?.elevation = 41f
-        immersiveFitFab?.let { viewerRootLayout.bringChildToFront(it) }
+        immersivePersistentActions?.container?.let { viewerRootLayout.bringChildToFront(it) }
     }
 
     private fun recenterCamera() {
@@ -497,7 +507,6 @@ class ModelDetailActivity : AppCompatActivity() {
 
         val holder = PaafektImmersiveSummonedToolbar.createBottomChrome(
             this,
-            onTapToHide = { immersiveChrome.immerse() },
             onRecenter = {
                 immersiveChrome.noteChromeInteraction()
                 recenterCamera()
@@ -539,6 +548,20 @@ class ModelDetailActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply { gravity = Gravity.BOTTOM },
         )
+    }
+
+    private fun launchPreviewFurnitureFit() {
+        val path = glbPath ?: return
+        val roomFolder = File(path).parent ?: return
+        LogUtil.d(TAG, "Fit click: preview ROOM_FOLDER=$roomFolder")
+        val intent = Intent(this, FurnitureFitActivity::class.java)
+        intent.putExtra("ROOM_ID", "preview")
+        intent.putExtra("ROOM_NAME", getString(R.string.model_detail_preview))
+        intent.putExtra("ROOM_FOLDER", roomFolder)
+        intent.putExtra("ROOM_WIDTH", roomWidth)
+        intent.putExtra("ROOM_HEIGHT", roomHeight)
+        intent.putExtra("ROOM_DEPTH", roomDepth)
+        startActivity(intent)
     }
 
     private fun showHelpDialog() {

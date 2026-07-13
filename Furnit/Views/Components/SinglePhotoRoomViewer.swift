@@ -1329,9 +1329,10 @@ private struct DepthAnythingPreviewRoomView: View {
                 previewSceneAndFurnitureUnderlay
                     .ignoresSafeArea()
 
+                // Full-video task helper stays visible even after chrome auto-hides.
+                previewFullVideoFurnitureTapBubbleOverlay
                 if immersiveChrome.isSummoned {
                     previewFullVideoToolbarHelperOverlay
-                    previewFullVideoFurnitureTapBubbleOverlay
                 }
 
                 if let debugLine = destination.measurementDebugLine,
@@ -1440,16 +1441,55 @@ private struct DepthAnythingPreviewRoomView: View {
         nil
     }
 
+    private func activatePreviewSelectedFurnitureSegmentation() {
+        if furnitureFitSegmentationMode == .segmentSelected {
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            return
+        }
+        guard canSegmentSelectedFurniture else { return }
+        furnitureFitSegmentationMode = .segmentSelected
+    }
+
+    private var previewMorphingPrimaryAction: PaafektMorphingPrimaryAction {
+        PaafektMorphingPrimaryActionResolver.resolve(
+            showingFurnitureFit: showingFurnitureFit,
+            showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+            segmentationMode: furnitureFitSegmentationMode,
+            hasSelectedObject: !selectedFurnitureFitLabels.isEmpty
+        )
+    }
+
+    private var previewMorphingPrimaryDisabled: Bool {
+        isSavingRoom || (previewMorphingPrimaryAction == .segment && !canSegmentSelectedFurniture)
+    }
+
+    private func handlePreviewMorphingPrimaryTap() {
+        immersiveChrome.noteChromeInteraction()
+        let action = previewMorphingPrimaryAction
+        guard action != .segment || canSegmentSelectedFurniture else { return }
+        PaafektMorphingPrimaryActionHandler.perform(
+            action,
+            enterFit: togglePreviewFurnitureFit,
+            exitFit: togglePreviewFurnitureFit,
+            segment: activatePreviewSelectedFurnitureSegmentation,
+            finishSegmentation: activatePreviewSelectedFurnitureSegmentation
+        )
+    }
+
     private var previewImmersiveChromeOverlay: some View {
         PaafektImmersiveViewerChromeStack(
             chrome: immersiveChrome,
             onBack: handleBackTap,
-            onFit: {
+            morphingPrimaryAction: previewMorphingPrimaryAction,
+            onMorphingPrimary: handlePreviewMorphingPrimaryTap,
+            morphingPrimaryDisabled: previewMorphingPrimaryDisabled,
+            onSave: {
                 immersiveChrome.noteChromeInteraction()
-                togglePreviewFurnitureFit()
+                roomName = ""
+                showRoomNameInput = true
             },
-            fitActive: showingFurnitureFit,
-            fitDisabled: isSavingRoom,
+            saveDisabled: isSavingRoom,
             measurementText: previewRestingMeasurementPillText,
             hideForCapture: isSavingRoom || isCapturingSnapshot
         ) {
@@ -1492,15 +1532,6 @@ private struct DepthAnythingPreviewRoomView: View {
                             togglePreviewFullVideoIdentifications()
                         }
                     }
-                    PaafektViewerToolbarIconButton(
-                        systemName: "square.and.arrow.down",
-                        accessibilityLabel: L10n.RoomViewer.saveRoom
-                    ) {
-                        immersiveChrome.noteChromeInteraction()
-                        roomName = ""
-                        showRoomNameInput = true
-                    }
-                    .disabled(isSavingRoom)
                 }
             } heroContent: {
                 PaafektImmersiveCompactHeroAction(
@@ -1513,25 +1544,13 @@ private struct DepthAnythingPreviewRoomView: View {
                 }
             }
         } summonedExtras: {
-            VStack(spacing: 10) {
-                previewSegmentModeToggleChrome
+            PaafektImmersiveFitClusterRows {
                 previewRoomIntelligencePlacementCardResetOnExit
             }
-            .padding(.horizontal, Theme.Space.lg)
         } restingAccessory: {
             EmptyView()
         } persistentOverlay: {
-            PaafektFurnitureFitDonePersistentOverlay(
-                showingFurnitureFit: showingFurnitureFit,
-                showFullVideoWithIdentifications: showFullVideoWithIdentifications,
-                segmentationMode: furnitureFitSegmentationMode,
-                viewerLabel: "SinglePhotoRoomViewer",
-                onExitFullVideoSegmentation: {
-                    furnitureFitSegmentationMode = .identifyOnly
-                    furnitureFitShowIdentifyLivePreview = true
-                },
-                onExitFurnitureFit: togglePreviewFurnitureFit
-            )
+            EmptyView()
         }
         .zIndex(99_998)
     }
@@ -1545,31 +1564,7 @@ private struct DepthAnythingPreviewRoomView: View {
 
     @ViewBuilder
     private var previewSegmentModeToggleChrome: some View {
-        Group {
-            if showingFurnitureFit && showFullVideoWithIdentifications,
-               furnitureFitSegmentationMode != .segmentSelected {
-                Button(action: {
-                    guard canSegmentSelectedFurniture else { return }
-                    furnitureFitSegmentationMode = .segmentSelected
-                }) {
-                    Text(L10n.RoomViewer.segmentFurnitureAction)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .frame(height: 44)
-                    .background(
-                        Capsule().fill(
-                            canSegmentSelectedFurniture
-                                ? Color.orange
-                                : Color.black.opacity(0.45)
-                        )
-                    )
-                    .shadow(radius: 4)
-                }
-                .disabled(!canSegmentSelectedFurniture)
-                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
-            }
-        }
+        EmptyView()
     }
 
     private var previewFullVideoToolbarHelperOverlay: some View {
@@ -1583,9 +1578,7 @@ private struct DepthAnythingPreviewRoomView: View {
                 fullVideoSelectionHelperVisible {
                 PaafektHintChip(
                     systemImage: "text.viewfinder",
-                    text: L10n.RoomViewer.fullVideoSelectionHelper,
-                    maxWidth: 220
-                )
+                    text: L10n.RoomViewer.fullVideoSelectionHelper                )
                 .padding(.top, 6)
                 .padding(.trailing, 54)
                 .offset(y: 108)
@@ -1608,7 +1601,7 @@ private struct DepthAnythingPreviewRoomView: View {
                     Spacer()
                 }
                 .allowsHitTesting(false)
-                .zIndex(105)
+                .zIndex(99_999)
             }
         }
     }
@@ -1795,39 +1788,18 @@ private struct DepthAnythingPreviewRoomView: View {
         if showingFurnitureFit, authoritativeRoomModelForMetrics != nil {
             let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
             let fit = latestFitCheckResult
-            VStack(spacing: 10) {
-                if isPlacementIntelligenceExpanded, let aesthetic = latestAestheticScore {
-                    placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-                Button {
+            PaafektImmersivePlacementIntelligenceRow(
+                isExpanded: isPlacementIntelligenceExpanded,
+                ringColor: placementIntelligenceRingColor(fit: fit),
+                onToggle: {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         isPlacementIntelligenceExpanded.toggle()
                     }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(white: 0.22), Color(white: 0.12)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 46, height: 46)
-                            .overlay(
-                                Circle()
-                                    .stroke(placementIntelligenceRingColor(fit: fit), lineWidth: 2.5)
-                            )
-                        Image(systemName: "square.split.2x2.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .symbolRenderingMode(.hierarchical)
-                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.RoomViewer.placementIntelligenceTitle)
-                .accessibilityAddTraits(.isButton)
+            ) {
+                if let aesthetic = latestAestheticScore {
+                    placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
+                }
             }
             .onChange(of: showingFurnitureFit) { _, isShowing in
                 if !isShowing { isPlacementIntelligenceExpanded = false }

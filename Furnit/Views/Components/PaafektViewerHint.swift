@@ -144,9 +144,72 @@ struct PaafektRoomMeasurementPill: View {
                 .font(Theme.Typo.caption())
                 .foregroundStyle(primaryColor)
         }
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, Theme.Space.sm)
         .paafektGlassCapsuleSurface()
+    }
+}
+
+/// Collapsed placement control in the measured lower cluster — icon only (ring = fit signal).
+struct PaafektPlacementIntelligenceChip: View {
+    let ringColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(white: 0.22), Color(white: 0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 40, height: 40)
+                    .overlay(Circle().stroke(ringColor, lineWidth: 2.5))
+                    .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+                Image(systemName: "square.split.2x2.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .symbolRenderingMode(.hierarchical)
+                    .accessibilityHidden(true)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.RoomViewer.placementIntelligenceTitle)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// Placement expanded card + chip row — own cluster row with spacing above the measurement pill.
+struct PaafektImmersivePlacementIntelligenceRow<Expanded: View>: View {
+    var isExpanded: Bool
+    let ringColor: Color
+    let onToggle: () -> Void
+    @ViewBuilder let expandedContent: () -> Expanded
+
+    var body: some View {
+        VStack(spacing: Theme.Space.sm) {
+            if isExpanded {
+                expandedContent()
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            PaafektPlacementIntelligenceChip(ringColor: ringColor, action: onToggle)
+        }
+    }
+}
+
+/// Bottom-anchored fit-mode rows (Smart Placement, furniture height) with consistent spacing tokens.
+struct PaafektImmersiveFitClusterRows<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(spacing: Theme.Space.md) {
+            content()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
