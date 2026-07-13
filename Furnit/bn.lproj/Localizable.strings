@@ -305,7 +305,9 @@
 "roomViewer.title" = "3D রুম ভিউ";
 "roomViewer.controls" = "চলাচলে জয়স্টিক ব্যবহার করুন • জুমে পিঞ্চ করুন";
 "roomViewer.saveRoom" = "রুম সেভ করুন";
+"roomViewer.nameYourRoom" = "আপনার রুমের নাম দিন";
 "roomViewer.roomName" = "রুমের নাম";
+"roomViewer.roomNamePlaceholder" = "যেমন: লিভিং রুম";
 "roomViewer.enterName" = "আপনার রুমের নাম দিন";
 "roomViewer.savingRoom" = "রুম সেভ হচ্ছে";
 "roomViewer.preparingModel" = "রুম মডেল তৈরি হচ্ছে...";
@@ -437,6 +439,7 @@
 "photoRoom.saveSuccess" = "আপনার 3D মডেল সফলভাবে সংরক্ষিত হয়েছে।";
 "photoRoom.error" = "আপনার 3D মডেল তৈরি করতে একটি ত্রুটি ঘটেছে।";
 "photoRoom.buildingRoom" = "আপনার 3D রুম তৈরি হচ্ছে...";
+"photoRoom.buildingRoomSubtext" = "এতে সাধারণত কয়েক সেকেন্ড লাগে।";
 "photoRoom.reconstructorReady" = "প্রস্তুত";
 "photoRoom.reconstructorAnalyzingPhoto" = "ছবি বিশ্লেষণ করা হচ্ছে…";
 "photoRoom.reconstructorExtractingDepth" = "গভীরতার তথ্য বের করা হচ্ছে…";

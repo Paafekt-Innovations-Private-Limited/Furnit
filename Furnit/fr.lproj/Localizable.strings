@@ -288,7 +288,9 @@
 "roomViewer.title" = "Vue de la pièce 3D";
 "roomViewer.controls" = "Utilisez le joystick pour vous déplacer • Pincez pour zoomer";
 "roomViewer.saveRoom" = "Enregistrer la pièce";
+"roomViewer.nameYourRoom" = "Nommez votre pièce";
 "roomViewer.roomName" = "Nom de la pièce";
+"roomViewer.roomNamePlaceholder" = "ex. Salon";
 "roomViewer.enterName" = "Entrez un nom pour votre pièce";
 "roomViewer.savingRoom" = "Enregistrement de la pièce";
 "roomViewer.preparingModel" = "Préparation du modèle de pièce...";
@@ -440,6 +442,7 @@
 "photoRoom.saveSuccess" = "Votre modèle 3D a été enregistré avec succès.";
 "photoRoom.error" = "Une erreur s'est produite lors de la génération de votre modèle 3D.";
 "photoRoom.buildingRoom" = "Construction de votre pièce 3D...";
+"photoRoom.buildingRoomSubtext" = "Cela prend généralement quelques secondes.";
 "photoRoom.reconstructorReady" = "Prêt";
 "photoRoom.reconstructorAnalyzingPhoto" = "Analyse de la photo…";
 "photoRoom.reconstructorExtractingDepth" = "Extraction des informations de profondeur…";

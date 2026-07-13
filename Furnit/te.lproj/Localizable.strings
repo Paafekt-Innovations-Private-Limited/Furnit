@@ -285,7 +285,9 @@
 "roomViewer.title" = "3D గది వ్యూ";
 "roomViewer.controls" = "కదలడానికి జాయ్‌స్టిక్ ఉపయోగించండి • జూమ్ చేయడానికి పించ్ చేయండి";
 "roomViewer.saveRoom" = "గది సేవ్ చేయి";
+"roomViewer.nameYourRoom" = "మీ గదికి పేరు పెట్టండి";
 "roomViewer.roomName" = "గది పేరు";
+"roomViewer.roomNamePlaceholder" = "ఉదా. లివింగ్ రూమ్";
 "roomViewer.enterName" = "మీ గదికి పేరు నమోదు చేయండి";
 "roomViewer.savingRoom" = "గది సేవ్ అవుతోంది";
 "roomViewer.preparingModel" = "గది మోడల్ తయారవుతోంది...";
@@ -437,6 +439,7 @@
 "photoRoom.saveSuccess" = "మీ 3D మోడల్ విజయవంతంగా సేవ్ అయింది.";
 "photoRoom.error" = "మీ 3D మోడల్‌ను రూపొందించేటప్పుడు లోపం సంభవించింది.";
 "photoRoom.buildingRoom" = "మీ 3D గది నిర్మించబడుతోంది...";
+"photoRoom.buildingRoomSubtext" = "దీనికి సాధారణంగా కొన్ని సెకన్లు పడుతుంది.";
 "photoRoom.reconstructorReady" = "సిద్ధం";
 "photoRoom.reconstructorAnalyzingPhoto" = "ఫోటో విశ్లేషించబడుతోంది…";
 "photoRoom.reconstructorExtractingDepth" = "లోతు సమాచారం వెలికితీయబడుతోంది…";

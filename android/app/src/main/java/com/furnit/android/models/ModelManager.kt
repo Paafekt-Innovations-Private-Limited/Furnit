@@ -190,6 +190,7 @@ class ModelManager(private val context: Context) {
     }
 
     fun deleteRoom(id: String): Boolean {
+        if (isBundledRoomId(id)) return false
         val model = models.find { it.id == id && it.isUserCreated } ?: return false
         // assetPath may be a GLB file or a folder - get the parent folder if it's a file
         val folder = File(model.assetPath).let {
@@ -210,6 +211,7 @@ class ModelManager(private val context: Context) {
      * Updates the display name in [RoomFolderMetadata] for a user room folder.
      */
     fun renameUserRoom(roomId: String, newName: String): Boolean {
+        if (isBundledRoomId(roomId)) return false
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) return false
         if (!isRoomNameAvailable(trimmed, excludeRoomId = roomId)) return false

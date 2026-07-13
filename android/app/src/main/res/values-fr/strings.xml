@@ -130,6 +130,8 @@
     <string name="photo_room_create_title">Créer une pièce 3D</string>
     <string name="room_viewer_title">Vue de la pièce 3D</string>
     <string name="room_viewer_room_name">Nom de la pièce</string>
+    <string name="room_viewer_name_your_room">Nommez votre pièce</string>
+    <string name="room_viewer_room_name_placeholder">ex. Salon</string>
     <string name="room_viewer_save_success">Pièce \'%s\' enregistrée avec succès !</string>
     <string name="crash_report_submit_report">Soumettre le rapport</string>
     <string name="crash_report_email_not_configured">E-mail non disponible</string>
@@ -161,6 +163,7 @@
     <string name="photo_room_loading">Chargement de la pièce 3D…</string>
     <string name="photo_room_error">Une erreur s\'est produite lors de la génération de votre modèle 3D.</string>
     <string name="photo_room_building_room">Construction de votre pièce 3D…</string>
+    <string name="photo_room_building_room_subtext">Cela prend généralement quelques secondes.</string>
     <string name="orientation_portrait">Portrait</string>
     <string name="orientation_landscape">Paysage</string>
     <string name="orientation_held_vertically">tenu verticalement</string>
@@ -278,8 +281,8 @@
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="home_long_press_hint">Long press to rename or delete</string>
     <string name="home_rename_room">Rename</string>
-    <string name="home_rename_room_title">Rename room</string>
-    <string name="home_rename_room_hint">Room name</string>
+    <string name="home_rename_room_title">Nommez votre pièce</string>
+    <string name="home_rename_room_hint">ex. Salon</string>
     <string name="home_rename_room_empty">Enter a name</string>
     <string name="home_rename_room_failed">Couldn\'t rename room</string>
     <string name="home_room_name_duplicate">A room with this name already exists</string>

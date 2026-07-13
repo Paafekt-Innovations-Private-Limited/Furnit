@@ -285,7 +285,9 @@
 "roomViewer.title" = "3D அறை காட்சி";
 "roomViewer.controls" = "நகர ஜாய்ஸ்டிக் பயன்படுத்தவும் • பெரிதாக்க பிஞ்ச் செய்யவும்";
 "roomViewer.saveRoom" = "அறையைச் சேமி";
+"roomViewer.nameYourRoom" = "உங்கள் அறைக்குப் பெயரிடுங்கள்";
 "roomViewer.roomName" = "அறை பெயர்";
+"roomViewer.roomNamePlaceholder" = "எ.கா. வாழும் அறை";
 "roomViewer.enterName" = "உங்கள் அறைக்கு பெயர் உள்ளிடவும்";
 "roomViewer.savingRoom" = "அறையைச் சேமிக்கிறது";
 "roomViewer.preparingModel" = "அறை மாதிரியைத் தயாரிக்கிறது...";
@@ -437,6 +439,7 @@
 "photoRoom.saveSuccess" = "உங்கள் 3D மாதிரி வெற்றிகரமாக சேமிக்கப்பட்டது.";
 "photoRoom.error" = "உங்கள் 3D மாதிரியை உருவாக்கும்போது பிழை ஏற்பட்டது.";
 "photoRoom.buildingRoom" = "உங்கள் 3D அறை உருவாக்கப்படுகிறது...";
+"photoRoom.buildingRoomSubtext" = "இதற்கு வழக்கமாக சில வினாடிகள் ஆகும்.";
 "photoRoom.reconstructorReady" = "தயார்";
 "photoRoom.reconstructorAnalyzingPhoto" = "புகைப்படம் பகுப்பாய்வு செய்யப்படுகிறது…";
 "photoRoom.reconstructorExtractingDepth" = "ஆழத்தை தகவல் பிரித்தெடுக்கிறது…";

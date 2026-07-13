@@ -1317,98 +1317,99 @@ class USDZModelManager: ObservableObject {
         if debugMode {
             logDebug("🗑️ [USDZModelManager] Found model: \(model.displayName) (isSavedRoom: \(model.isSavedRoom))")
         }
-        
-        // Only delete file if it's a saved room (not bundle model)
-        if model.isSavedRoom {
-            // Use appropriate file extension based on file type
-            let fileExtension: String
-            switch model.fileType {
-            case .ply:
-                fileExtension = "ply"
-            case .meshroom:
-                fileExtension = "meshroom"
-            case .glb:
-                fileExtension = "glb"
-            case .usdz:
-                fileExtension = "usdz"
-            }
-            let canonicalFileName = (model.fileType == .ply) ? canonicalPlyStem(for: model.fileName) : model.fileName
-            let fileURL = modelsDirectory.appendingPathComponent("\(canonicalFileName).\(fileExtension)")
-            let classicSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_classic.ply")
-            let threeDGSSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_3dgs.ply")
-            let metadataURL = modelsDirectory.appendingPathComponent("\(canonicalFileName).\(fileExtension).meta")
-            let enhancedMetadataSidecarURL = enhancedMetadataURL(forRoomURL: fileURL)
-            let splatLoadHintSidecarURL = SplatLoadHint.sidecarURL(forRoomURL: fileURL)
-            let thumbnailJPGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.jpg")
-            let thumbnailPNGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.png")
-            
-            do {
-                if FileManager.default.fileExists(atPath: fileURL.path) {
-                    try FileManager.default.removeItem(at: fileURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] File deleted: \(fileURL.lastPathComponent)")
-                    }
-                } else {
-                    if debugMode {
-                        logDebug("⚠️ [USDZModelManager] File not found: \(fileURL.path)")
-                    }
-                }
 
-                if FileManager.default.fileExists(atPath: metadataURL.path) {
-                    try FileManager.default.removeItem(at: metadataURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
-                    }
-                }
-                if FileManager.default.fileExists(atPath: classicSidecarURL.path) {
-                    try FileManager.default.removeItem(at: classicSidecarURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] Classic sidecar deleted: \(classicSidecarURL.lastPathComponent)")
-                    }
-                }
-                if FileManager.default.fileExists(atPath: threeDGSSidecarURL.path) {
-                    try FileManager.default.removeItem(at: threeDGSSidecarURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] 3DGS sidecar deleted: \(threeDGSSidecarURL.lastPathComponent)")
-                    }
-                }
-                if FileManager.default.fileExists(atPath: enhancedMetadataSidecarURL.path) {
-                    try FileManager.default.removeItem(at: enhancedMetadataSidecarURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] Enhanced metadata deleted: \(enhancedMetadataSidecarURL.lastPathComponent)")
-                    }
-                }
-                if FileManager.default.fileExists(atPath: splatLoadHintSidecarURL.path) {
-                    try FileManager.default.removeItem(at: splatLoadHintSidecarURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] Splat load hint deleted: \(splatLoadHintSidecarURL.lastPathComponent)")
-                    }
-                }
-                if FileManager.default.fileExists(atPath: thumbnailJPGURL.path) {
-                    try FileManager.default.removeItem(at: thumbnailJPGURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] Thumbnail deleted: \(thumbnailJPGURL.lastPathComponent)")
-                    }
-                }
-                if FileManager.default.fileExists(atPath: thumbnailPNGURL.path) {
-                    try FileManager.default.removeItem(at: thumbnailPNGURL)
-                    if debugMode {
-                        logDebug("✅ [USDZModelManager] Thumbnail deleted: \(thumbnailPNGURL.lastPathComponent)")
-                    }
-                }
-            } catch {
-                if debugMode {
-                    logDebug("❌ [USDZModelManager] Failed to delete file: \(error)")
-                }
-                CrashReporter.shared.report(error, context: "Deleting Room")
-            }
-            cleanupOrphanSavedRoomArtifactsIfNeeded()
-        } else {
+        // Bundled samples (Scandinavian Minimal / Industrial Loft) are not deletable.
+        guard model.isSavedRoom else {
             if debugMode {
-                logDebug("⚠️ [USDZModelManager] Skipping file deletion - this is a bundle model")
+                logDebug("⚠️ [USDZModelManager] Ignoring delete for bundle model: \(model.displayName)")
             }
+            return
         }
-        
+
+        // Use appropriate file extension based on file type
+        let fileExtension: String
+        switch model.fileType {
+        case .ply:
+            fileExtension = "ply"
+        case .meshroom:
+            fileExtension = "meshroom"
+        case .glb:
+            fileExtension = "glb"
+        case .usdz:
+            fileExtension = "usdz"
+        }
+        let canonicalFileName = (model.fileType == .ply) ? canonicalPlyStem(for: model.fileName) : model.fileName
+        let fileURL = modelsDirectory.appendingPathComponent("\(canonicalFileName).\(fileExtension)")
+        let classicSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_classic.ply")
+        let threeDGSSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_3dgs.ply")
+        let metadataURL = modelsDirectory.appendingPathComponent("\(canonicalFileName).\(fileExtension).meta")
+        let enhancedMetadataSidecarURL = enhancedMetadataURL(forRoomURL: fileURL)
+        let splatLoadHintSidecarURL = SplatLoadHint.sidecarURL(forRoomURL: fileURL)
+        let thumbnailJPGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.jpg")
+        let thumbnailPNGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.png")
+            
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] File deleted: \(fileURL.lastPathComponent)")
+                }
+            } else {
+                if debugMode {
+                    logDebug("⚠️ [USDZModelManager] File not found: \(fileURL.path)")
+                }
+            }
+
+            if FileManager.default.fileExists(atPath: metadataURL.path) {
+                try FileManager.default.removeItem(at: metadataURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
+                }
+            }
+            if FileManager.default.fileExists(atPath: classicSidecarURL.path) {
+                try FileManager.default.removeItem(at: classicSidecarURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Classic sidecar deleted: \(classicSidecarURL.lastPathComponent)")
+                }
+            }
+            if FileManager.default.fileExists(atPath: threeDGSSidecarURL.path) {
+                try FileManager.default.removeItem(at: threeDGSSidecarURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] 3DGS sidecar deleted: \(threeDGSSidecarURL.lastPathComponent)")
+                }
+            }
+            if FileManager.default.fileExists(atPath: enhancedMetadataSidecarURL.path) {
+                try FileManager.default.removeItem(at: enhancedMetadataSidecarURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Enhanced metadata deleted: \(enhancedMetadataSidecarURL.lastPathComponent)")
+                }
+            }
+            if FileManager.default.fileExists(atPath: splatLoadHintSidecarURL.path) {
+                try FileManager.default.removeItem(at: splatLoadHintSidecarURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Splat load hint deleted: \(splatLoadHintSidecarURL.lastPathComponent)")
+                }
+            }
+            if FileManager.default.fileExists(atPath: thumbnailJPGURL.path) {
+                try FileManager.default.removeItem(at: thumbnailJPGURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Thumbnail deleted: \(thumbnailJPGURL.lastPathComponent)")
+                }
+            }
+            if FileManager.default.fileExists(atPath: thumbnailPNGURL.path) {
+                try FileManager.default.removeItem(at: thumbnailPNGURL)
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Thumbnail deleted: \(thumbnailPNGURL.lastPathComponent)")
+                }
+            }
+        } catch {
+            if debugMode {
+                logDebug("❌ [USDZModelManager] Failed to delete file: \(error)")
+            }
+            CrashReporter.shared.report(error, context: "Deleting Room")
+        }
+        cleanupOrphanSavedRoomArtifactsIfNeeded()
+
         // Rebuild from disk so sidecars / stragglers cannot remain visible in UI.
         refreshModels()
         if debugMode {

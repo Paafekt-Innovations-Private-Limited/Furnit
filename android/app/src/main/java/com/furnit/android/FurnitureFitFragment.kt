@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.utils.FurnitureFitFrameUsability
 import com.furnit.android.utils.FurnitureFitThermalCadence
 import com.furnit.android.utils.LogUtil
 import android.view.*
@@ -408,6 +409,16 @@ class FurnitureFitFragment : Fragment() {
             return
         }
         if (isProcessing) {
+            return
+        }
+        if (FurnitureFitFrameUsability.isFullyDark(bitmap)) {
+            bitmap.recycle()
+            arCameraController?.onInferenceFinished()
+            activity?.runOnUiThread {
+                if (isAdded && !hasFirstDetection) {
+                    progressContainer.visibility = View.GONE
+                }
+            }
             return
         }
         if (!thermalCadence.tryBeginInference()) {
@@ -954,6 +965,15 @@ class FurnitureFitFragment : Fragment() {
             }
             return
         }
+        if (FurnitureFitFrameUsability.isFullyDark(imageProxy)) {
+            imageProxy.close()
+            activity?.runOnUiThread {
+                if (isAdded && !hasFirstDetection) {
+                    progressContainer.visibility = View.GONE
+                }
+            }
+            return
+        }
         if (!thermalCadence.tryBeginInference()) {
             imageProxy.close()
             return
@@ -965,6 +985,17 @@ class FurnitureFitFragment : Fragment() {
             LogUtil.w("FurnitureFit", "Failed to convert imageProxy to bitmap")
             isProcessing = false
             imageProxy.close()
+            return
+        }
+        if (FurnitureFitFrameUsability.isFullyDark(bitmap)) {
+            bitmap.recycle()
+            isProcessing = false
+            imageProxy.close()
+            activity?.runOnUiThread {
+                if (isAdded && !hasFirstDetection) {
+                    progressContainer.visibility = View.GONE
+                }
+            }
             return
         }
 
@@ -1012,7 +1043,16 @@ class FurnitureFitFragment : Fragment() {
                 pendingBitmap
             }
             if (nextCameraBitmap != null) {
-                if (thermalCadence.tryBeginInference()) {
+                if (FurnitureFitFrameUsability.isFullyDark(nextCameraBitmap)) {
+                    nextCameraBitmap.recycle()
+                    isProcessing = false
+                    arCameraController?.onInferenceFinished()
+                    activity?.runOnUiThread {
+                        if (isAdded && !hasFirstDetection) {
+                            progressContainer.visibility = View.GONE
+                        }
+                    }
+                } else if (thermalCadence.tryBeginInference()) {
                     runCameraXSegmentation(nextCameraBitmap)
                 } else {
                     nextCameraBitmap.recycle()

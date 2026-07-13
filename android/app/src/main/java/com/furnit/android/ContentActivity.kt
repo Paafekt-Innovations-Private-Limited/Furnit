@@ -495,8 +495,8 @@ class ContentActivity : AppCompatActivity() {
             }
         }
 
-        // Long press: rename or delete (user-created rooms only)
-        if (model.isUserCreated) {
+        // Long press: rename or delete (user-created rooms only; never bundled samples).
+        if (model.isUserCreated && !ModelManager.isBundledRoomId(model.id)) {
             val longPressModel = model
             card.setOnLongClickListener {
                 showRoomActionsDialog(longPressModel)
@@ -530,6 +530,7 @@ class ContentActivity : AppCompatActivity() {
     }
 
     private fun showRoomActionsDialog(model: Model) {
+        if (!model.isUserCreated || ModelManager.isBundledRoomId(model.id)) return
         val dialog = Dialog(this)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
 
@@ -704,6 +705,7 @@ class ContentActivity : AppCompatActivity() {
     }
 
     private fun showRenameRoomDialog(model: Model) {
+        if (!model.isUserCreated || ModelManager.isBundledRoomId(model.id)) return
         PaafektDialogs.showNameRoomDialog(
             activity = this,
             initialName = model.name,
@@ -729,12 +731,14 @@ class ContentActivity : AppCompatActivity() {
     }
 
     private fun showDeleteDialog(model: Model) {
+        if (!model.isUserCreated || ModelManager.isBundledRoomId(model.id)) return
         PaafektDialogs.showDeleteRoomDialog(this) {
             deleteRoom(model)
         }
     }
 
     private fun deleteRoom(model: Model) {
+        if (!model.isUserCreated || ModelManager.isBundledRoomId(model.id)) return
         try {
             modelManager.deleteRoom(model.id)
             Toast.makeText(this, getString(R.string.deleted_room, model.name), Toast.LENGTH_SHORT).show()

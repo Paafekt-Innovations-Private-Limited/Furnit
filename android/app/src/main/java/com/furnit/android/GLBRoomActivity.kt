@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.utils.FurnitureFitFrameUsability
 import com.furnit.android.utils.FurnitureFitThermalCadence
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDialogs
@@ -1106,11 +1107,29 @@ class GLBRoomActivity : AppCompatActivity() {
             try {
                 if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@setAnalyzer
                 if (isBrainInferenceRunning.get()) return@setAnalyzer
+                // Covered lens: skip decode + detector; stop thrashing the progress overlay.
+                if (FurnitureFitFrameUsability.isFullyDark(imageProxy)) {
+                    runOnUiThread {
+                        if (brainAcceptingUpdates && brainSessionGeneration.get() == generation) {
+                            hideBrainProgress()
+                        }
+                    }
+                    return@setAnalyzer
+                }
                 // Match iOS RTMDet live cadence (200/400ms) + thermal-critical pause for both Fit modes.
                 if (!inlineBrainThermalCadence.tryBeginInference()) return@setAnalyzer
                 val rawBitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
                 val (bitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
                 if (bitmap !== rawBitmap) rawBitmap.recycle()
+                if (FurnitureFitFrameUsability.isFullyDark(bitmap)) {
+                    bitmap.recycle()
+                    runOnUiThread {
+                        if (brainAcceptingUpdates && brainSessionGeneration.get() == generation) {
+                            hideBrainProgress()
+                        }
+                    }
+                    return@setAnalyzer
+                }
                 isBrainInferenceRunning.set(true)
                 val modeSnapshot = inlineBrainMode
                 val fullVideoSnapshot = inlineBrainFullVideoEnabled

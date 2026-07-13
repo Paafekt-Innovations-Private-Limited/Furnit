@@ -285,7 +285,9 @@
 "roomViewer.title" = "3D ಕೊಠಡಿ ವೀಕ್ಷಣೆ";
 "roomViewer.controls" = "ಚಲಿಸಲು ಜಾಯ್‌ಸ್ಟಿಕ್ ಬಳಸಿ • ಜೂಮ್ ಮಾಡಲು ಪಿಂಚ್ ಮಾಡಿ";
 "roomViewer.saveRoom" = "ಕೊಠಡಿ ಉಳಿಸು";
+"roomViewer.nameYourRoom" = "ನಿಮ್ಮ ಕೊಠಡಿಗೆ ಹೆಸರು ನೀಡಿ";
 "roomViewer.roomName" = "ಕೊಠಡಿ ಹೆಸರು";
+"roomViewer.roomNamePlaceholder" = "ಉದಾ. ಲಿವಿಂಗ್ ರೂಮ್";
 "roomViewer.enterName" = "ನಿಮ್ಮ ಕೊಠಡಿಗೆ ಹೆಸರು ನಮೂದಿಸಿ";
 "roomViewer.savingRoom" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ";
 "roomViewer.preparingModel" = "ಕೊಠಡಿ ಮಾದರಿ ತಯಾರಿಸುತ್ತಿದೆ...";
@@ -437,6 +439,7 @@
 "photoRoom.saveSuccess" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ.";
 "photoRoom.error" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ರಚಿಸುವಾಗ ದೋಷ ಸಂಭವಿಸಿದೆ.";
 "photoRoom.buildingRoom" = "ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ನಿರ್ಮಿಸಲಾಗುತ್ತಿದೆ...";
+"photoRoom.buildingRoomSubtext" = "ಇದಕ್ಕೆ ಸಾಮಾನ್ಯವಾಗಿ ಕೆಲವು ಸೆಕೆಂಡುಗಳು ಬೇಕು.";
 "photoRoom.reconstructorReady" = "ಸಿದ್ಧ";
 "photoRoom.reconstructorAnalyzingPhoto" = "ಫೋಟೋ ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ…";
 "photoRoom.reconstructorExtractingDepth" = "ಆಳದ ಮಾಹಿತಿ ಹೊರತೆಗೆಯಲಾಗುತ್ತಿದೆ…";

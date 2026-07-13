@@ -3789,6 +3789,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func processFrameInner(_ pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot? = nil) {
         if debugMode { logDebug("▶️ processFrameInner entered (mlModel=\(mlModel == nil ? "NIL" : "set"))") }
+        // Covered lens / fully black frames: do not run RTMDet or keep thrashing startup progress.
+        if FurnitureFitFrameUsability.isFullyDark(pixelBuffer) {
+            if debugMode { logDebug("🌑 Skipping fully dark camera frame (no inference)") }
+            hideStartupProgressForUnusableCameraFrame()
+            resetProcessingFlag()
+            return
+        }
         guard let model = mlModel else {
             resetProcessingFlag()
             return
@@ -5095,6 +5102,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             self.progressContainer.isHidden = false
             self.progressView.progress = value
             self.progressLabel.text = "  \(text)  "
+        }
+    }
+
+    /// Hide the startup chip while the lens is covered / frame is unusable; keep
+    /// `startupProgressActive` so a later usable frame can show progress again until first detection.
+    private func hideStartupProgressForUnusableCameraFrame() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.startupProgressActive, !self.hasFirstDetection else { return }
+            self.progressContainer.isHidden = true
         }
     }
 

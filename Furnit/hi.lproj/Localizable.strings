@@ -285,7 +285,9 @@
 "roomViewer.title" = "3D रूम व्यू";
 "roomViewer.controls" = "चलने के लिए जॉयस्टिक उपयोग करें • ज़ूम के लिए पिंच करें";
 "roomViewer.saveRoom" = "कमरा सहेजें";
+"roomViewer.nameYourRoom" = "अपने कमरे का नाम रखें";
 "roomViewer.roomName" = "कमरे का नाम";
+"roomViewer.roomNamePlaceholder" = "जैसे: लिविंग रूम";
 "roomViewer.enterName" = "अपने कमरे के लिए नाम दर्ज करें";
 "roomViewer.savingRoom" = "कमरा सहेज रहे हैं";
 "roomViewer.preparingModel" = "रूम मॉडल तैयार हो रहा है...";
@@ -437,6 +439,7 @@
 "photoRoom.saveSuccess" = "आपका 3D मॉडल सफलतापूर्वक सहेजा गया।";
 "photoRoom.error" = "आपका 3D मॉडल बनाते समय एक त्रुटि हुई।";
 "photoRoom.buildingRoom" = "आपका 3D कमरा बनाया जा रहा है...";
+"photoRoom.buildingRoomSubtext" = "इसमें आमतौर पर कुछ सेकंड लगते हैं।";
 "photoRoom.reconstructorReady" = "तैयार";
 "photoRoom.reconstructorAnalyzingPhoto" = "फ़ोटो का विश्लेषण हो रहा है…";
 "photoRoom.reconstructorExtractingDepth" = "गहराई की जानकारी निकाली जा रही है…";

@@ -305,7 +305,9 @@
 "roomViewer.title" = "عرض الغرفة ثلاثي الأبعاد";
 "roomViewer.controls" = "استخدم عصا التحكم للتحرك • اقرص للتكبير";
 "roomViewer.saveRoom" = "حفظ الغرفة";
+"roomViewer.nameYourRoom" = "سمِّ غرفتك";
 "roomViewer.roomName" = "اسم الغرفة";
+"roomViewer.roomNamePlaceholder" = "مثال: غرفة المعيشة";
 "roomViewer.enterName" = "أدخل اسماً لغرفتك";
 "roomViewer.savingRoom" = "جارٍ حفظ الغرفة";
 "roomViewer.preparingModel" = "جارٍ تحضير نموذج الغرفة...";
@@ -437,6 +439,7 @@
 "photoRoom.saveSuccess" = "تم حفظ النموذج ثلاثي الأبعاد بنجاح.";
 "photoRoom.error" = "حدث خطأ أثناء إنشاء النموذج ثلاثي الأبعاد.";
 "photoRoom.buildingRoom" = "جاري بناء غرفتك ثلاثية الأبعاد...";
+"photoRoom.buildingRoomSubtext" = "عادةً ما يستغرق ذلك بضع ثوانٍ.";
 "photoRoom.reconstructorReady" = "جاهز";
 "photoRoom.reconstructorAnalyzingPhoto" = "جارٍ تحليل الصورة…";
 "photoRoom.reconstructorExtractingDepth" = "جارٍ استخراج معلومات العمق…";

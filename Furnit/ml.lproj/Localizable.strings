@@ -285,7 +285,9 @@
 "roomViewer.title" = "3D മുറി കാഴ്ച";
 "roomViewer.controls" = "നീങ്ങാൻ ജോയ്സ്റ്റിക്ക് ഉപയോഗിക്കുക • സൂം ചെയ്യാൻ പിഞ്ച് ചെയ്യുക";
 "roomViewer.saveRoom" = "മുറി സേവ് ചെയ്യുക";
+"roomViewer.nameYourRoom" = "നിങ്ങളുടെ മുറിക്ക് പേരിടുക";
 "roomViewer.roomName" = "മുറി പേര്";
+"roomViewer.roomNamePlaceholder" = "ഉദാ. ലിവിംഗ് റൂം";
 "roomViewer.enterName" = "നിങ്ങളുടെ മുറിക്ക് പേര് നൽകുക";
 "roomViewer.savingRoom" = "മുറി സേവ് ചെയ്യുന്നു";
 "roomViewer.preparingModel" = "മുറി മോഡൽ തയ്യാറാക്കുന്നു...";
@@ -437,6 +439,7 @@
 "photoRoom.saveSuccess" = "നിങ്ങളുടെ 3D മോഡൽ വിജയകരമായി സേവ് ചെയ്തു.";
 "photoRoom.error" = "നിങ്ങളുടെ 3D മോഡൽ സൃഷ്ടിക്കുമ്പോൾ ഒരു പിശക് സംഭവിച്ചു.";
 "photoRoom.buildingRoom" = "നിങ്ങളുടെ 3D മുറി നിർമ്മിക്കുന്നു...";
+"photoRoom.buildingRoomSubtext" = "ഇതിന് സാധാരണയായി കുറച്ച് സെക്കൻഡുകൾ മതി.";
 "photoRoom.reconstructorReady" = "തയ്യാർ";
 "photoRoom.reconstructorAnalyzingPhoto" = "ഫോട്ടോ വിശകലനം ചെയ്യുന്നു…";
 "photoRoom.reconstructorExtractingDepth" = "ആഴത്തിന്റെ വിവരങ്ങൾ എടുക്കുന്നു…";

@@ -288,7 +288,9 @@
 "roomViewer.title" = "Vista de cuarto 3D";
 "roomViewer.controls" = "Usa el joystick para moverte • Pellizca para hacer zoom";
 "roomViewer.saveRoom" = "Guardar cuarto";
+"roomViewer.nameYourRoom" = "Ponle nombre a tu cuarto";
 "roomViewer.roomName" = "Nombre del cuarto";
+"roomViewer.roomNamePlaceholder" = "p. ej. Sala";
 "roomViewer.enterName" = "Ingresa un nombre para tu cuarto";
 "roomViewer.savingRoom" = "Guardando cuarto";
 "roomViewer.preparingModel" = "Preparando modelo de cuarto...";
@@ -440,6 +442,7 @@
 "photoRoom.saveSuccess" = "Tu modelo 3D se guardó correctamente.";
 "photoRoom.error" = "Ocurrió un error al generar tu modelo 3D.";
 "photoRoom.buildingRoom" = "Construyendo tu cuarto 3D...";
+"photoRoom.buildingRoomSubtext" = "Esto suele tardar unos segundos.";
 "photoRoom.reconstructorReady" = "Listo";
 "photoRoom.reconstructorAnalyzingPhoto" = "Analizando foto…";
 "photoRoom.reconstructorExtractingDepth" = "Extrayendo información de profundidad…";

@@ -319,7 +319,9 @@
 "roomViewer.title" = "3D-Raumansicht";
 "roomViewer.controls" = "Joystick zum Bewegen • Zum Zoomen zusammenziehen";
 "roomViewer.saveRoom" = "Raum speichern";
+"roomViewer.nameYourRoom" = "Benennen Sie Ihren Raum";
 "roomViewer.roomName" = "Raumname";
+"roomViewer.roomNamePlaceholder" = "z. B. Wohnzimmer";
 "roomViewer.enterName" = "Geben Sie einen Namen für Ihren Raum ein";
 "roomViewer.savingRoom" = "Raum wird gespeichert";
 "roomViewer.preparingModel" = "Raummodell wird vorbereitet...";
@@ -451,6 +453,7 @@
 "photoRoom.saveSuccess" = "Ihr 3D-Modell wurde erfolgreich gespeichert.";
 "photoRoom.error" = "Bei der Erstellung Ihres 3D-Modells ist ein Fehler aufgetreten.";
 "photoRoom.buildingRoom" = "Ihr 3D-Raum wird erstellt...";
+"photoRoom.buildingRoomSubtext" = "Das dauert normalerweise nur wenige Sekunden.";
 "photoRoom.reconstructorReady" = "Bereit";
 "photoRoom.reconstructorAnalyzingPhoto" = "Foto wird analysiert …";
 "photoRoom.reconstructorExtractingDepth" = "Tiefeninformationen werden extrahiert …";

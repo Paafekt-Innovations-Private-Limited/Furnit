@@ -286,7 +286,9 @@
 "roomViewer.title" = "3D房間視圖";
 "roomViewer.controls" = "使用搖桿移動 • 捏合縮放";
 "roomViewer.saveRoom" = "儲存房間";
+"roomViewer.nameYourRoom" = "為房間命名";
 "roomViewer.roomName" = "房間名稱";
+"roomViewer.roomNamePlaceholder" = "例如：客廳";
 "roomViewer.enterName" = "為你的房間輸入名稱";
 "roomViewer.savingRoom" = "正在儲存房間";
 "roomViewer.preparingModel" = "正在準備房間模型...";
@@ -438,6 +440,7 @@
 "photoRoom.saveSuccess" = "您的3D模型已成功儲存。";
 "photoRoom.error" = "產生3D模型時發生錯誤。";
 "photoRoom.buildingRoom" = "正在建構您的3D房間...";
+"photoRoom.buildingRoomSubtext" = "通常只需幾秒鐘。";
 "photoRoom.reconstructorReady" = "就緒";
 "photoRoom.reconstructorAnalyzingPhoto" = "正在分析照片…";
 "photoRoom.reconstructorExtractingDepth" = "正在擷取深度資訊…";

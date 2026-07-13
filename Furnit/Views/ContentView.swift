@@ -201,11 +201,14 @@ struct HomeTab: View {
                                         }
                                     }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) {
-                                            roomToDelete = model
-                                            showDeleteAlert = true
-                                        } label: {
-                                            Label(L10n.Common.delete, systemImage: "trash")
+                                        // Bundled samples (Scandinavian Minimal / Industrial Loft) cannot be deleted.
+                                        if model.isSavedRoom {
+                                            Button(role: .destructive) {
+                                                roomToDelete = model
+                                                showDeleteAlert = true
+                                            } label: {
+                                                Label(L10n.Common.delete, systemImage: "trash")
+                                            }
                                         }
                                     }
                             }
@@ -392,6 +395,11 @@ struct HomeTab: View {
     
     // ✅ DELETE FUNCTION ADDED HERE
     private func deleteRoom(_ room: USDZModel) {
+        guard room.isSavedRoom else {
+            logDebug("🗑️ [HomeTab] Skipping delete — bundled sample room: \(room.displayName)")
+            roomToDelete = nil
+            return
+        }
         logDebug("🗑️ [HomeTab] Deleting room: \(room.displayName)")
         modelManager.deleteModel(id: room.id)
         roomToDelete = nil
