@@ -436,6 +436,7 @@
 "photoRoom.manualSetup" = "Réglage manuel";
 "photoRoom.manualSetupDesc" = "Faites glisser pour ajuster les murs";
 "photoRoom.selectPhoto" = "Choisir une photo";
+"photoRoom.chooseDifferentPhoto" = "Choisir une autre photo";
 "photoRoom.fromLibrary" = "Depuis votre photothèque";
 "photoRoom.loading" = "Chargement de la pièce 3D...";
 "photoRoom.downloadSuccess" = "%@ a été téléchargé avec succès. Consultez-le dans la liste de vos modèles.";

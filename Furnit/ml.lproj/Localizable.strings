@@ -433,6 +433,7 @@
 "photoRoom.manualSetup" = "മാനുവൽ സെറ്റപ്പ്";
 "photoRoom.manualSetupDesc" = "മതിൽ ചുവടുകൾ ക്രമീകരിക്കാൻ വലിച്ചിടുക";
 "photoRoom.selectPhoto" = "ഫോട്ടോ തിരഞ്ഞെടുക്കുക";
+"photoRoom.chooseDifferentPhoto" = "മറ്റൊരു ഫോട്ടോ തിരഞ്ഞെടുക്കുക";
 "photoRoom.fromLibrary" = "നിങ്ങളുടെ ഫോട്ടോ ലൈബ്രറിയിൽ നിന്ന്";
 "photoRoom.loading" = "3D മുറി ലോഡ് ചെയ്യുന്നു...";
 "photoRoom.downloadSuccess" = "%@ വിജയകരമായി ഡൗൺലോഡ് ചെയ്തു. മോഡൽ പട്ടികയിൽ കാണുക.";

@@ -19,7 +19,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.furnit.android.ar.ArPhotoCaptureResult
 import com.furnit.android.ar.FurnitureFitArCameraController
-import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.utils.LogUtil
 import java.io.File
 import java.io.FileOutputStream
@@ -48,7 +47,7 @@ class ArDepthPhotoCaptureActivity : AppCompatActivity() {
         if (granted) {
             controller.onHostResume()
         } else {
-            Toast.makeText(this, "Camera permission is required", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
             finish()
         }
     }
@@ -76,18 +75,18 @@ class ArDepthPhotoCaptureActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Move slowly for depth, then tap Capture"
+            text = getString(R.string.camera_ar_hint)
             setTextColor(Color.WHITE)
             textSize = 16f
             setPadding(32, 32, 32, 32)
             setBackgroundColor(Color.parseColor("#66000000"))
         }
         captureButton = Button(this).apply {
-            text = "Capture"
+            text = getString(R.string.camera_capture)
             setOnClickListener { capturePhotoWithAnchors() }
         }
         val cancelButton = Button(this).apply {
-            text = "Cancel"
+            text = getString(R.string.common_cancel)
             setOnClickListener {
                 setResult(RESULT_CANCELED)
                 finish()
@@ -159,11 +158,11 @@ class ArDepthPhotoCaptureActivity : AppCompatActivity() {
 
     private fun capturePhotoWithAnchors() {
         captureButton.isEnabled = false
-        statusText.text = "Capturing photo and AR depth..."
+        statusText.text = getString(R.string.camera_ar_capturing)
         controller.requestPhotoCapture { result ->
             if (result == null) {
                 captureButton.isEnabled = true
-                statusText.text = "Capture failed. Try again."
+                statusText.text = getString(R.string.camera_ar_capture_failed)
                 return@requestPhotoCapture
             }
             runCatching {
@@ -176,7 +175,7 @@ class ArDepthPhotoCaptureActivity : AppCompatActivity() {
             }.onFailure { throwable ->
                 LogUtil.e("ArDepthPhotoCapture", "Saving AR capture failed", throwable)
                 captureButton.isEnabled = true
-                statusText.text = "Could not save photo. Try again."
+                statusText.text = getString(R.string.camera_ar_save_failed)
             }
         }
     }

@@ -433,6 +433,7 @@
 "photoRoom.manualSetup" = "मैन्युअल सेटअप";
 "photoRoom.manualSetupDesc" = "दीवारें समायोजित करने के लिए खींचें";
 "photoRoom.selectPhoto" = "फ़ोटो चुनें";
+"photoRoom.chooseDifferentPhoto" = "दूसरी फ़ोटो चुनें";
 "photoRoom.fromLibrary" = "अपनी फ़ोटो लाइब्रेरी से";
 "photoRoom.loading" = "3D कमरा लोड हो रहा है...";
 "photoRoom.downloadSuccess" = "%@ सफलतापूर्वक डाउनलोड हो गया। इसे अपनी मॉडल सूची में देखें।";

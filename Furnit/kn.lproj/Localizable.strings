@@ -433,6 +433,7 @@
 "photoRoom.manualSetup" = "ಹಸ್ತಚಾಲಿತ ಹೊಂದಾಣಿಕೆ";
 "photoRoom.manualSetupDesc" = "ಕೊಠಡಿ ಗೋಡೆಗಳನ್ನು ಹೊಂದಿಸಲು ಎಳೆಯಿರಿ";
 "photoRoom.selectPhoto" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ";
+"photoRoom.chooseDifferentPhoto" = "ಬೇರೆ ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ";
 "photoRoom.fromLibrary" = "ನಿಮ್ಮ ಫೋಟೋ ಗ್ರಂಥಾಲಯದಿಂದ";
 "photoRoom.loading" = "3D ಕೊಠಡಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
 "photoRoom.downloadSuccess" = "%@ ಯಶಸ್ವಿಯಾಗಿ ಡೌನ್‌ಲೋಡ್ ಆಗಿದೆ. ನಿಮ್ಮ ಮಾದರಿಗಳ ಪಟ್ಟಿಯಲ್ಲಿ ವೀಕ್ಷಿಸಿ.";

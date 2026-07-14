@@ -69,6 +69,11 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
+            android:name=".WideAnglePhotoCaptureActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.Furnit.FullScreen" />
+        <activity
             android:name=".GLBRoomActivity"
             android:exported="false"
             android:theme="@style/Theme.Furnit.FullScreen" />

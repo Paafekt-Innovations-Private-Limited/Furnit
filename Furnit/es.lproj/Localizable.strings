@@ -436,6 +436,7 @@
 "photoRoom.manualSetup" = "Configuración manual";
 "photoRoom.manualSetupDesc" = "Arrastra para ajustar las paredes";
 "photoRoom.selectPhoto" = "Elegir foto";
+"photoRoom.chooseDifferentPhoto" = "Elegir otra foto";
 "photoRoom.fromLibrary" = "De tu biblioteca de fotos";
 "photoRoom.loading" = "Cargando habitación 3D...";
 "photoRoom.downloadSuccess" = "Se descargó %@ correctamente. Consúltalo en tu lista de modelos.";

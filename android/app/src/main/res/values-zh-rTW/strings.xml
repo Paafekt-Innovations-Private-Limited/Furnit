@@ -306,7 +306,7 @@
     <string name="photo_room_ai_room">AI Room</string>
     <string name="photo_room_take_photo">Take a Photo</string>
     <string name="photo_room_use_camera">Use your camera</string>
-    <string name="photo_room_choose_different">Choose Different Photo</string>
+    <string name="photo_room_choose_different">選擇其他照片</string>
     <string name="photo_room_capture_subtitle">Capture or select a photo of your room</string>
     <string name="photo_room_creating">Creating your 3D room…</string>
     <string name="photo_room_ai_generation">AI-powered room generation</string>

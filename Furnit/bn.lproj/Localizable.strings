@@ -433,6 +433,7 @@
 "photoRoom.manualSetup" = "ম্যানুয়াল সেটআপ";
 "photoRoom.manualSetupDesc" = "দেয়াল সামঞ্জস্য করতে টেনে আনুন";
 "photoRoom.selectPhoto" = "ছবি বেছে নিন";
+"photoRoom.chooseDifferentPhoto" = "অন্য ছবি বেছে নিন";
 "photoRoom.fromLibrary" = "আপনার ফটো লাইব্রেরি থেকে";
 "photoRoom.loading" = "3D রুম লোড হচ্ছে...";
 "photoRoom.downloadSuccess" = "%@ সফলভাবে ডাউনলোড হয়েছে। আপনার মডেল তালিকায় দেখুন।";

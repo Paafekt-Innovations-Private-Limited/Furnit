@@ -57,8 +57,14 @@ import java.util.Locale
  */
 class SinglePhotoRoomActivity : AppCompatActivity() {
 
+    private enum class CameraCaptureMode {
+        STANDARD,
+        WIDE_ANGLE,
+    }
+
     private lateinit var rootLayout: FrameLayout
     private lateinit var initialView: LinearLayout
+    private lateinit var cameraModeView: LinearLayout
     private lateinit var methodPickerView: LinearLayout
     private var buildingRoomOverlay: PaafektBuildingRoomOverlay? = null
     private lateinit var selectedImageView: ImageView
@@ -72,6 +78,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var orientationUserOverridden: Boolean = false
     /** True when the user indicates the photo was taken with the wide-angle (0.5x) lens; fixes camera position in the 3D viewer. */
     private var photoWideAngle: Boolean = false
+    private var selectedCameraMode: CameraCaptureMode = CameraCaptureMode.STANDARD
 
     /** AI generation started on photo select; cancel and release when user picks Manual/Back/Change. */
     private var aiGenerationHandle: PhotoRoomGenerationService.GenerationHandle? = null
@@ -104,6 +111,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     ) { success: Boolean ->
         if (success && cameraPhotoUri != null) {
             DebugLogger.d("SinglePhotoRoom", "Photo captured: $cameraPhotoUri")
+            photoWideAngle = false
             selectedImageUri = cameraPhotoUri
             loadImageFromUri(cameraPhotoUri!!)
         } else {
@@ -119,7 +127,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             launchCamera()
         } else {
             DebugLogger.d("SinglePhotoRoom", "Camera permission denied")
-            Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -142,12 +150,33 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
         if (imageUriString.isNullOrBlank()) {
             DebugLogger.d("SinglePhotoRoom", "AR photo capture missing image uri")
-            Toast.makeText(this, "AR photo capture failed", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.camera_ar_photo_failed), Toast.LENGTH_SHORT).show()
             return@registerForActivityResult
         }
+        photoWideAngle = false
         pendingMetricAnchors = anchors
         selectedImageUri = Uri.parse(imageUriString)
         DebugLogger.d("SinglePhotoRoom", "AR photo captured with anchors=${anchors?.size ?: 0}")
+        loadImageFromUri(selectedImageUri!!)
+    }
+
+    private val wideAngleCaptureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != RESULT_OK) {
+            DebugLogger.d("SinglePhotoRoom", "Wide-angle capture cancelled")
+            return@registerForActivityResult
+        }
+        val imageUriString = result.data?.getStringExtra(WideAnglePhotoCaptureActivity.EXTRA_CAPTURED_IMAGE_URI)
+        if (imageUriString.isNullOrBlank()) {
+            DebugLogger.d("SinglePhotoRoom", "Wide-angle capture missing image uri")
+            Toast.makeText(this, getString(R.string.camera_ar_capture_failed), Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        photoWideAngle = true
+        pendingMetricAnchors = null
+        selectedImageUri = Uri.parse(imageUriString)
+        DebugLogger.d("SinglePhotoRoom", "Wide-angle photo captured: $selectedImageUri")
         loadImageFromUri(selectedImageUri!!)
     }
 
@@ -179,6 +208,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         initialView = createInitialView()
         rootLayout.addView(initialView)
 
+        // Camera mode chooser (Standard / Wide Angle) — iOS CameraCaptureView parity
+        cameraModeView = createCameraModeView()
+        cameraModeView.visibility = View.GONE
+        rootLayout.addView(cameraModeView)
+
         // Method picker view - hidden initially
         methodPickerView = createMethodPickerView()
         methodPickerView.visibility = View.GONE
@@ -196,9 +230,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     if (methodPickerView.visibility == View.VISIBLE) {
                         showMethodPickerBackConfirmation()
                         return
-                    } else {
-                        finish()
                     }
+                    if (cameraModeView.visibility == View.VISIBLE) {
+                        showInitialView()
+                        return
+                    }
+                    finish()
                 }
             },
         )
@@ -304,7 +341,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 addView(btnHint)
 
-                setOnClickListener { checkCameraPermissionAndLaunch() }
+                setOnClickListener { showCameraModeView() }
             }
             addView(takePhotoBtn, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -385,6 +422,255 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
             }
             addView(warning)
+        }
+    }
+
+    private fun createCameraModeView(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            setBackgroundColor(PaafektColors.background)
+            setPadding(dpToPx(24), dpToPx(24), dpToPx(24), dpToPx(32))
+
+            val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.photo_room_back)
+                textSize = 16f
+                setTextColor(PaafektColors.accent)
+                setPadding(0, 0, 0, dpToPx(16))
+                setOnClickListener { showInitialView() }
+            }
+            addView(
+                backBtn,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+
+            val headerIcon = ImageView(this@SinglePhotoRoomActivity).apply {
+                setImageResource(R.drawable.ic_camera)
+                imageTintList = ColorStateList.valueOf(PaafektColors.accent)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            }
+            addView(
+                headerIcon,
+                LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    bottomMargin = dpToPx(12)
+                },
+            )
+
+            val title = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.camera_choose_mode)
+                textSize = 22f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(PaafektColors.textPrimary)
+                gravity = Gravity.CENTER
+            }
+            addView(title)
+
+            val hint = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.camera_choose_mode_hint)
+                textSize = 15f
+                setTextColor(PaafektColors.textSecondary)
+                gravity = Gravity.CENTER
+                setPadding(0, dpToPx(8), 0, dpToPx(24))
+            }
+            addView(hint)
+
+            lateinit var standardRow: LinearLayout
+            lateinit var wideRow: LinearLayout
+            lateinit var wideInfoBanner: LinearLayout
+            lateinit var primaryAction: TextView
+            lateinit var secondaryAction: TextView
+
+            fun refreshModeUi() {
+                styleCameraModeRow(standardRow, selectedCameraMode == CameraCaptureMode.STANDARD)
+                styleCameraModeRow(wideRow, selectedCameraMode == CameraCaptureMode.WIDE_ANGLE)
+                wideInfoBanner.visibility =
+                    if (selectedCameraMode == CameraCaptureMode.WIDE_ANGLE) View.VISIBLE else View.GONE
+                if (selectedCameraMode == CameraCaptureMode.WIDE_ANGLE) {
+                    primaryAction.text = getString(R.string.camera_capture_wide_angle)
+                    primaryAction.background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dpToPx(12).toFloat()
+                        setColor(Color.parseColor("#E67E22"))
+                    }
+                    secondaryAction.visibility = View.VISIBLE
+                } else {
+                    primaryAction.text = getString(R.string.camera_take_photo)
+                    primaryAction.background = PaafektDrawables.primaryButton()
+                    secondaryAction.visibility = View.GONE
+                }
+            }
+
+            standardRow = createCameraModeOptionRow(
+                titleRes = R.string.camera_standard,
+                descRes = R.string.camera_standard_desc,
+            ) {
+                selectedCameraMode = CameraCaptureMode.STANDARD
+                refreshModeUi()
+            }
+            addView(
+                standardRow,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = dpToPx(12) },
+            )
+
+            wideRow = createCameraModeOptionRow(
+                titleRes = R.string.camera_wide_angle,
+                descRes = R.string.camera_wide_angle_desc,
+            ) {
+                selectedCameraMode = CameraCaptureMode.WIDE_ANGLE
+                refreshModeUi()
+            }
+            addView(
+                wideRow,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = dpToPx(12) },
+            )
+
+            wideInfoBanner = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(10).toFloat()
+                    setColor(Color.parseColor("#26E67E22"))
+                }
+                visibility = View.GONE
+                val infoIcon = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "ⓘ"
+                    textSize = 16f
+                    setTextColor(Color.parseColor("#E67E22"))
+                    setPadding(0, 0, dpToPx(10), 0)
+                }
+                addView(infoIcon)
+                val infoText = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = getString(R.string.camera_wide_angle_info)
+                    textSize = 13f
+                    setTextColor(PaafektColors.textSecondary)
+                }
+                addView(
+                    infoText,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
+            }
+            addView(
+                wideInfoBanner,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = dpToPx(16) },
+            )
+
+            addView(
+                View(this@SinglePhotoRoomActivity),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                ),
+            )
+
+            primaryAction = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.camera_take_photo)
+                textSize = 17f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(PaafektColors.accentText)
+                gravity = Gravity.CENTER
+                setPadding(0, dpToPx(16), 0, dpToPx(16))
+                background = PaafektDrawables.primaryButton()
+                setOnClickListener {
+                    when (selectedCameraMode) {
+                        CameraCaptureMode.STANDARD -> {
+                            photoWideAngle = false
+                            checkCameraPermissionAndLaunch()
+                        }
+                        CameraCaptureMode.WIDE_ANGLE -> launchWideAngleCapture()
+                    }
+                }
+            }
+            addView(
+                primaryAction,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = dpToPx(12) },
+            )
+
+            secondaryAction = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.camera_select_wide_angle)
+                textSize = 17f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.parseColor("#E67E22"))
+                gravity = Gravity.CENTER
+                setPadding(0, dpToPx(16), 0, dpToPx(16))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(12).toFloat()
+                    setColor(Color.parseColor("#26E67E22"))
+                }
+                visibility = View.GONE
+                setOnClickListener { openWideAngleImagePicker() }
+            }
+            addView(
+                secondaryAction,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+
+            refreshModeUi()
+        }
+    }
+
+    private fun createCameraModeOptionRow(
+        titleRes: Int,
+        descRes: Int,
+        onClick: () -> Unit,
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14))
+            val titleView = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(titleRes)
+                textSize = 17f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(PaafektColors.textPrimary)
+                tag = "title"
+            }
+            addView(titleView)
+            val descView = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(descRes)
+                textSize = 13f
+                setTextColor(PaafektColors.textSecondary)
+                setPadding(0, dpToPx(4), 0, 0)
+                tag = "desc"
+            }
+            addView(descView)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun styleCameraModeRow(row: LinearLayout, selected: Boolean) {
+        row.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpToPx(12).toFloat()
+            setColor(if (selected) PaafektColors.surfaceHi else PaafektColors.surface)
+            setStroke(
+                if (selected) dpToPx(2) else 1,
+                if (selected) PaafektColors.accent else PaafektColors.hairline,
+            )
         }
     }
 
@@ -665,7 +951,31 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     private fun openImagePicker() {
         DebugLogger.d("SinglePhotoRoom", "Opening image picker")
+        photoWideAngle = false
         imagePickerLauncher.launch("image/*")
+    }
+
+    private fun openWideAngleImagePicker() {
+        DebugLogger.d("SinglePhotoRoom", "Opening wide-angle image picker")
+        photoWideAngle = true
+        imagePickerLauncher.launch("image/*")
+    }
+
+    private fun showCameraModeView() {
+        selectedCameraMode = CameraCaptureMode.STANDARD
+        photoWideAngle = false
+        rootLayout.removeView(cameraModeView)
+        cameraModeView = createCameraModeView()
+        rootLayout.addView(cameraModeView)
+        initialView.visibility = View.GONE
+        methodPickerView.visibility = View.GONE
+        cameraModeView.visibility = View.VISIBLE
+    }
+
+    private fun launchWideAngleCapture() {
+        photoWideAngle = true
+        DebugLogger.d("SinglePhotoRoom", "Launching wide-angle capture")
+        wideAngleCaptureLauncher.launch(Intent(this, WideAnglePhotoCaptureActivity::class.java))
     }
 
     private fun checkCameraPermissionAndLaunch() {
@@ -682,6 +992,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun launchCamera() {
+        photoWideAngle = false
         if (ArSupportChecker.isArCoreSupported(this)) {
             arPhotoCaptureLauncher.launch(Intent(this, ArDepthPhotoCaptureActivity::class.java))
             return
@@ -697,7 +1008,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             cameraLauncher.launch(cameraPhotoUri)
         } catch (e: Exception) {
             DebugLogger.eDebugMode("SinglePhotoRoom", "Error launching camera", e)
-            Toast.makeText(this, "Error opening camera: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.camera_error_opening, e.message ?: ""), Toast.LENGTH_SHORT).show()
             CrashReporter.report(this, e, "Single photo room — launch camera")
         }
     }
@@ -764,7 +1075,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             selectedImageView.setImageBitmap(bitmap)
             singleImageScanStatusView.visibility = View.GONE
             orientationUserOverridden = false
-            photoWideAngle = false
+            // Keep photoWideAngle from the capture/picker path that selected this image.
 
             // Must match bitmap pixels used for room generation (see PhotoOrientation.fromBitmapDimensions KDoc).
             detectedOrientation = PhotoOrientation.fromBitmapDimensions(bitmap)
@@ -796,6 +1107,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     private fun showMethodPicker() {
         initialView.visibility = View.GONE
+        cameraModeView.visibility = View.GONE
         methodPickerView.visibility = View.VISIBLE
     }
 
@@ -1080,11 +1392,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         resetSingleImageOverlay()
         cancelAndReleaseAI()
         methodPickerView.visibility = View.GONE
+        cameraModeView.visibility = View.GONE
         initialView.visibility = View.VISIBLE
         selectedBitmap = null
         selectedImageUri = null
         orientationUserOverridden = false
         photoWideAngle = false
+        selectedCameraMode = CameraCaptureMode.STANDARD
     }
 
     /**

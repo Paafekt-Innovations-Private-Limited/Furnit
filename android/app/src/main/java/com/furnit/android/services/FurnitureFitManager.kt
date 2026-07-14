@@ -89,6 +89,20 @@ class FurnitureFitManager(private val context: Context) {
         fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean =
             ArSupportChecker.isArCoreSupported(context)
 
+        /**
+         * Preload the shared RTMDet ONNX session (asset copy + [OrtSession] create).
+         * Mirror iOS room-open `RTMDetModelService.ensureModelLoaded()` so Fit is not blocked
+         * by a multi-second cold session create on the first tap.
+         */
+        fun preloadShared(context: Context): Boolean {
+            return sharedOnnxBackend(context.applicationContext, DEFAULT_ONNX_MODEL_ASSET) != null
+        }
+
+        /** True when [preloadShared] / [initializeAuto] has already created the shared session. */
+        fun isSharedBackendReady(): Boolean {
+            return sharedBackend?.assetName == DEFAULT_ONNX_MODEL_ASSET
+        }
+
         private fun sharedOnnxBackend(context: Context, onnxAssetName: String): OnnxBackend? {
             sharedBackend?.takeIf { it.assetName == onnxAssetName }?.let { return it }
             synchronized(sharedBackendLock) {
@@ -225,6 +239,37 @@ class FurnitureFitManager(private val context: Context) {
             ortEnv = null
             ortSession = null
             loadedOnnxAssetName = null
+        }
+    }
+
+    /**
+     * One cold forward pass so the first live Fit frame does not pay ORT graph JIT costs.
+     * Safe to call after [initializeAuto]; runs on the shared inference executor.
+     */
+    fun warmupInferenceBlocking(timeoutMs: Long = 8_000L): Boolean {
+        if (ortSession == null) return false
+        val width = (ortBackend?.inputWidth ?: RTMDET_INPUT_SIZE).coerceAtLeast(64)
+        val height = (ortBackend?.inputHeight ?: RTMDET_INPUT_SIZE).coerceAtLeast(64)
+        val warmupBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        // Mid-gray so liveliness gates / empty-frame heuristics cannot skip work.
+        warmupBitmap.eraseColor(0xFF808080.toInt())
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val startedAt = System.nanoTime()
+        try {
+            segmentWithDetectionsAsync(warmupBitmap) {
+                latch.countDown()
+            }
+            val finished = latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            LogUtil.i(
+                TAG,
+                "warmupInference finished=$finished in ${(System.nanoTime() - startedAt) / 1_000_000L}ms",
+            )
+            return finished
+        } catch (e: Exception) {
+            LogUtil.w(TAG, "warmupInference failed: ${e.message}")
+            return false
+        } finally {
+            if (!warmupBitmap.isRecycled) warmupBitmap.recycle()
         }
     }
 

@@ -433,6 +433,7 @@
 "photoRoom.manualSetup" = "మాన్యువల్ సెటప్";
 "photoRoom.manualSetupDesc" = "గోడలను సర్దుబాటు చేయడానికి లాగండి";
 "photoRoom.selectPhoto" = "ఫోటో ఎంచుకోండి";
+"photoRoom.chooseDifferentPhoto" = "వేరే ఫోటోను ఎంచుకోండి";
 "photoRoom.fromLibrary" = "మీ ఫోటో లైబ్రరీ నుండి";
 "photoRoom.loading" = "3D గది లోడ్ అవుతోంది...";
 "photoRoom.downloadSuccess" = "%@ విజయవంతంగా డౌన్‌లోడ్ అయింది. మీ మోడల్ జాబితాలో చూడండి.";

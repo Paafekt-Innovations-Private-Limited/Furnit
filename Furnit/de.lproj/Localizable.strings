@@ -447,6 +447,7 @@
 "photoRoom.manualSetup" = "Manuelle Einrichtung";
 "photoRoom.manualSetupDesc" = "Ziehen, um Raumwände anzupassen";
 "photoRoom.selectPhoto" = "Foto auswählen";
+"photoRoom.chooseDifferentPhoto" = "Anderes Foto wählen";
 "photoRoom.fromLibrary" = "Aus Ihrer Fotomediathek";
 "photoRoom.loading" = "3D-Raum wird geladen...";
 "photoRoom.downloadSuccess" = "%@ wurde erfolgreich heruntergeladen. Sie finden es in Ihrer Modellliste.";

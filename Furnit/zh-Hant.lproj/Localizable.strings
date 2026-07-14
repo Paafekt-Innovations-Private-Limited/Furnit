@@ -434,6 +434,7 @@
 "photoRoom.manualSetup" = "手動設定";
 "photoRoom.manualSetupDesc" = "拖曳以調整房間牆面";
 "photoRoom.selectPhoto" = "選擇照片";
+"photoRoom.chooseDifferentPhoto" = "選擇其他照片";
 "photoRoom.fromLibrary" = "從照片圖庫";
 "photoRoom.loading" = "正在載入3D房間...";
 "photoRoom.downloadSuccess" = "已成功下載 %@。請在模型列表中查看。";

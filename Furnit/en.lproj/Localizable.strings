@@ -312,6 +312,7 @@
 "photoRoom.manualSetup" = "Manual Setup";
 "photoRoom.manualSetupDesc" = "Drag to adjust room walls";
 "photoRoom.selectPhoto" = "Select Photo";
+"photoRoom.chooseDifferentPhoto" = "Choose Different Photo";
 "photoRoom.fromLibrary" = "From your photo library";
 "photoRoom.loading" = "Loading 3D room...";
 "photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";

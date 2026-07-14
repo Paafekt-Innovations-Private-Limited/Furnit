@@ -316,6 +316,7 @@ enum L10n {
         static let backAlertAI = "photoRoom.backAlertAI".localized
         static let backAlertManual = "photoRoom.backAlertManual".localized
         static let selectPhoto = "photoRoom.selectPhoto".localized
+        static let chooseDifferentPhoto = "photoRoom.chooseDifferentPhoto".localized
         static let fromLibrary = "photoRoom.fromLibrary".localized
         static let screenshotWarning = "photoRoom.screenshotWarning".localized
         static let odrOneTimeDownload = "photoRoom.odrOneTimeDownload".localized

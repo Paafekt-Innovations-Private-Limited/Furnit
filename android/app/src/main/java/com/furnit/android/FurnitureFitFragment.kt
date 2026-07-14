@@ -150,6 +150,12 @@ class FurnitureFitFragment : Fragment() {
         LogUtil.d("FurnitureFit", "Calling initializeAuto...")
         val success = manager.initializeAuto()
         LogUtil.d("FurnitureFit", "initializeAuto completed, success=$success")
+        // Pay ORT cold-start on a background thread so the first camera frame is not the first run.
+        if (success) {
+            cameraExecutor.execute {
+                manager.warmupInferenceBlocking()
+            }
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {

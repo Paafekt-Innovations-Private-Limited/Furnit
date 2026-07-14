@@ -392,6 +392,36 @@ class GLBRoomActivity : AppCompatActivity() {
         if (!isPreviewMode) {
             warmRoomMeasurementInBackgroundIfNeeded()
         }
+        // Match iOS: preload RTMDet when the room opens so the first Fit tap is camera+frame, not OrtSession create.
+        preloadFurnitureFitModelInBackground()
+    }
+
+    /**
+     * iOS hosts call `RTMDetModelService.ensureModelLoaded()` on room appear.
+     * Android previously created the ~110MB OrtSession only on Fit tap, serializing camera bind behind it.
+     */
+    private fun preloadFurnitureFitModelInBackground() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val existingManager = furnitureFitManager
+            val manager = existingManager ?: FurnitureFitManager(this@GLBRoomActivity)
+            val ok = manager.initializeAuto()
+            if (!ok) {
+                if (existingManager == null) manager.close()
+                LogUtil.w(TAG, "Inline brain: RTMDet preload failed")
+                return@launch
+            }
+            manager.warmupInferenceBlocking()
+            withContext(Dispatchers.Main) {
+                if (isDestroyed) {
+                    if (furnitureFitManager !== manager) manager.close()
+                    return@withContext
+                }
+                if (furnitureFitManager == null) {
+                    furnitureFitManager = manager
+                }
+                LogUtil.d(TAG, "Inline brain: RTMDet preloaded while room open")
+            }
+        }
     }
 
     /** WebView fills the window; system-bar insets pad chrome overlays only. */
@@ -952,7 +982,13 @@ class GLBRoomActivity : AppCompatActivity() {
         )
         brainDetectionOverlayView.setDetectionBoxVisibility(inlineBrainFullVideoEnabled)
         brainDetectionOverlayView.setIdentifySelectionState(inlineBrainFullVideoEnabled, inlineBrainSelectedPins)
-        showBrainProgress(getString(R.string.detector_loading_model), 20)
+        val modelAlreadyReady = furnitureFitManager != null || FurnitureFitManager.isSharedBackendReady()
+        // When preloaded (iOS parity), skip the multi-second "Loading detection model…" wait UX.
+        if (modelAlreadyReady) {
+            showBrainProgress(getString(R.string.smartypants_detecting_furniture), 55)
+        } else {
+            showBrainProgress(getString(R.string.detector_loading_model), 20)
+        }
         refreshMorphingPrimaryFitButton()
         updateSummonedToolbarState()
         updateInlineBrainSegmentButton()
@@ -961,7 +997,11 @@ class GLBRoomActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val manager = furnitureFitManager ?: withContext(Dispatchers.IO) {
-                FurnitureFitManager(this@GLBRoomActivity).takeIf { it.initializeAuto() }
+                FurnitureFitManager(this@GLBRoomActivity).takeIf { manager ->
+                    manager.initializeAuto().also { ok ->
+                        if (ok) manager.warmupInferenceBlocking()
+                    }
+                }
             }
             if (manager == null) {
                 hideBrainProgress()
@@ -970,6 +1010,9 @@ class GLBRoomActivity : AppCompatActivity() {
                 return@launch
             }
             furnitureFitManager = manager
+            if (!modelAlreadyReady) {
+                showBrainProgress(getString(R.string.smartypants_detecting_furniture), 55)
+            }
             bindInlineBrainCamera(generation)
         }
     }

@@ -433,6 +433,7 @@
 "photoRoom.manualSetup" = "إعداد يدوي";
 "photoRoom.manualSetupDesc" = "اسحب لضبط جدران الغرفة";
 "photoRoom.selectPhoto" = "اختر صورة";
+"photoRoom.chooseDifferentPhoto" = "اختيار صورة مختلفة";
 "photoRoom.fromLibrary" = "من مكتبة الصور";
 "photoRoom.loading" = "جاري تحميل الغرفة ثلاثية الأبعاد...";
 "photoRoom.downloadSuccess" = "تم تنزيل %@ بنجاح. يمكنك عرضه في قائمة النماذج.";

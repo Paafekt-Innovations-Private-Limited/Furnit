@@ -433,6 +433,7 @@
 "photoRoom.manualSetup" = "கைமுறை அமைப்பு";
 "photoRoom.manualSetupDesc" = "சுவர்களை சரிசெய்ய இழுக்கவும்";
 "photoRoom.selectPhoto" = "புகைப்படத்தைத் தேர்ந்தெடுக்கவும்";
+"photoRoom.chooseDifferentPhoto" = "வேறு புகைப்படத்தைத் தேர்ந்தெடுக்கவும்";
 "photoRoom.fromLibrary" = "உங்கள் புகைப்பட நூலகத்திலிருந்து";
 "photoRoom.loading" = "3D அறை ஏற்றப்படுகிறது...";
 "photoRoom.downloadSuccess" = "%@ வெற்றிகரமாக பதிவிறக்கப்பட்டது. மாதிரி பட்டியலில் காண்க.";

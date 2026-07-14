@@ -2257,7 +2257,7 @@ struct SinglePhotoRoomView: View {
                     .buttonStyle(PaafektCreationCardStyle(variant: .secondary))
                     .padding(.horizontal)
 
-                    Button("Choose Different Photo") {
+                    Button(L10n.PhotoRoom.chooseDifferentPhoto) {
                         selectedImage = nil
                         showImagePicker = true
                     }
