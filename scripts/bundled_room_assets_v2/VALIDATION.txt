@@ -1,2 +1,0 @@
-scandinavian_minimal: GLB bounds min=[-2.5, 0.0, -2.0] max=[2.5, 2.55, 2.0] size=[5.0, 2.55, 4.0]
-industrial_loft: GLB bounds min=[-4.0, 0.0, -3.0] max=[4.0, 3.05, 3.0] size=[8.0, 3.05, 6.0]
