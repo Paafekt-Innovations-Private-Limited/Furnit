@@ -406,7 +406,33 @@ class AuthenticationManager private constructor(context: Context) {
      */
     fun logout() {
         auth.signOut()
+        clearLocalAuthenticationState()
+        LogUtil.d(TAG, "User signed out")
+        notifyListeners()
+    }
 
+    fun deleteCurrentAccount(onComplete: (Result<Unit>) -> Unit) {
+        val firebaseUser = auth.currentUser
+        if (firebaseUser == null) {
+            onComplete(Result.failure(IllegalStateException("No authenticated account is available to delete.")))
+            return
+        }
+        firebaseUser.delete().addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                auth.signOut()
+                clearLocalAuthenticationState()
+                LogUtil.d(TAG, "User account deleted")
+                notifyListeners()
+                onComplete(Result.success(Unit))
+            } else {
+                val error = task.exception ?: IllegalStateException("Account deletion failed.")
+                LogUtil.e(TAG, "User account deletion failed", error)
+                onComplete(Result.failure(error))
+            }
+        }
+    }
+
+    private fun clearLocalAuthenticationState() {
         prefs.edit()
             .remove(KEY_IS_AUTHENTICATED)
             .remove(KEY_USER_ID)
@@ -418,9 +444,6 @@ class AuthenticationManager private constructor(context: Context) {
         currentUser = null
         verificationId = null
         resendToken = null
-
-        LogUtil.d(TAG, "User signed out")
-        notifyListeners()
     }
 
     /**

@@ -63,7 +63,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 **Shipped checkpoint:** Small encoder (24.8M params); **do not** ship Base/Large/Giant (NC).
 
-**Action:** Lawyer on **CC-BY-SA → exported CoreML/ONNX weights**. Add Hypersim attribution if counsel agrees.
+**Action:** Lawyer on **CC-BY-SA → exported CoreML/ONNX weights**. Hypersim attribution was added to both in-app license screens on 2026-07-18; attribution does not resolve the Share-Alike legal question.
 
 ---
 
@@ -97,7 +97,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 **App claim cross-check:** `licenses.rtmdet` = Apache-2.0, OpenMMLab — **Matches code license**. COCO CC-BY attribution not explicit in app strings.
 
-**Action:** Add COCO CC-BY-4.0 acknowledgment. Lawyer optional on pretrained-weight + Flickr-trained model in commercial app.
+**Action:** COCO CC-BY-4.0 acknowledgment added to both in-app license screens on 2026-07-18. Lawyer optional on pretrained-weight + Flickr-trained model in commercial app.
 
 ---
 
@@ -150,15 +150,15 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | Component | Version | License | Commercial | Attribution | Primary source | In app licences? | Date |
 |-----------|---------|---------|------------|-------------|----------------|------------------|------|
 | Core ML / RealityKit | System | Apple SDK terms | Per Apple agreement | — | Apple developer terms | — | — |
-| ONNX Runtime | 1.24.2 | MIT | YES | Copyright notice | https://github.com/microsoft/onnxruntime/blob/v1.24.2/LICENSE | **No** (Android) | 2026-07-11 |
+| ONNX Runtime | 1.24.2 | MIT | YES | Copyright notice | https://github.com/microsoft/onnxruntime/blob/v1.24.2/LICENSE | **Yes** (Android) | 2026-07-18 |
 | Three.js | r170 | MIT | YES | Copyright notice | Bundled header: `SPDX-License-Identifier: MIT`; https://github.com/mrdoob/three.js/blob/r170/LICENSE | **Yes** | 2026-07-11 |
-| Filament (via SceneView) | 2.0.3 | Apache-2.0 | YES | NOTICE | https://github.com/google/filament/blob/main/LICENSE | **No** | 2026-07-11 |
+| Filament (via SceneView) | 2.0.3 | Apache-2.0 | YES | NOTICE | https://github.com/google/filament/blob/main/LICENSE | **Yes** (Android) | 2026-07-18 |
 | MetalSplatter | 1.0.1 | MIT | YES | Copyright notice | https://github.com/scier/MetalSplatter/blob/main/LICENSE | **Yes** (iOS) | 2026-07-11 |
-| spz-swift | 2.1.0 | MIT | YES | Niantic + Sean Cier notice | https://github.com/scier/spz-swift/blob/main/LICENSE | **No** | 2026-07-11 |
+| spz-swift | 2.1.0 | MIT | YES | Niantic + Sean Cier notice | https://github.com/scier/spz-swift/blob/main/LICENSE | **Yes** (iOS) | 2026-07-18 |
 | Draco | — | Apache-2.0 (typical) | YES | NOTICE | Google Draco (loader support only; Android GLB avoids Draco compression) | **No** | — |
 | Firebase | 12.11.0 (iOS SPM) | Apache-2.0 | Per Google ToS | Yes | Firebase SDK | **Yes** | 2026-07-11 |
 
-**Attribution gaps to close:** ONNX Runtime, Filament/SceneView, spz-swift.
+**Attribution gaps closed in app UI (2026-07-18):** ONNX Runtime, Filament/SceneView, spz-swift, and COCO annotations.
 
 ---
 
@@ -171,7 +171,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | `e2aac05` | 2026-07-08 | **Re-displayed** notice; text changed to *“Current release: … non-commercial use only.”* |
 | *(working tree)* | 2026-07-13 | **Updated** notice to *“Current release: This app is currently offered for commercial use.”* (iOS + Android string resources). |
 
-**Displayed today:** iOS `Furnit/Views/ContentView.swift` (`LicensesView`); Android `LicensesActivity.kt`.
+**Displayed today:** No. Removed from both in-app license screens on 2026-07-18 because it is release policy, not third-party attribution.
 
 **Conclusion:** **Product / release-phase policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Originally carried from an early Phase 1 legacy-model legal posture. **Updated 2026-07-13** to state commercial use; aligns with intended commercial launch. Lawyer should still align full terms with model audit above.
 
@@ -207,5 +207,5 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 - [ ] New `.mlpackage` / `.onnx` / checkpoint ID change
 - [ ] New SPM / Gradle ML dependency
 - [ ] M-LSD, Whisper, SHARP, or ExecuTorch promoted on-device
-- [x] `phase1Notice` updated to commercial use (2026-07-13)
+- [x] `phase1Notice` removed from license UI; commercial-release wording belongs in product terms (2026-07-18)
 - [x] SparkJS bundle removed — iOS + Android (2026-07-11)

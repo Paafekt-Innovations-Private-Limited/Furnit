@@ -39,6 +39,15 @@ import com.furnit.android.ar.FurnitureFitArCameraController
 import com.furnit.android.ar.FurnitureFitStandardHeights
 import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import com.furnit.android.models.ModelManager
+import com.furnit.android.models.roomintelligence.BitmapStraightSrgbExtractor
+import com.furnit.android.models.roomintelligence.FurnitureAestheticProfile
+import com.furnit.android.models.roomintelligence.FurnitureDimensions
+import com.furnit.android.models.roomintelligence.RoomDimensions
+import com.furnit.android.models.roomintelligence.RoomIntelligenceEngine
+import com.furnit.android.models.roomintelligence.RoomIntelligenceStatus
+import com.furnit.android.models.roomintelligence.RoomPaletteSampler
+import com.furnit.android.models.roomintelligence.StraightSrgbColor
+import com.furnit.android.models.roomintelligence.SurfacePalette
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
 import com.furnit.android.utils.RoomSceneLighting
@@ -48,6 +57,8 @@ import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.theme.PaafektSpace
 import com.furnit.android.theme.PaafektViewerToolbar
+import com.furnit.android.theme.PlacementIntelligenceCardView
+import com.furnit.android.theme.PlacementIntelligenceCardMapper
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -119,6 +130,12 @@ class FurnitureFitFragment : Fragment() {
     private var roomBoundaryManager: RoomBoundaryManager? = null
     private var calibrationPillContainer: View? = null
     private var calibrationPillLine1: TextView? = null
+    private var placementIntelligenceCard: PlacementIntelligenceCardView? = null
+    private var roomIntelligencePalette: SurfacePalette = SurfacePalette.EMPTY
+    private var furnitureIntelligenceColor: StraightSrgbColor? = null
+    private var furnitureIntelligenceLabel: String? = null
+    private var hasSegmentedFurnitureForIntelligence = false
+    private var lastFurnitureColorSampleMs: Long = 0L
     private var lastOverlayScaleLogMs: Long = 0L
     private var hintController: PaafektHintController? = null
 
@@ -332,8 +349,13 @@ class FurnitureFitFragment : Fragment() {
         uiHost.addView(progressContainer)
         uiHost.addView(backButton)
         uiHost.addView(bottomControls)
+        placementIntelligenceCard = PlacementIntelligenceCardView(requireContext()).also { card ->
+            card.layoutParams = PlacementIntelligenceCardView.viewerLayoutParams(requireContext())
+            uiHost.addView(card)
+        }
+        root.post { loadPlacementIntelligenceRoomPalette() }
 
-        hintController = PaafektHintController(root as FrameLayout, topMarginDp = 96)
+        hintController = PaafektHintController(root, topMarginDp = 96)
         root.post {
             hintController?.showBottomCentered(
                 requireContext(),
@@ -372,11 +394,14 @@ class FurnitureFitFragment : Fragment() {
         controller.lockedPhotoOrientation = selectedPhotoOrientation
         controller.roomHeightMetersForFallback = selectedRoomHeight.coerceAtLeast(0.1f)
         controller.onAssistedMeasurementUpdated = {
+            val arWidthMeters = arCameraController?.getLastEstimatedWidthMeters()
+                ?.takeIf { it.isFinite() && it > 0f }
             val arH = arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
-            detectedFurnitureWidthMeters = null
+            detectedFurnitureWidthMeters = arWidthMeters
             detectedFurnitureHeightMeters = arH
             lockFurnitureSizeIfNeeded(detectedFurnitureWidthMeters, detectedFurnitureHeightMeters)
             updateCalibrationPill()
+            refreshPlacementIntelligence()
         }
         val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
         controller.glSurfaceView.layoutParams = if (hasRoomBackground) {
@@ -466,6 +491,10 @@ class FurnitureFitFragment : Fragment() {
             }
 
             if (result != null && result.mask != null) {
+                hasSegmentedFurnitureForIntelligence = true
+                furnitureIntelligenceLabel = result.primaryDetection?.label
+                    ?: result.detections.firstOrNull()?.label
+                sampleFurnitureIntelligenceColor(result.mask)
                 if (!hasFirstDetection) {
                     hasFirstDetection = true
                     progressContainer.visibility = View.GONE
@@ -485,13 +514,18 @@ class FurnitureFitFragment : Fragment() {
                         arCameraController?.setBboxHint(
                             primaryDetection.x * scaleX,
                             primaryDetection.y * scaleY,
+                            primaryDetection.w * scaleX,
                             primaryDetection.h * scaleY,
                             primaryDetection.label,
                         )
                     }
+                    val arWidthMeters = arCameraController?.getProvisionalWidthMeters()
+                        ?.takeIf { it.isFinite() && it > 0f }
+                        ?: arCameraController?.getLastEstimatedWidthMeters()
+                            ?.takeIf { it.isFinite() && it > 0f }
                     val arH = arCameraController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
                         ?: arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
-                    detectedFurnitureWidthMeters = null
+                    detectedFurnitureWidthMeters = arWidthMeters
                     detectedFurnitureHeightMeters = arH
                     lockFurnitureSizeIfNeeded(detectedFurnitureWidthMeters, detectedFurnitureHeightMeters)
                     overlay.setMaskAndDetections(
@@ -520,6 +554,7 @@ class FurnitureFitFragment : Fragment() {
                     )
                 }
                 updateCalibrationPill()
+                refreshPlacementIntelligence()
 
                 if (showRoomBackground) {
                     roomSceneView.visibility = View.VISIBLE
@@ -527,6 +562,10 @@ class FurnitureFitFragment : Fragment() {
                 }
             } else {
                 arCameraController?.clearBboxHint()
+                hasSegmentedFurnitureForIntelligence = false
+                furnitureIntelligenceColor = null
+                furnitureIntelligenceLabel = null
+                placementIntelligenceCard?.clear()
                 if (!hasFirstDetection) {
                     setProgress(40, getString(R.string.smartypants_scanning_for_furniture))
                 }
@@ -541,6 +580,92 @@ class FurnitureFitFragment : Fragment() {
                 }
             }
         }
+    }
+
+    private fun loadPlacementIntelligenceRoomPalette() {
+        val roomFolder = selectedRoomFolder?.let(::File)
+            ?: selectedRoomId?.let { roomId ->
+                File(File(requireContext().filesDir, "rooms"), roomId)
+            }
+            ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val sampledPalette = withContext(Dispatchers.IO) {
+                RoomPaletteSampler.sample(roomFolder)
+            }
+            roomIntelligencePalette = sampledPalette
+            refreshPlacementIntelligence()
+        }
+    }
+
+    private fun sampleFurnitureIntelligenceColor(mask: Bitmap) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastFurnitureColorSampleMs < 500L) return
+        lastFurnitureColorSampleMs = now
+        viewLifecycleOwner.lifecycleScope.launch {
+            val sampledColor = withContext(Dispatchers.Default) {
+                BitmapStraightSrgbExtractor.mean(mask)
+            }
+            if (isAdded && view != null && hasSegmentedFurnitureForIntelligence) {
+                furnitureIntelligenceColor = sampledColor
+                refreshPlacementIntelligence()
+            }
+        }
+    }
+
+    private fun refreshPlacementIntelligence() {
+        val card = placementIntelligenceCard ?: return
+        if (!hasSegmentedFurnitureForIntelligence) {
+            card.clear()
+            return
+        }
+        val roomDimensions = RoomDimensions(
+            widthMeters = selectedRoomWidth,
+            heightMeters = selectedRoomHeight,
+            depthMeters = selectedRoomDepth,
+        )
+        val displayedWidthMeters = effectiveDisplayedFurnitureWidthMeters()
+        val displayedHeightMeters = effectiveDisplayedFurnitureHeightMeters()
+        val furnitureDimensions = if (
+            displayedWidthMeters != null &&
+            displayedHeightMeters != null
+        ) {
+            FurnitureDimensions.fromMeasuredWidthAndHeight(
+                displayedWidthMeters,
+                displayedHeightMeters,
+            )
+        } else {
+            null
+        }
+        val furnitureProfile = furnitureIntelligenceColor?.let { furnitureColor ->
+            FurnitureAestheticProfile(
+                primaryColor = furnitureColor,
+                styleTags = furnitureStyleTags(furnitureIntelligenceLabel),
+            )
+        }
+        var result = RoomIntelligenceEngine.evaluateMeasuredFurniture(
+            roomDimensions = roomDimensions,
+            furnitureWidthMeters = displayedWidthMeters,
+            furnitureHeightMeters = displayedHeightMeters,
+            roomPalette = roomIntelligencePalette,
+            furnitureAestheticProfile = furnitureProfile,
+        )
+        if (furnitureDimensions == null && furnitureProfile == null) {
+            result = result.copy(status = RoomIntelligenceStatus.MEASURING)
+        }
+        card.render(
+            PlacementIntelligenceCardMapper.map(
+                context = requireContext(),
+                result = result,
+                roomDimensions = roomDimensions,
+                furnitureDimensions = furnitureDimensions,
+            ),
+        )
+        card.bringToFront()
+    }
+
+    private fun furnitureStyleTags(label: String?): List<String> = when (label?.lowercase(Locale.US)) {
+        "couch", "sofa", "chair", "dining table", "bed" -> listOf("modern", "minimalist")
+        else -> listOf("modern")
     }
 
     private fun overlayScaleForDetection(
@@ -663,7 +788,9 @@ class FurnitureFitFragment : Fragment() {
             ?: detectedFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
 
     private fun effectiveDisplayedFurnitureWidthMeters(): Float? {
-        return lockedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
+        return arCameraController?.getProvisionalWidthMeters()?.takeIf { it.isFinite() && it > 0f }
+            ?: arCameraController?.getLastEstimatedWidthMeters()?.takeIf { it.isFinite() && it > 0f }
+            ?: lockedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
             ?: detectedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
     }
 
@@ -677,6 +804,11 @@ class FurnitureFitFragment : Fragment() {
         val hasAr = arCameraController != null
         if (wantAr == hasAr) return
         val root = cameraPathRoot ?: return
+        detectedFurnitureWidthMeters = null
+        detectedFurnitureHeightMeters = null
+        lockedFurnitureWidthMeters = null
+        lockedFurnitureHeightMeters = null
+        placementIntelligenceCard?.clear()
         if (wantAr && !hasAr) {
             releaseCameraUseCases()
             startArCameraPath(root)
@@ -1127,6 +1259,8 @@ class FurnitureFitFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        placementIntelligenceCard?.clear()
+        placementIntelligenceCard = null
         releaseCameraUseCases()
         releaseArCameraController()
         super.onDestroyView()

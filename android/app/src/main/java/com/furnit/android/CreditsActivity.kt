@@ -12,9 +12,9 @@ import com.furnit.android.theme.PaafektScreenViews
 class CreditsActivity : AppCompatActivity() {
 
     private val appleUrl = "https://www.apple.com/"
+    private val googleUrl = "https://about.google/"
     private val openAiUrl = "https://openai.com/"
     private val anthropicUrl = "https://www.anthropic.com/"
-    private val lumaUrl = "https://lumalabs.ai/"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,9 +28,9 @@ class CreditsActivity : AppCompatActivity() {
         addSection(layout, getString(R.string.credits_intro), isBold = true)
         addSection(layout, getString(R.string.credits_disclaimer))
         addSection(layout, getString(R.string.credits_apple_title), getString(R.string.credits_apple_body), appleUrl)
+        addSection(layout, getString(R.string.credits_google_title), getString(R.string.credits_google_body), googleUrl)
         addSection(layout, getString(R.string.credits_openai_title), getString(R.string.credits_openai_body), openAiUrl)
         addSection(layout, getString(R.string.credits_anthropic_title), getString(R.string.credits_anthropic_body), anthropicUrl)
-        addSection(layout, getString(R.string.credits_luma_title), getString(R.string.credits_luma_body), lumaUrl)
 
         PaafektScreenViews.createScreenScrollView(this).apply {
             addView(layout)

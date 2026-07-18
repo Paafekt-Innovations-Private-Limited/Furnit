@@ -83,7 +83,9 @@ enum L10n {
 
     // MARK: Home
     enum Home {
-        static let title = "home.title".localized
+        static let libraryTitle = "home.libraryTitle".localized
+        static let storageTitle = "home.storageTitle".localized
+        static let storagePath = "home.storagePath".localized
         static let noModels = "home.noModels".localized
         static let noModelsDescription = "home.noModelsDescription".localized
         static let createRoom = "home.createRoom".localized
@@ -144,6 +146,7 @@ enum L10n {
         static let legal = "settings.legal".localized
         static let privacyPolicy = "settings.privacyPolicy".localized
         static let termsOfService = "settings.termsOfService".localized
+        static let legalSummary = "settings.legalSummary".localized
         static let support = "settings.support".localized
         static let credits = "settings.credits".localized
         static let licenses = "settings.licenses".localized
@@ -199,12 +202,13 @@ enum L10n {
     // MARK: Licenses & Attributions
     enum Licenses {
         static let title = "licenses.title".localized
-        static let phase1Notice = "licenses.phase1Notice".localized
         static let openSourceSection = "licenses.openSourceSection".localized
         static let openSourceIntro = "licenses.openSourceIntro".localized
         static let viewFullLicense = "licenses.viewFullLicense".localized
         static let depthAnythingTitle = "licenses.depthAnythingTitle".localized
         static let depthAnything = "licenses.depthAnything".localized
+        static let hypersimTitle = "licenses.hypersimTitle".localized
+        static let hypersim = "licenses.hypersim".localized
         static let geoCalibTitle = "licenses.geoCalibTitle".localized
         static let geoCalib = "licenses.geoCalib".localized
         static let metalSplatterTitle = "licenses.metalSplatterTitle".localized
@@ -215,6 +219,10 @@ enum L10n {
         static let rtmdet = "licenses.rtmdet".localized
         static let threeTitle = "licenses.threeTitle".localized
         static let three = "licenses.three".localized
+        static let spzSwiftTitle = "licenses.spzSwiftTitle".localized
+        static let spzSwift = "licenses.spzSwift".localized
+        static let cocoTitle = "licenses.cocoTitle".localized
+        static let coco = "licenses.coco".localized
     }
 
     enum Credits {
@@ -224,12 +232,12 @@ enum L10n {
         static let visitWebsite = "credits.visitWebsite".localized
         static let appleTitle = "credits.appleTitle".localized
         static let appleBody = "credits.appleBody".localized
+        static let googleTitle = "credits.googleTitle".localized
+        static let googleBody = "credits.googleBody".localized
         static let openAITitle = "credits.openAITitle".localized
         static let openAIBody = "credits.openAIBody".localized
         static let anthropicTitle = "credits.anthropicTitle".localized
         static let anthropicBody = "credits.anthropicBody".localized
-        static let lumaTitle = "credits.lumaTitle".localized
-        static let lumaBody = "credits.lumaBody".localized
     }
 
     // MARK: Help & Support

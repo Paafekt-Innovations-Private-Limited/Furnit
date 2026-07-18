@@ -21,6 +21,16 @@ import kotlin.math.roundToInt
  */
 object FurnitureFitArMetrics {
 
+    enum class RawCameraAxis {
+        X,
+        Y,
+    }
+
+    data class RawCameraExtent(
+        val pixels: Float,
+        val focalAxis: RawCameraAxis,
+    )
+
     /** After repeated plane+depth misses, skip plane hitTest for a short interval to reduce ARCore native log spam. */
     @Volatile
     private var planeProbeBackoffUntilMs: Long = 0L
@@ -838,6 +848,39 @@ object FurnitureFitArMetrics {
         return (bboxHeightPixels / focalLengthYPixels) * distanceMeters
     }
 
+    fun estimatedPhysicalWidthMeters(
+        bboxWidthPixels: Float,
+        distanceMeters: Float,
+        focalLengthPixels: Float,
+    ): Float? = estimatedPhysicalHeightMeters(
+        bboxHeightPixels = bboxWidthPixels,
+        distanceMeters = distanceMeters,
+        focalLengthYPixels = focalLengthPixels,
+    )
+
+    /**
+     * Describes an oriented inference-image extent after its endpoints have been mapped into the
+     * raw ARCore image. Quarter-turns swap the focal axis even though the extent length is unchanged.
+     */
+    fun rawCameraExtentFromMappedEndpoints(
+        startRawX: Float,
+        startRawY: Float,
+        endRawX: Float,
+        endRawY: Float,
+    ): RawCameraExtent? {
+        if (!startRawX.isFinite() || !startRawY.isFinite() || !endRawX.isFinite() || !endRawY.isFinite()) {
+            return null
+        }
+        val deltaRawX = abs(endRawX - startRawX)
+        val deltaRawY = abs(endRawY - startRawY)
+        val pixels = kotlin.math.hypot(deltaRawX.toDouble(), deltaRawY.toDouble()).toFloat()
+        if (!pixels.isFinite() || pixels <= 1f) return null
+        return RawCameraExtent(
+            pixels = pixels,
+            focalAxis = if (deltaRawX >= deltaRawY) RawCameraAxis.X else RawCameraAxis.Y,
+        )
+    }
+
     /**
      * **Diagnostic / legacy only:** `roomHeight × (bbox_h / image_h)` is **not** physically
      * stable when the camera moves — the bbox shrinks in pixels as distance increases. Do not use
@@ -873,15 +916,37 @@ object FurnitureFitArMetrics {
      * [fy] in pixels for the camera image; scales if [imageHeight] differs from [CameraIntrinsics] image height.
      */
     fun focalLengthYPixelsForImage(intrinsics: CameraIntrinsics, imageWidth: Int, imageHeight: Int): Float {
+        return focalLengthPixelsForImage(intrinsics, imageWidth, imageHeight, RawCameraAxis.Y)
+    }
+
+    fun focalLengthPixelsForImage(
+        intrinsics: CameraIntrinsics,
+        imageWidth: Int,
+        imageHeight: Int,
+        axis: RawCameraAxis,
+    ): Float {
         val dim = intrinsics.imageDimensions
         val intrW = max(dim[0], 1)
         val intrH = max(dim[1], 1)
         val fl = intrinsics.focalLength
-        val fyBase = if (fl.size >= 2) fl[1] else fl[0]
-        val scaleX = imageWidth.toFloat() / intrW.toFloat()
-        val scaleY = imageHeight.toFloat() / intrH.toFloat()
-        val scale = kotlin.math.sqrt(scaleX * scaleY)
-        return fyBase * scale
+        val focalLength = when (axis) {
+            RawCameraAxis.X -> fl[0]
+            RawCameraAxis.Y -> if (fl.size >= 2) fl[1] else fl[0]
+        }
+        val intrinsicAxisPixels = if (axis == RawCameraAxis.X) intrW else intrH
+        val imageAxisPixels = if (axis == RawCameraAxis.X) imageWidth else imageHeight
+        return scaleFocalLengthPixels(focalLength, intrinsicAxisPixels, imageAxisPixels)
+    }
+
+    fun scaleFocalLengthPixels(
+        focalLengthPixels: Float,
+        intrinsicAxisPixels: Int,
+        imageAxisPixels: Int,
+    ): Float {
+        if (!focalLengthPixels.isFinite() || intrinsicAxisPixels <= 0 || imageAxisPixels <= 0) {
+            return Float.NaN
+        }
+        return focalLengthPixels * imageAxisPixels.toFloat() / intrinsicAxisPixels.toFloat()
     }
 
     /**

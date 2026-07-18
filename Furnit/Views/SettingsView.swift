@@ -184,23 +184,19 @@ struct SettingsView: View {
                         }
                     }
 
+                    NavigationLink(destination: SupportView()) {
+                        HStack {
+                            Image(systemName: "questionmark.circle.fill")
+                                .foregroundStyle(Theme.Palette.textPrimary)
+                            Text(L10n.Settings.support)
+                        }
+                    }
+
                     NavigationLink(destination: CreditsView()) {
                         HStack {
                             Image(systemName: "sparkles")
                                 .foregroundStyle(Theme.Palette.textPrimary)
                             Text(L10n.Settings.credits)
-                        }
-                    }
-
-                    Link(destination: URL(string: "https://paafekt.com/support")!) {
-                        HStack {
-                            Image(systemName: "questionmark.circle.fill")
-                                .foregroundStyle(Theme.Palette.textPrimary)
-                            Text(L10n.Settings.support)
-                            Spacer()
-                            Image(systemName: "arrow.up.right.square")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
                         }
                     }
 
@@ -213,6 +209,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text(L10n.Settings.legal)
+                } footer: {
+                    Text(L10n.Settings.legalSummary)
                 }
 
                 // Account Section

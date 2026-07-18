@@ -28,6 +28,8 @@ import com.furnit.android.theme.ImmersiveSummonedToolbarHolder
 import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.theme.PaafektSpace
 import com.furnit.android.theme.PaafektViewerToolbar
+import com.furnit.android.theme.PlacementIntelligenceCardView
+import com.furnit.android.theme.PlacementIntelligenceCardMapper
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
@@ -56,8 +58,19 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.lifecycle.lifecycleScope
+import com.furnit.android.ar.ArSupportChecker
+import com.furnit.android.ar.FurnitureFitArCameraController
 import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import com.furnit.android.models.ModelManager
+import com.furnit.android.models.roomintelligence.BitmapStraightSrgbExtractor
+import com.furnit.android.models.roomintelligence.FurnitureAestheticProfile
+import com.furnit.android.models.roomintelligence.FurnitureDimensions
+import com.furnit.android.models.roomintelligence.RoomDimensions
+import com.furnit.android.models.roomintelligence.RoomIntelligenceEngine
+import com.furnit.android.models.roomintelligence.RoomIntelligenceStatus
+import com.furnit.android.models.roomintelligence.RoomPaletteSampler
+import com.furnit.android.models.roomintelligence.StraightSrgbColor
+import com.furnit.android.models.roomintelligence.SurfacePalette
 import com.furnit.android.services.DepthAnythingRoomMeasurer
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.services.RoomMeasurementDisplay
@@ -79,6 +92,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.roundToInt
 
 /**
  * GLBRoomActivity - WebGL-based GLB/GLTF 3D room viewer
@@ -136,6 +150,16 @@ class GLBRoomActivity : AppCompatActivity() {
     private val inlineBrainThermalCadence = FurnitureFitThermalCadence(logTag = "GLBRoomInlineBrainThermal")
     private var summonedToolbar: ImmersiveSummonedToolbarHolder? = null
     private var inlineBrainArAssistedSizingEnabled = false
+    private var inlineBrainArCameraController: FurnitureFitArCameraController? = null
+    private var inlineBrainFurnitureWidthMeters: Float? = null
+    private var inlineBrainFurnitureHeightMeters: Float? = null
+    private lateinit var placementIntelligenceCard: PlacementIntelligenceCardView
+    private var inlineBrainRoomPalette: SurfacePalette = SurfacePalette.EMPTY
+    private var inlineBrainFurnitureColor: StraightSrgbColor? = null
+    private var inlineBrainFurnitureLabel: String? = null
+    private var inlineBrainHasSegmentedFurniture = false
+    private var lastInlineBrainColorSampleMs: Long = 0L
+    private var roomPaletteLoadJob: Job? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
     @Volatile private var inlineBrainFullVideoEnabled = false
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
@@ -372,6 +396,13 @@ class GLBRoomActivity : AppCompatActivity() {
             ),
         )
 
+        placementIntelligenceCard = PlacementIntelligenceCardView(this).apply {
+            layoutParams = PlacementIntelligenceCardView.viewerLayoutParams(this@GLBRoomActivity)
+            elevation = 45f
+        }
+        rootLayout.addView(placementIntelligenceCard)
+        loadPlacementIntelligenceRoomPalette()
+
         setContentView(rootLayout)
         installImmersiveEdgeToEdge()
         ensureNavigationChromeOnTop()
@@ -457,7 +488,8 @@ class GLBRoomActivity : AppCompatActivity() {
         }
         immersiveBackButton?.layoutParams?.let { lp ->
             if (lp is FrameLayout.LayoutParams) {
-                lp.topMargin = bars.top + PaafektSpace.sm(this)
+                lp.topMargin = bars.top + PaafektSpace.md(this)
+                lp.marginStart = bars.left + PaafektSpace.xl(this)
                 immersiveBackButton?.layoutParams = lp
             }
         }
@@ -503,8 +535,8 @@ class GLBRoomActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
                     gravity = Gravity.START or Gravity.TOP
-                    topMargin = PaafektSpace.sm(this@GLBRoomActivity)
-                    marginStart = PaafektSpace.lg(this@GLBRoomActivity)
+                    topMargin = PaafektSpace.md(this@GLBRoomActivity)
+                    marginStart = PaafektSpace.xl(this@GLBRoomActivity)
                 },
             )
 
@@ -605,6 +637,7 @@ class GLBRoomActivity : AppCompatActivity() {
         roomDimsApproach = measured.source
         isFlatPhotoRoomMesh = true
         refreshMeasurementPill()
+        refreshPlacementIntelligence()
         if (persist) {
             persistMeasuredDimensionsToFolder(measured)
         }
@@ -701,8 +734,17 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun toggleInlineBrainArAssistedSizing() {
-        inlineBrainArAssistedSizingEnabled = !inlineBrainArAssistedSizingEnabled
+        val requestedEnabled = !inlineBrainArAssistedSizingEnabled
+        if (requestedEnabled && !ArSupportChecker.isArCoreSupported(this)) {
+            Toast.makeText(this, getString(R.string.furniture_fit_ar_not_supported), Toast.LENGTH_SHORT).show()
+            return
+        }
+        inlineBrainArAssistedSizingEnabled = requestedEnabled
+        brainSessionGeneration.incrementAndGet()
+        clearInlineBrainMetricDimensions()
+        placementIntelligenceCard.clear()
         updateSummonedToolbarState()
+        rebindInlineBrainCameraIfActive()
     }
 
     private fun showAllGestureHelpers() {
@@ -810,6 +852,7 @@ class GLBRoomActivity : AppCompatActivity() {
         roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
         intent.putExtra("ROOM_WIDTH", roomWidth)
         intent.putExtra("ROOM_HEIGHT", roomHeight)
+        intent.putExtra("ROOM_DEPTH", roomDepth)
         intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
         intent.putExtra(FurnitureFitActivity.EXTRA_ENABLE_AR_ASSISTED_SIZING, enableArAssistedSizing)
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -889,6 +932,11 @@ class GLBRoomActivity : AppCompatActivity() {
         if (brainDetectionOverlay.visibility != View.VISIBLE) return
         inlineBrainFullVideoEnabled = !inlineBrainFullVideoEnabled
         inlineBrainSelectedPins = emptyList()
+        inlineBrainHasSegmentedFurniture = false
+        inlineBrainFurnitureColor = null
+        inlineBrainFurnitureLabel = null
+        clearInlineBrainMetricDimensions()
+        placementIntelligenceCard.clear()
         inlineBrainMode = if (inlineBrainFullVideoEnabled) {
             InlineBrainMode.IDENTIFY
         } else {
@@ -923,7 +971,8 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun shouldShowInlineBrainCameraPreview(): Boolean {
-        return inlineBrainFullVideoEnabled &&
+        return !inlineBrainArAssistedSizingEnabled &&
+            inlineBrainFullVideoEnabled &&
             inlineBrainMode == InlineBrainMode.IDENTIFY &&
             brainDetectionOverlay.visibility == View.VISIBLE
     }
@@ -935,6 +984,11 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun rebindInlineBrainCameraIfActive() {
         if (brainDetectionOverlay.visibility != View.VISIBLE) return
+        if (inlineBrainArAssistedSizingEnabled) {
+            startInlineBrainArCamera(brainSessionGeneration.get())
+            return
+        }
+        releaseInlineBrainArCamera()
         val provider = cameraProvider
         if (provider != null) {
             applyInlineBrainCameraBinding(provider, brainSessionGeneration.get())
@@ -971,6 +1025,13 @@ class GLBRoomActivity : AppCompatActivity() {
         inlineBrainSelectedPins = emptyList()
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
+        inlineBrainHasSegmentedFurniture = false
+        inlineBrainFurnitureColor = null
+        inlineBrainFurnitureLabel = null
+        lastInlineBrainColorSampleMs = 0L
+        if (::placementIntelligenceCard.isInitialized) {
+            placementIntelligenceCard.clear()
+        }
         inlineBrainThermalCadence.start(this)
         brainDetectionOverlay.visibility = View.VISIBLE
         updateSummonedToolbarState()
@@ -1037,6 +1098,11 @@ class GLBRoomActivity : AppCompatActivity() {
         if (!inlineBrainFullVideoEnabled) return
         if (inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED) {
             inlineBrainMode = InlineBrainMode.IDENTIFY
+            inlineBrainHasSegmentedFurniture = false
+            inlineBrainFurnitureColor = null
+            inlineBrainFurnitureLabel = null
+            clearInlineBrainMetricDimensions()
+            placementIntelligenceCard.clear()
             brainDetectionOverlayView.setMaskAndDetections(
                 mask = null,
                 dets = emptyList(),
@@ -1120,14 +1186,214 @@ class GLBRoomActivity : AppCompatActivity() {
 
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindInlineBrainCamera(generation: Int) {
+        if (inlineBrainArAssistedSizingEnabled) {
+            startInlineBrainArCamera(generation)
+            return
+        }
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             applyInlineBrainCameraBinding(providerFuture.get(), generation)
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun startInlineBrainArCamera(generation: Int) {
+        if (!brainAcceptingUpdates && brainDetectionOverlay.visibility != View.VISIBLE) return
+        releaseInlineBrainArCamera()
+        try {
+            boundPreview?.setSurfaceProvider(null)
+            boundPreview = null
+            cameraProvider?.unbindAll()
+            cameraProvider = null
+
+            val controller = FurnitureFitArCameraController(this, cameraExecutor).apply {
+                lockedPhotoOrientation = photoOrientation
+                roomHeightMetersForFallback = roomHeight.coerceAtLeast(0.1f)
+                shouldPostBitmapFrame = {
+                    brainAcceptingUpdates &&
+                        brainSessionGeneration.get() == generation &&
+                        !isBrainInferenceRunning.get() &&
+                        inlineBrainThermalCadence.shouldAcceptInference()
+                }
+                onAssistedMeasurementUpdated = {
+                    runOnUiThread {
+                        if (brainAcceptingUpdates && brainSessionGeneration.get() == generation) {
+                            updateInlineBrainMetricDimensions(this)
+                        }
+                    }
+                }
+                onBitmapFrame = { bitmap ->
+                    processInlineBrainBitmap(bitmap, generation, bitmapAlreadyOriented = true)
+                }
+            }
+            inlineBrainArCameraController = controller
+            val showArPreview = inlineBrainFullVideoEnabled &&
+                inlineBrainMode == InlineBrainMode.IDENTIFY
+            controller.glSurfaceView.layoutParams = if (showArPreview) {
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            } else {
+                FrameLayout.LayoutParams(1, 1)
+            }
+            controller.glSurfaceView.alpha = if (showArPreview) 1f else 0.01f
+            rootLayout.addView(controller.glSurfaceView, 2.coerceAtMost(rootLayout.childCount))
+            controller.onHostResume()
+            brainAcceptingUpdates = true
+            updateInlineBrainCameraPreviewVisibility()
+            LogUtil.d(TAG, "Inline brain: ARCore sizing camera bound generation=$generation")
+        } catch (exception: Exception) {
+            inlineBrainArAssistedSizingEnabled = false
+            releaseInlineBrainArCamera()
+            clearInlineBrainMetricDimensions()
+            updateSummonedToolbarState()
+            LogUtil.e(TAG, "Inline brain ARCore camera bind failed", exception)
+            Toast.makeText(
+                this,
+                getString(R.string.smartypants_camera_error, exception.message ?: ""),
+                Toast.LENGTH_SHORT,
+            ).show()
+            bindInlineBrainCamera(generation)
+        }
+    }
+
+    private fun updateInlineBrainMetricDimensions(controller: FurnitureFitArCameraController) {
+        inlineBrainFurnitureWidthMeters = controller.getProvisionalWidthMeters()
+            ?.takeIf { it.isFinite() && it > 0f }
+            ?: controller.getLastEstimatedWidthMeters()?.takeIf { it.isFinite() && it > 0f }
+        inlineBrainFurnitureHeightMeters = controller.getProvisionalHeightMeters()
+            ?.takeIf { it.isFinite() && it > 0f }
+            ?: controller.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+        refreshPlacementIntelligence()
+    }
+
+    private fun clearInlineBrainMetricDimensions() {
+        inlineBrainFurnitureWidthMeters = null
+        inlineBrainFurnitureHeightMeters = null
+        refreshPlacementIntelligence()
+    }
+
+    private fun loadPlacementIntelligenceRoomPalette() {
+        val roomFolder = glbPath?.let { File(it).parentFile } ?: return
+        roomPaletteLoadJob?.cancel()
+        roomPaletteLoadJob = lifecycleScope.launch {
+            val sampledPalette = withContext(Dispatchers.IO) {
+                RoomPaletteSampler.sample(roomFolder)
+            }
+            inlineBrainRoomPalette = sampledPalette
+            refreshPlacementIntelligence()
+        }
+    }
+
+    private fun sampleInlineBrainFurnitureColor(mask: Bitmap) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastInlineBrainColorSampleMs < 500L) return
+        lastInlineBrainColorSampleMs = now
+        val generation = brainSessionGeneration.get()
+        lifecycleScope.launch {
+            val sampledColor = withContext(Dispatchers.Default) {
+                BitmapStraightSrgbExtractor.mean(mask)
+            }
+            if (brainAcceptingUpdates && brainSessionGeneration.get() == generation) {
+                inlineBrainFurnitureColor = sampledColor
+                refreshPlacementIntelligence()
+            }
+        }
+    }
+
+    private fun refreshPlacementIntelligence() {
+        if (!::placementIntelligenceCard.isInitialized || !inlineBrainHasSegmentedFurniture) {
+            if (::placementIntelligenceCard.isInitialized) {
+                placementIntelligenceCard.clear()
+            }
+            return
+        }
+        val roomDimensions = RoomDimensions(roomWidth, roomHeight, roomDepth)
+        val hasSingleFurnitureSelection =
+            !inlineBrainFullVideoEnabled || inlineBrainSelectedPins.size == 1
+        val evaluatedWidthMeters = inlineBrainFurnitureWidthMeters.takeIf {
+            hasSingleFurnitureSelection
+        }
+        val evaluatedHeightMeters = inlineBrainFurnitureHeightMeters.takeIf {
+            hasSingleFurnitureSelection
+        }
+        val furnitureDimensions = if (
+            evaluatedWidthMeters != null &&
+            evaluatedHeightMeters != null
+        ) {
+            FurnitureDimensions.fromMeasuredWidthAndHeight(
+                evaluatedWidthMeters,
+                evaluatedHeightMeters,
+            )
+        } else {
+            null
+        }
+        val furnitureProfile = inlineBrainFurnitureColor?.let { furnitureColor ->
+            FurnitureAestheticProfile(
+                primaryColor = furnitureColor,
+                styleTags = furnitureStyleTags(inlineBrainFurnitureLabel),
+            )
+        }
+        var result = RoomIntelligenceEngine.evaluateMeasuredFurniture(
+            roomDimensions = roomDimensions,
+            furnitureWidthMeters = evaluatedWidthMeters,
+            furnitureHeightMeters = evaluatedHeightMeters,
+            roomPalette = inlineBrainRoomPalette,
+            furnitureAestheticProfile = furnitureProfile,
+        )
+        if (furnitureDimensions == null && furnitureProfile == null) {
+            result = result.copy(status = RoomIntelligenceStatus.MEASURING)
+        }
+        var cardState = PlacementIntelligenceCardMapper.map(
+            context = this,
+            result = result,
+            roomDimensions = roomDimensions,
+            furnitureDimensions = furnitureDimensions,
+        )
+        if (!hasSingleFurnitureSelection) {
+            val arMeasurementPrompt = getString(R.string.placement_intelligence_measure_with_ar)
+            cardState = cardState.copy(
+                notes = listOf(getString(R.string.placement_intelligence_single_item)) +
+                    cardState.notes.filterNot { it == arMeasurementPrompt },
+            )
+        }
+        placementIntelligenceCard.render(cardState)
+        placementIntelligenceCard.bringToFront()
+        ensureNavigationChromeOnTop()
+    }
+
+    private fun furnitureStyleTags(label: String?): List<String> = when (label?.lowercase(Locale.US)) {
+        "couch", "sofa", "chair", "dining table", "bed" -> listOf("modern", "minimalist")
+        else -> listOf("modern")
+    }
+
+    private fun inlineBrainSelectionKey(detection: DetectionResult): String {
+        val selectedPin = inlineBrainSelectedPins.singleOrNull()
+        return if (inlineBrainFullVideoEnabled && selectedPin != null) {
+            "${selectedPin.classId}:${selectedPin.x.roundToInt()}:${selectedPin.y.roundToInt()}"
+        } else {
+            detection.label
+        }
+    }
+
+    private fun releaseInlineBrainArCamera() {
+        val controller = inlineBrainArCameraController ?: return
+        try {
+            rootLayout.removeView(controller.glSurfaceView)
+        } catch (_: Exception) {
+        }
+        controller.destroy()
+        inlineBrainArCameraController = null
+    }
+
     @SuppressLint("UnsafeOptInUsageError")
     private fun applyInlineBrainCameraBinding(provider: ProcessCameraProvider, generation: Int) {
+        if (inlineBrainArAssistedSizingEnabled) {
+            provider.unbindAll()
+            startInlineBrainArCamera(generation)
+            return
+        }
+        releaseInlineBrainArCamera()
         cameraProvider = provider
         boundPreview?.setSurfaceProvider(null)
         boundPreview = null
@@ -1174,33 +1440,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     return@setAnalyzer
                 }
                 isBrainInferenceRunning.set(true)
-                val modeSnapshot = inlineBrainMode
-                val fullVideoSnapshot = inlineBrainFullVideoEnabled
-                val selectedPinsSnapshot = inlineBrainSelectedPins
-                val callback: (SegmentationResult?) -> Unit = { result ->
-                    bitmap.recycle()
-                    runOnUiThread {
-                        isBrainInferenceRunning.set(false)
-                        if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
-                        if (inlineBrainMode != modeSnapshot || inlineBrainFullVideoEnabled != fullVideoSnapshot) {
-                            LogUtil.d(
-                                TAG,
-                                "Inline brain: dropping stale result mode=$modeSnapshot current=$inlineBrainMode " +
-                                    "fullVideo=$fullVideoSnapshot currentFullVideo=$inlineBrainFullVideoEnabled",
-                            )
-                            return@runOnUiThread
-                        }
-                        applyInlineBrainResult(result)
-                    }
-                }
-                when {
-                    fullVideoSnapshot && modeSnapshot == InlineBrainMode.IDENTIFY ->
-                        furnitureFitManager?.detectWithDetectionsAsync(bitmap, callback)
-                    fullVideoSnapshot && modeSnapshot == InlineBrainMode.SEGMENT_SELECTED ->
-                        furnitureFitManager?.segmentSelectedInstancesAsync(bitmap, selectedPinsSnapshot, callback)
-                    else ->
-                        furnitureFitManager?.segmentWithDetectionsAsync(bitmap, callback)
-                }
+                submitInlineBrainInference(bitmap, generation)
             } finally {
                 imageProxy.close()
             }
@@ -1237,10 +1477,99 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun processInlineBrainBitmap(
+        sourceBitmap: Bitmap,
+        generation: Int,
+        bitmapAlreadyOriented: Boolean,
+    ) {
+        if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) {
+            sourceBitmap.recycle()
+            inlineBrainArCameraController?.onInferenceFinished()
+            return
+        }
+        if (isBrainInferenceRunning.get()) {
+            sourceBitmap.recycle()
+            inlineBrainArCameraController?.onInferenceFinished()
+            return
+        }
+        val bitmap = if (bitmapAlreadyOriented) {
+            sourceBitmap
+        } else {
+            val (orientedBitmap, _) = sourceBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
+            if (orientedBitmap !== sourceBitmap) sourceBitmap.recycle()
+            orientedBitmap
+        }
+        if (FurnitureFitFrameUsability.isFullyDark(bitmap) || !inlineBrainThermalCadence.tryBeginInference()) {
+            bitmap.recycle()
+            inlineBrainArCameraController?.onInferenceFinished()
+            return
+        }
+        isBrainInferenceRunning.set(true)
+        submitInlineBrainInference(bitmap, generation)
+    }
+
+    private fun submitInlineBrainInference(bitmap: Bitmap, generation: Int) {
+        val modeSnapshot = inlineBrainMode
+        val fullVideoSnapshot = inlineBrainFullVideoEnabled
+        val selectedPinsSnapshot = inlineBrainSelectedPins
+        val callback: (SegmentationResult?) -> Unit = { result ->
+            bitmap.recycle()
+            runOnUiThread {
+                isBrainInferenceRunning.set(false)
+                inlineBrainArCameraController?.onInferenceFinished()
+                if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
+                if (inlineBrainMode != modeSnapshot || inlineBrainFullVideoEnabled != fullVideoSnapshot) {
+                    LogUtil.d(
+                        TAG,
+                        "Inline brain: dropping stale result mode=$modeSnapshot current=$inlineBrainMode " +
+                            "fullVideo=$fullVideoSnapshot currentFullVideo=$inlineBrainFullVideoEnabled",
+                    )
+                    return@runOnUiThread
+                }
+                applyInlineBrainResult(result)
+            }
+        }
+        when {
+            fullVideoSnapshot && modeSnapshot == InlineBrainMode.IDENTIFY ->
+                furnitureFitManager?.detectWithDetectionsAsync(bitmap, callback)
+            fullVideoSnapshot && modeSnapshot == InlineBrainMode.SEGMENT_SELECTED ->
+                furnitureFitManager?.segmentSelectedInstancesAsync(bitmap, selectedPinsSnapshot, callback)
+            else ->
+                furnitureFitManager?.segmentWithDetectionsAsync(bitmap, callback)
+        }
+    }
+
     private fun applyInlineBrainResult(result: SegmentationResult?) {
         hideBrainProgress()
         val mask = result?.mask
         val detections = result?.detections ?: emptyList()
+        val primaryDetection = result?.primaryDetection ?: detections.firstOrNull()
+        if (mask != null) {
+            inlineBrainHasSegmentedFurniture = true
+            inlineBrainFurnitureLabel = primaryDetection?.label
+            sampleInlineBrainFurnitureColor(mask)
+        } else if (inlineBrainMode != InlineBrainMode.IDENTIFY) {
+            inlineBrainHasSegmentedFurniture = false
+            inlineBrainFurnitureColor = null
+            inlineBrainFurnitureLabel = null
+        }
+        if (inlineBrainArAssistedSizingEnabled && mask != null && primaryDetection != null) {
+            val inputSize = result.inputSize.coerceAtLeast(1).toFloat()
+            val sourceWidth = result.sourceWidth.takeIf { it > 0 } ?: mask.width
+            val sourceHeight = result.sourceHeight.takeIf { it > 0 } ?: mask.height
+            inlineBrainArCameraController?.setBboxHint(
+                primaryDetection.x * sourceWidth / inputSize,
+                primaryDetection.y * sourceHeight / inputSize,
+                primaryDetection.w * sourceWidth / inputSize,
+                primaryDetection.h * sourceHeight / inputSize,
+                primaryDetection.label,
+                inlineBrainSelectionKey(primaryDetection),
+            )
+            inlineBrainArCameraController?.let(::updateInlineBrainMetricDimensions)
+        } else if (inlineBrainMode != InlineBrainMode.IDENTIFY) {
+            inlineBrainArCameraController?.clearBboxHint()
+            clearInlineBrainMetricDimensions()
+        }
         if (inlineBrainFullVideoEnabled) {
             when (inlineBrainMode) {
                 InlineBrainMode.IDENTIFY -> {
@@ -1288,6 +1617,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 "clusters=${result?.detectionClusters?.size ?: 0} mode=$inlineBrainMode " +
                 "primary=${result?.primaryDetection?.label}:${result?.primaryDetection?.confidence}",
         )
+        refreshPlacementIntelligence()
     }
 
     private fun stopInlineBrainSegmentation() {
@@ -1299,11 +1629,19 @@ class GLBRoomActivity : AppCompatActivity() {
         inlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
         inlineBrainFullVideoEnabled = false
         inlineBrainSelectedPins = emptyList()
+        inlineBrainHasSegmentedFurniture = false
+        inlineBrainFurnitureColor = null
+        inlineBrainFurnitureLabel = null
         hideBrainProgress()
         brainDetectionOverlay.visibility = View.GONE
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
         brainDetectionOverlayView.setDetectionBoxVisibility(false)
         brainDetectionOverlayView.setIdentifySelectionState(false, emptyList())
+        releaseInlineBrainArCamera()
+        clearInlineBrainMetricDimensions()
+        if (::placementIntelligenceCard.isInitialized) {
+            placementIntelligenceCard.clear()
+        }
         boundPreview?.setSurfaceProvider(null)
         boundPreview = null
         if (::brainCameraPreview.isInitialized) {
@@ -2124,6 +2462,12 @@ class GLBRoomActivity : AppCompatActivity() {
         super.onResume()
         enterImmersiveMode()
         notifyWebViewViewportChanged()
+        inlineBrainArCameraController?.onHostResume()
+    }
+
+    override fun onPause() {
+        inlineBrainArCameraController?.onHostPause()
+        super.onPause()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -2140,8 +2484,10 @@ class GLBRoomActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         saveRoomJob?.cancel()
+        roomPaletteLoadJob?.cancel()
         immersiveChrome.destroy()
         stopInlineBrainSegmentation()
+        releaseInlineBrainArCamera()
         furnitureFitManager?.close()
         furnitureFitManager = null
         cameraExecutor.shutdown()

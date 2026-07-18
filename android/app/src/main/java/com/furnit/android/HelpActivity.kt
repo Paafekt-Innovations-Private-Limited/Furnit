@@ -54,6 +54,8 @@ class HelpActivity : AppCompatActivity() {
                     FAQItem(R.string.faq_generation_failing, R.string.faq_generation_failing_answer),
                     FAQItem(R.string.faq_how_many_rooms, R.string.faq_how_many_rooms_answer),
                     FAQItem(R.string.faq_how_to_save_room, R.string.faq_how_to_save_room_answer),
+                    FAQItem(R.string.faq_where_rooms_saved, R.string.faq_where_rooms_saved_answer),
+                    FAQItem(R.string.faq_are_photos_uploaded, R.string.faq_are_photos_uploaded_answer),
                 ),
             ),
             FAQSection(
@@ -83,12 +85,24 @@ class HelpActivity : AppCompatActivity() {
             ),
             FAQSection(
                 titleResId = R.string.faq_placement_intelligence,
-                iconResId = R.drawable.ic_viewfinder,
+                iconResId = R.drawable.ic_ai,
                 items = listOf(
-                    FAQItem(R.string.faq_what_is_placement_intelligence, R.string.faq_what_is_placement_intelligence_answer),
-                    FAQItem(R.string.faq_furniture_color_aesthetic, R.string.faq_furniture_color_aesthetic_answer),
-                    FAQItem(R.string.faq_what_do_harmony_contrast_mean, R.string.faq_what_do_harmony_contrast_mean_answer),
-                    FAQItem(R.string.faq_when_does_aesthetic_score_low, R.string.faq_when_does_aesthetic_score_low_answer),
+                    FAQItem(
+                        R.string.faq_what_is_placement_intelligence,
+                        R.string.faq_what_is_placement_intelligence_answer,
+                    ),
+                    FAQItem(
+                        R.string.faq_furniture_color_aesthetic,
+                        R.string.faq_furniture_color_aesthetic_answer,
+                    ),
+                    FAQItem(
+                        R.string.faq_what_do_harmony_contrast_mean,
+                        R.string.faq_what_do_harmony_contrast_mean_answer,
+                    ),
+                    FAQItem(
+                        R.string.faq_when_does_aesthetic_score_low,
+                        R.string.faq_when_does_aesthetic_score_low_answer,
+                    ),
                 ),
             ),
             FAQSection(
@@ -99,7 +113,6 @@ class HelpActivity : AppCompatActivity() {
                     FAQItem(R.string.faq_how_to_navigate, R.string.faq_how_to_navigate_answer),
                     FAQItem(R.string.faq_what_do_arrows_do, R.string.faq_what_do_arrows_do_answer),
                     FAQItem(R.string.faq_what_is_memory_display, R.string.faq_what_is_memory_display_answer),
-                    FAQItem(R.string.faq_sample_room, R.string.faq_sample_room_answer),
                     FAQItem(R.string.faq_accuracy, R.string.faq_accuracy_answer),
                     FAQItem(R.string.faq_adjust_dimensions, R.string.faq_adjust_dimensions_answer),
                 ),

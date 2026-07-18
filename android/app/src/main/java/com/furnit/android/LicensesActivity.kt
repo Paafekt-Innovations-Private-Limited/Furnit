@@ -13,6 +13,8 @@ class LicensesActivity : AppCompatActivity() {
 
     private val urlMit = "https://opensource.org/licenses/MIT"
     private val urlApache2 = "https://www.apache.org/licenses/LICENSE-2.0"
+    private val urlHypersim = "https://github.com/apple/ml-hypersim"
+    private val urlCoco = "https://cocodataset.org/#termsofuse"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,12 +25,14 @@ class LicensesActivity : AppCompatActivity() {
         )
         layout.addView(PaafektScreenViews.createScreenTitle(this, getString(R.string.licenses_title)))
 
-        addSection(layout, getString(R.string.licenses_phase1_notice), isBold = true)
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
         addSection(layout, getString(R.string.licenses_depth_anything_title), getString(R.string.licenses_depth_anything), licenseUrl = urlApache2)
-        addSection(layout, getString(R.string.licenses_geo_calib_title), getString(R.string.licenses_geo_calib), licenseUrl = urlApache2)
+        addSection(layout, getString(R.string.licenses_hypersim_title), getString(R.string.licenses_hypersim), licenseUrl = urlHypersim)
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
+        addSection(layout, getString(R.string.licenses_coco_title), getString(R.string.licenses_coco), licenseUrl = urlCoco)
+        addSection(layout, getString(R.string.licenses_onnx_runtime_title), getString(R.string.licenses_onnx_runtime), licenseUrl = urlMit)
+        addSection(layout, getString(R.string.licenses_filament_title), getString(R.string.licenses_filament), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_three_title), getString(R.string.licenses_three), licenseUrl = urlMit)
 
         PaafektScreenViews.createScreenScrollView(this).apply {

@@ -72,6 +72,9 @@
     <string name="settings_legal">Legal</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
     <string name="settings_terms_of_service">Terms of Service</string>
+    <string name="settings_support">Help &amp; Support</string>
+    <string name="settings_legal_summary">Room processing and furniture analysis run on device. Saved rooms stay in private app storage unless you explicitly share them. Firebase processes account authentication data.</string>
+    <string name="settings_open_link_failed">No browser is available to open this link.</string>
     <string name="settings_credits">Credits</string>
     <string name="settings_auto_orbit">Auto Orbit</string>
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
@@ -90,11 +93,12 @@
     <string name="single_image_scan_overlay_ready">Overlay ready: %1$s</string>
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
-    <string name="licenses_phase1_notice">Current release: This app is currently offered for commercial use.</string>
     <string name="licenses_open_source_section">Open Source Licenses</string>
-    <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by Android are listed below.</string>
     <string name="licenses_depth_anything_title">Depth Anything V2</string>
     <string name="licenses_depth_anything">Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_hypersim_title">Hypersim Dataset</string>
+    <string name="licenses_hypersim">The metric indoor model was fine-tuned using Apple\'s Hypersim synthetic indoor dataset. Hypersim is licensed under CC BY-SA 3.0.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.</string>
     <string name="licenses_view_full_license">View full license</string>
@@ -103,22 +107,34 @@
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.</string>
     <string name="licenses_three_title">Three.js</string>
-    <string name="licenses_three">Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.</string>
-    <string name="credits_title">Credits</string>
-    <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.</string>
+    <string name="licenses_three">Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2024 three.js authors. Licensed under the MIT License.</string>
+    <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
+    <string name="licenses_onnx_runtime">On-device neural-network inference. Copyright Microsoft Corporation. Licensed under the MIT License.</string>
+    <string name="licenses_filament_title">SceneView &amp; Filament</string>
+    <string name="licenses_filament">Native Android 3D rendering through SceneView and Google Filament. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_coco_title">COCO Dataset</string>
+    <string name="licenses_coco">RTMDet was trained using COCO. COCO annotations are licensed under CC BY 4.0; individual images remain subject to their owners\' terms.</string>
+    <string name="credits_title">Technology &amp; Development Credits</string>
+    <string name="credits_intro">Paafekt is built on Apple and Google platform technologies. OpenAI and Anthropic tools also assisted research, drafting, and engineering during development.</string>
     <string name="credits_disclaimer">These acknowledgements are provided for transparency only. References to third-party companies, products, or models do not imply sponsorship, endorsement, or affiliation.</string>
     <string name="credits_visit_website">Visit website</string>
     <string name="credits_apple_title">Apple</string>
-    <string name="credits_apple_body">Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.</string>
+    <string name="credits_apple_body">Apple frameworks provide camera capture, Core ML, AR/depth processing, and on-device 3D rendering in the iOS app.</string>
+    <string name="credits_google_title">Google</string>
+    <string name="credits_google_body">Android, ARCore, Filament, and Firebase provide platform, AR, 3D-rendering, and authentication capabilities used by the Android app.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">OpenAI tools, including ChatGPT, were used to support product ideation, implementation assistance, drafting, and technical exploration during development.</string>
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">Anthropic tools were used to support research, code assistance, reasoning through implementation details, and development iteration.</string>
-    <string name="credits_luma_title">Luma AI</string>
-    <string name="credits_luma_body">Luma AI tools and product references informed parts of our visual AI and 3D workflow exploration during product development.</string>
     <string name="settings_room_viewer">Room Viewer</string>
     <string name="settings_sign_out">Sign Out</string>
     <string name="settings_sign_out_confirm">Are you sure you want to sign out?</string>
+    <string name="settings_delete_account">Delete Account</string>
+    <string name="settings_delete_account_confirm_title">Permanently delete account?</string>
+    <string name="settings_delete_account_confirm_message">This permanently deletes your Firebase authentication account. Locally saved rooms remain on this device until you delete them or uninstall Paafekt. You may need to sign in again before Firebase permits deletion.</string>
+    <string name="settings_delete_account_failed">Could not delete account: %s</string>
+    <string name="settings_delete_account_unknown_error">Please sign in again and retry.</string>
+    <string name="settings_account_delete_footer">Account deletion removes your sign-in account. It does not automatically erase locally saved rooms.</string>
     <string name="settings_not_signed_in">Not signed in</string>
 
     <!-- Quality Options -->
@@ -137,13 +153,13 @@
     <!-- FAQ - Room Creation -->
     <string name="faq_room_creation">Room Creation</string>
     <string name="faq_how_to_create">How do I create a 3D room?</string>
-    <string name="faq_how_to_create_answer">Tap the create-room control (image icon) on the home screen, then take or select a photo of your room. You\'ll see two options for creating your 3D room.</string>
+    <string name="faq_how_to_create_answer">Tap Photo → 3D on the home screen (or Create Room from Photo when your room list is empty), then take or select a photo. Choose AI Room or Manual Setup to continue.</string>
     <string name="faq_how_to_take_photo">How do I take a photo to create a room?</string>
     <string name="faq_how_to_take_photo_answer">When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.</string>
     <string name="faq_two_methods">What are the two room creation options?</string>
-    <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
+    <string name="faq_two_methods_answer">AI Room estimates room dimensions from one photo and displays that photo on a measured plane in the 3D viewer. Manual Setup lets you draw a five-surface room for more control.</string>
     <string name="faq_what_is_ai_room">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_ai_room_answer">AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.</string>
+    <string name="faq_what_is_ai_room_answer">AI Room uses Depth Anything for metric depth, RTMDet furniture anchors, and GeoCalib when its optional calibration model is available. It estimates dimensions and displays the source photo on a measured plane in the 3D viewer; it is not a full volumetric room reconstruction.</string>
     <string name="faq_what_is_manual_room">What is Manual Setup?</string>
     <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
     <string name="faq_which_method_better">Which method should I choose?</string>
@@ -156,6 +172,10 @@
     <string name="faq_how_many_rooms_answer">You can create up to 20 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.</string>
     <string name="faq_how_to_save_room">How do I save a room?</string>
     <string name="faq_how_to_save_room_answer">After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.</string>
+    <string name="faq_where_rooms_saved">Where are my rooms saved?</string>
+    <string name="faq_where_rooms_saved_answer">Rooms are stored locally in Paafekt\'s private app storage at files/rooms. They are not uploaded automatically. Deleting the app also removes locally saved rooms, so explicitly share any room you need elsewhere.</string>
+    <string name="faq_are_photos_uploaded">Are my room photos uploaded?</string>
+    <string name="faq_are_photos_uploaded_answer">Core room reconstruction, furniture detection, and Placement Intelligence run on device. Raw room photos are not uploaded for these features. Firebase processes account authentication data, and content leaves the device only when you explicitly share it.</string>
 
     <!-- FAQ - AI Features -->
     <string name="faq_ai_features">AI Features</string>
@@ -177,13 +197,13 @@
     <string name="faq_how_to_view">How do I view my 3D room?</string>
     <string name="faq_how_to_view_answer">Tap any room on the home screen to open the 3D viewer. Drag to look around and pinch to zoom. Tap the room to summon extra controls (recenter, ruler, Capture). The gold Fit button stays visible at bottom-right.</string>
     <string name="faq_how_to_navigate">How do I navigate inside the room?</string>
-    <string name="faq_how_to_navigate_answer">Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.</string>
+    <string name="faq_how_to_navigate_answer">Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then tap Recenter to restore the default view. The small control at bottom-left also brings the toolbar back when hidden.</string>
     <string name="faq_what_do_arrows_do">How do I show or hide viewer controls?</string>
     <string name="faq_what_do_arrows_do_answer">The room viewer uses immersive mode—controls hide for a clean view. Tap the room to summon the toolbar. The gold Fit button at bottom-right is always visible. While Fit is active, Done appears top-right to exit segmentation.</string>
     <string name="faq_what_is_memory_display">What does the MB number mean?</string>
     <string name="faq_what_is_memory_display_answer">The MB (megabytes) shown in rooms indicates the file size. This helps you manage storage. The total storage used by all rooms is shown at the top of the home screen.</string>
     <string name="faq_how_to_place">How do I place furniture in my room?</string>
-    <string name="faq_how_to_place_answer">After you tap Segment, the selected furniture appears as an overlay in the room. Drag to position it, pinch to resize, and rotate to adjust its orientation.</string>
+    <string name="faq_how_to_place_answer">After you tap Segment, the selected furniture appears as an overlay in the room. Drag to position it and pinch to resize it.</string>
     <string name="faq_sample_room">Can I use a sample room instead of my own?</string>
     <string name="faq_sample_room_answer">Yes! The app provides sample rooms (Scandinavian Minimal, Industrial Loft) for you to experiment with. Access them from the home screen to try out features without creating your own room first.</string>
     <string name="faq_accuracy">How accurate is the 3D model?</string>
@@ -220,7 +240,7 @@
     <string name="photo_room_create_title">Create a 3D Room</string>
     <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
     <string name="photo_room_tap_option">Tap an option below to continue</string>
-    <string name="photo_room_ai_powered">AI-powered 3D construction</string>
+    <string name="photo_room_ai_powered">AI-measured photo room</string>
     <string name="photo_room_ai_room">AI Room</string>
     <string name="photo_room_manual_setup">Manual Setup</string>
     <string name="photo_room_manual_setup_desc">Drag to adjust room walls</string>
@@ -236,7 +256,7 @@
     <string name="photo_room_choose_different">Choose Different Photo</string>
     <string name="photo_room_capture_subtitle">Capture or select a photo of your room</string>
     <string name="photo_room_creating">Creating your 3D room…</string>
-    <string name="photo_room_ai_generation">AI-powered room generation</string>
+    <string name="photo_room_ai_generation">Generating measured photo room</string>
 
     <!-- Camera mode chooser (iOS CameraCaptureView parity) -->
     <string name="camera_title">Camera</string>
@@ -303,17 +323,18 @@
 
     <!-- App version display -->
     <string name="app_version_display">Paafekt v1.0.0</string>
+    <string name="app_version_dynamic">Paafekt %1$s (%2$d)</string>
 
     <!-- Additional strings from iOS translations -->
     <string name="faq_multiple_pieces">Can I add multiple furniture pieces?</string>
     <string name="faq_multiple_pieces_answer">Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.</string>
     <string name="faq_room_fitment">How do I check if furniture fits?</string>
-    <string name="faq_room_fitment_answer">After segmentation, resize and reposition furniture cutouts in your 3D room. In full-video mode, Segment composites selected pieces over the room so you can compare several items against the space at once.</string>
+    <string name="faq_room_fitment_answer">After segmentation, turn on AR sizing for measured furniture width and height. Placement Intelligence compares those values and derived depth with the room envelope. You can still drag and pinch the cutout for visual comparison.</string>
     <string name="faq_placement_intelligence">Placement intelligence &amp; aesthetic</string>
     <string name="faq_what_is_placement_intelligence">What is Placement Intelligence?</string>
-    <string name="faq_what_is_placement_intelligence_answer">While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.</string>
+    <string name="faq_what_is_placement_intelligence_answer">While Fit is active, the Placement Intelligence card compares AR-measured furniture width, height, and derived depth with the room envelope. It reports dimensional fit only; it does not detect a free location on the floor. Tap the header to expand details.</string>
     <string name="faq_furniture_color_aesthetic">How does the app pick a color for aesthetic scoring?</string>
-    <string name="faq_furniture_color_aesthetic_answer">The app averages the RGB color of visible pixels inside the AI furniture cutout (the same segmented overlay you see on camera). That mean color is compared to colors sampled from your room\'s floor, walls, and ceiling. If the cutout is not ready yet, a fallback color is taken from the room palette until segmentation supplies a real sample.</string>
+    <string name="faq_furniture_color_aesthetic_answer">The app averages the straight RGB color of visible pixels inside the AI furniture cutout (the same segmented overlay you see on camera). That mean color is compared with colors sampled from your room\'s floor, walls, and ceiling. If either sample is unavailable, the card says aesthetic guidance is unavailable instead of inventing a score.</string>
     <string name="faq_what_do_harmony_contrast_mean">What do harmony, contrast, and style fit mean?</string>
     <string name="faq_what_do_harmony_contrast_mean_answer">These are simple design heuristics, not a judgment of taste. Harmony describes how the furniture color relates to the room palette (for example analogous or complementary hues). Contrast is how different the brightness is from typical floor or wall colors. Style fit compares broad style labels inferred for the room with a default modern profile, so it is approximate.</string>
     <string name="faq_when_does_aesthetic_score_low">When might aesthetic scores look low or show "clash"?</string>
@@ -334,13 +355,48 @@
     <string name="room_viewer_furniture_height_estimate">Furniture height ~ %.2f m</string>
     <string name="smartypants_camera_ready">Camera ready - detecting furniture…</string>
     <string name="smartypants_scanning_for_furniture">Scanning for furniture…</string>
+    <string name="furniture_fit_ar_not_supported">AR-assisted sizing is not supported on this device</string>
+
+    <!-- Placement Intelligence -->
+    <string name="placement_intelligence_title">Placement Intelligence</string>
+    <string name="placement_intelligence_expand">Expand Placement Intelligence</string>
+    <string name="placement_intelligence_collapse">Collapse Placement Intelligence</string>
+    <string name="placement_intelligence_measuring">Measuring furniture…</string>
+    <string name="placement_intelligence_style_only">Style guidance only</string>
+    <string name="placement_intelligence_fits">Fits by dimensions</string>
+    <string name="placement_intelligence_does_not_fit">Does not fit</string>
+    <string name="placement_intelligence_dimensions">%1$.2f × %2$.2f × %3$.2f m (W × H × D)</string>
+    <string name="placement_intelligence_dimensional_fit">Dimensional fit</string>
+    <string name="placement_intelligence_harmony">Harmony</string>
+    <string name="placement_intelligence_contrast">Contrast</string>
+    <string name="placement_intelligence_style_fit">Style fit</string>
+    <string name="placement_intelligence_score">%1$d%%</string>
+    <string name="placement_intelligence_aesthetic_unavailable">Aesthetic guidance unavailable until room and furniture colors are sampled.</string>
+    <string name="placement_intelligence_depth_derived">Depth is estimated from measured width.</string>
+    <string name="placement_intelligence_measure_with_ar">Turn on AR sizing for a dimensional fit result.</string>
+    <string name="placement_intelligence_single_item">Select one furniture item for a dimensional fit result.</string>
+    <string name="placement_intelligence_recommendation_width">Furniture is wider than this room envelope.</string>
+    <string name="placement_intelligence_recommendation_height">Furniture is taller than this room envelope.</string>
+    <string name="placement_intelligence_recommendation_depth">Furniture is deeper than this room envelope.</string>
+    <string name="placement_intelligence_recommendation_rotate">Rotating the footprint gives the better dimensional fit.</string>
+    <string name="placement_intelligence_recommendation_harmony">Try a color closer to the room palette for stronger harmony.</string>
+    <string name="placement_intelligence_recommendation_contrast">A lighter or darker finish may improve contrast.</string>
+    <string name="placement_intelligence_recommendation_style">Consider a finish or silhouette closer to the room style.</string>
+    <string name="placement_intelligence_recommendation_neutral_bridge">A neutral accent can bridge clashing colors.</string>
+    <string name="placement_intelligence_recommendation_analogous">The furniture follows an analogous room palette.</string>
+    <string name="placement_intelligence_recommendation_complementary">The furniture can work as a complementary focal point.</string>
+    <string name="placement_intelligence_recommendation_soften_contrast">A softer finish may reduce very strong contrast.</string>
+    <string name="placement_intelligence_recommendation_compatible">The sampled colors and broad style are compatible.</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%1$d of %2$d rooms remaining</string>
     <string name="home_total">Total</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">No rooms yet\nTap the image icon to get started</string>
-    <string name="home_create_room_helper">Tap here to create rooms</string>
+    <string name="home_create_room_toolbar_label">Photo → 3D</string>
+    <string name="home_rooms_title">My Rooms</string>
+    <string name="home_rooms_storage_title">Saved locally in Paafekt</string>
+    <string name="home_rooms_storage_path">Path inside app: files/rooms · Private app storage</string>
     <string name="home_3d_room_model">3D Room Model</string>
     <string name="home_opening">Opening %s…</string>
     <string name="home_failed_delete">Failed to delete: %s</string>
@@ -408,7 +464,7 @@
     <string name="room_viewer_created_message">Your room textures have been extracted from the photo. Tap Save to keep this room.</string>
     <string name="room_viewer_dimensions">Dimensions: %s</string>
     <string name="approximate_room_height">Est. height - %.2f m</string>
-    <string name="room_dimensions_whd_near_accurate">W × H × D\n%1$.2f × %2$.2f × %3$.2f m (Near accurate values)</string>
+    <string name="room_dimensions_whd_near_accurate">W × H × D\n%1$.2f × %2$.2f × %3$.2f m (Estimated dimensions)</string>
     <string name="room_viewer_navigation_teaching_hint">Drag to look · pinch to zoom · two fingers to move</string>
     <string name="room_viewer_first_run_title">Explore your room in 3D</string>
     <string name="room_viewer_first_run_body">Use Fit to add furniture and Capture to save a view.\nDrag to look around, pinch to zoom.</string>

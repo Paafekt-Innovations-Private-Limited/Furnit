@@ -43,13 +43,16 @@ object PaafektViewerToolbar {
 
     fun createFloatingBackButton(context: Context, onClick: () -> Unit): TextView {
         return TextView(context).apply {
+            val touchTargetSize = dp(context, 48)
             text = "‹"
             textSize = 24f
             gravity = Gravity.CENTER
             setTextColor(PaafektColors.textPrimary)
             background = PaafektDrawables.toolbarCircle()
+            minimumWidth = touchTargetSize
+            minimumHeight = touchTargetSize
             setOnClickListener { onClick() }
-            layoutParams = FrameLayout.LayoutParams(dp(context, 36), dp(context, 36))
+            layoutParams = FrameLayout.LayoutParams(touchTargetSize, touchTargetSize)
         }
     }
 

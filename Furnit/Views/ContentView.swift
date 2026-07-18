@@ -142,6 +142,8 @@ struct HomeTab: View {
                         }
                         .buttonStyle(PrimaryButtonStyle())
                         .padding(.horizontal, Theme.Space.lg)
+
+                        storageLocationNotice
                     }
                     .onAppear {
                         logDebug("❌ [HomeTab] Showing 'No Models' view - modelManager.models is EMPTY")
@@ -174,6 +176,8 @@ struct HomeTab: View {
                         }
                         .padding()
                         .background(limitManager.remainingRooms() <= 3 ? Theme.Palette.accent.opacity(0.08) : Theme.Palette.surface)
+
+                        storageLocationNotice
 
                         // Delete hint
                         HStack {
@@ -228,7 +232,7 @@ struct HomeTab: View {
             }
             .id(savedRoomsListRefreshToken)
             .paafektScreenBackground()
-            .navigationTitle(L10n.Home.title)
+            .navigationTitle(L10n.Home.libraryTitle)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -368,6 +372,28 @@ struct HomeTab: View {
     }
     
     // MARK: - Helper Functions
+
+    private var storageLocationNotice: some View {
+        HStack(alignment: .top, spacing: Theme.Space.md) {
+            Image(systemName: "internaldrive.fill")
+                .foregroundStyle(Theme.Palette.accent)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Text(L10n.Home.storageTitle)
+                    .font(Theme.Typo.caption().weight(.semibold))
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                Text(L10n.Home.storagePath)
+                    .font(Theme.Typo.caption())
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.Space.lg)
+        .padding(.vertical, Theme.Space.md)
+        .background(Theme.Palette.surface)
+    }
 
     private func refreshSavedRoomsList(forceUIReload: Bool = false) {
         modelManager.refreshModels()
@@ -620,15 +646,13 @@ struct LicensesView: View {
     private enum LicenseURL {
         static let mit = URL(string: "https://opensource.org/licenses/MIT")!
         static let apache2 = URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!
+        static let hypersim = URL(string: "https://github.com/apple/ml-hypersim")!
+        static let spzSwift = URL(string: "https://github.com/scier/spz-swift")!
+        static let coco = URL(string: "https://cocodataset.org/#termsofuse")!
     }
 
     var body: some View {
         Form {
-            Section {
-                Text(L10n.Licenses.phase1Notice)
-                    .foregroundColor(.secondary)
-            }
-
             Section {
                 Text(L10n.Licenses.openSourceIntro)
                     .font(.subheadline)
@@ -646,6 +670,20 @@ struct LicensesView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.hypersimTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.hypersim)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.hypersim)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -681,6 +719,20 @@ struct LicensesView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.spzSwiftTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.spzSwift)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.spzSwift)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.Licenses.firebaseTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -709,6 +761,20 @@ struct LicensesView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.cocoTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.coco)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.coco)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.Licenses.threeTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -729,36 +795,36 @@ struct LicensesView: View {
 struct CreditsView: View {
     private enum CreditURL {
         static let apple = URL(string: "https://www.apple.com/")!
+        static let google = URL(string: "https://about.google/")!
         static let openAI = URL(string: "https://openai.com/")!
         static let anthropic = URL(string: "https://www.anthropic.com/")!
-        static let luma = URL(string: "https://lumalabs.ai/")!
     }
 
     var body: some View {
         Form {
             Section {
-                Text("credits.intro".localized)
+                Text(L10n.Credits.intro)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             } header: {
-                Text("credits.title".localized)
+                Text(L10n.Credits.title)
             }
 
             Section {
-                Text("credits.disclaimer".localized)
+                Text(L10n.Credits.disclaimer)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("credits.appleTitle".localized)
+                    Text(L10n.Credits.appleTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("credits.appleBody".localized)
+                    Text(L10n.Credits.appleBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("credits.visitWebsite".localized, destination: CreditURL.apple)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.apple)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -766,13 +832,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("credits.openAITitle".localized)
+                    Text(L10n.Credits.googleTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("credits.openAIBody".localized)
+                    Text(L10n.Credits.googleBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("credits.visitWebsite".localized, destination: CreditURL.openAI)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.google)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -780,13 +846,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("credits.anthropicTitle".localized)
+                    Text(L10n.Credits.openAITitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("credits.anthropicBody".localized)
+                    Text(L10n.Credits.openAIBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("credits.visitWebsite".localized, destination: CreditURL.anthropic)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.openAI)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -794,20 +860,20 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("credits.lumaTitle".localized)
+                    Text(L10n.Credits.anthropicTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("credits.lumaBody".localized)
+                    Text(L10n.Credits.anthropicBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("credits.visitWebsite".localized, destination: CreditURL.luma)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.anthropic)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
             }
 
         }
-        .navigationTitle("credits.title".localized)
+        .navigationTitle(L10n.Credits.title)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -852,7 +918,9 @@ struct SupportView: View {
                     FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
                     FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
                     FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized),
-                    FAQItem(question: "faq.howToSaveRoom".localized, answer: "faq.howToSaveRoomAnswer".localized)
+                    FAQItem(question: "faq.howToSaveRoom".localized, answer: "faq.howToSaveRoomAnswer".localized),
+                    FAQItem(question: "faq.whereRoomsSaved".localized, answer: "faq.whereRoomsSavedAnswer".localized),
+                    FAQItem(question: "faq.arePhotosUploaded".localized, answer: "faq.arePhotosUploadedAnswer".localized)
                 ]
             ),
             FAQSection(

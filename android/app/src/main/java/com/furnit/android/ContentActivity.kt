@@ -108,7 +108,7 @@ class ContentActivity : AppCompatActivity() {
             setPadding(0, dpToPx(8), 0, dpToPx(16))
         }
 
-        // Create Room entry (left): icon + helper text
+        // Create Room entry (left): matches the iOS "Photo → 3D" toolbar action.
         val createRoomEntry = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -127,13 +127,14 @@ class ContentActivity : AppCompatActivity() {
         }
         val createRoomIcon = createIconButton("\uD83D\uDDBC") // Image icon
         createRoomEntry.addView(createRoomIcon)
-        val createRoomHelper = TextView(this).apply {
-            text = getString(R.string.home_create_room_helper)
+        val createRoomLabel = TextView(this).apply {
+            text = getString(R.string.home_create_room_toolbar_label)
             textSize = 14f
             setTextColor(primaryTextColor)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(dpToPx(8), 0, 0, 0)
         }
-        createRoomEntry.addView(createRoomHelper)
+        createRoomEntry.addView(createRoomLabel)
         topBar.addView(createRoomEntry)
 
         // Spacer
@@ -160,6 +161,15 @@ class ContentActivity : AppCompatActivity() {
         topBar.addView(settingsIcon)
 
         layout.addView(topBar)
+
+        val screenTitle = TextView(this).apply {
+            text = getString(R.string.home_rooms_title)
+            textSize = 28f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(primaryTextColor)
+            setPadding(0, 0, 0, dpToPx(16))
+        }
+        layout.addView(screenTitle)
 
         // Stats row
         val statsRow = LinearLayout(this).apply {
@@ -193,6 +203,36 @@ class ContentActivity : AppCompatActivity() {
         statsRow.addView(totalSizeText)
 
         layout.addView(statsRow)
+
+        val storageLocation = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
+            background = PaafektDrawables.secondaryButton()
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dpToPx(8)
+                bottomMargin = dpToPx(8)
+            }
+        }
+        storageLocation.addView(
+            TextView(this).apply {
+                text = getString(R.string.home_rooms_storage_title)
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(primaryTextColor)
+            },
+        )
+        storageLocation.addView(
+            TextView(this).apply {
+                text = getString(R.string.home_rooms_storage_path)
+                textSize = 12f
+                setTextColor(secondaryTextColor)
+                setPadding(0, dpToPx(4), 0, 0)
+            },
+        )
+        layout.addView(storageLocation)
 
         // Swipe hint
         val hintRow = LinearLayout(this).apply {

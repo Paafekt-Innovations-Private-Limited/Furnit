@@ -17,17 +17,17 @@
 <body>
 
 <h1>Paafekt Privacy Policy</h1>
-<p class="meta">Last updated: 30 June 2026</p>
+<p class="meta">Last updated: 18 July 2026</p>
 
-<p>Paafekt Inc. ("Paafekt," "we," "us") operates the Paafekt mobile application (the "App"). This policy explains what data we collect, how we use it, and your rights.</p>
+<p>"Paafekt" ("we," "us") refers collectively to Paafekt Innovations Private Limited (India) and Paafekt Inc. (United States). We operate the Paafekt mobile application (the "App"). This policy explains what data we collect, how we use it, and your rights.</p>
 
 <h2>1. Information we collect</h2>
 
 <p><strong>Account information.</strong> When you sign in, we collect your phone number to authenticate you and create an account. We assign you an internal user ID. Authentication is provided by Google Firebase Authentication, which also processes a device installation identifier for abuse detection.</p>
 
-<p><strong>Room and furniture scans.</strong> The App captures camera frames, motion data, and depth/AR data to reconstruct rooms and detect furniture. On iPhone, single-photo room generation uses on-device <strong>GeoCalib</strong> (camera calibration) and <strong>Depth Anything</strong> (metric depth) before exporting a 3D mesh. Furniture detection uses on-device neural networks. We do not upload your raw room photos or scans to our servers as a condition of using core App features.</p>
+<p><strong>Room and furniture scans.</strong> The App captures camera frames, motion data, and depth/AR data to reconstruct rooms, size furniture, and provide placement guidance. On iPhone and Android, core room reconstruction and furniture detection use on-device neural networks. GeoCalib camera calibration is bundled on iPhone and optional on Android; both platforms have local calibration fallbacks. We do not upload your raw room photos or scans to our servers as a condition of using core App features.</p>
 
-<p><strong>Saved rooms.</strong> Rooms you save are stored locally on your device. In the current iOS build, room generation and furniture detection use on-device models after any required model resources have been downloaded. If a future feature lets you explicitly share, back up, or upload a room, the relevant data will be transmitted only to fulfill that request.</p>
+<p><strong>Saved rooms.</strong> Rooms you save are stored in private app storage on your device (<code>Documents/SavedRooms</code> on iPhone and <code>files/rooms</code> on Android). A saved room can include its source photo and local source reference. Saved Android rooms are excluded from Android cloud backup and device transfer. Rooms are not uploaded automatically. If you explicitly share or export content, the selected data is transmitted only to fulfill that request.</p>
 
 <p><strong>Support communications.</strong> If you email <a href="mailto:support@paafekt.com">support@paafekt.com</a>, we retain your message and email address to respond to you.</p>
 
@@ -59,7 +59,7 @@
 <h2>6. Your rights</h2>
 <p>You can:</p>
 <ul>
-  <li>Delete your account and all associated server-side data at any time from <em>Settings &gt; Account &gt; Delete Account</em>.</li>
+  <li>Delete your account in the iPhone or Android app under <em>Settings &gt; Account &gt; Delete Account</em>. If the in-app option is unavailable, email support to request deletion. Account deletion does not automatically erase rooms saved locally on your device.</li>
   <li>Request a copy of your data by emailing <a href="mailto:support@paafekt.com">support@paafekt.com</a>.</li>
 </ul>
 <p>Depending on your location (EEA, UK, California, etc.), you may have additional rights under GDPR, UK GDPR, CCPA, or other laws. Contact us to exercise them.</p>
@@ -74,7 +74,7 @@
 <p>We may update this policy. Material changes will be announced in the App or by email.</p>
 
 <h2>10. Contact</h2>
-<p>Paafekt Inc.<br>
+<p>Paafekt Innovations Private Limited / Paafekt Inc.<br>
 Email: <a href="mailto:support@paafekt.com">support@paafekt.com</a></p>
 
 </body>

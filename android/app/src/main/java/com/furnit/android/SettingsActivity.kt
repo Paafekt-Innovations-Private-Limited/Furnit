@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.furnit.android.auth.AuthenticationManager
@@ -47,7 +48,9 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(createRoomDefaultsSection())
 
         // Developer
-        layout.addView(createDeveloperSection())
+        if (BuildConfig.DEBUG) {
+            layout.addView(createDeveloperSection())
+        }
 
         // Legal
         layout.addView(createLegalSection())
@@ -59,6 +62,11 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(
             PaafektScreenViews.createDangerButton(this, getString(R.string.settings_sign_out)) {
                 showLogoutConfirmation()
+            },
+        )
+        layout.addView(
+            PaafektScreenViews.createDangerButton(this, getString(R.string.settings_delete_account)) {
+                showDeleteAccountConfirmation()
             },
         )
 
@@ -79,6 +87,12 @@ class SettingsActivity : AppCompatActivity() {
                 userPhone.ifEmpty { getString(R.string.settings_not_signed_in) }
             }
             addView(PaafektScreenViews.createPrimaryLabel(this@SettingsActivity, display))
+            addView(
+                PaafektScreenViews.createCaptionLabel(
+                    this@SettingsActivity,
+                    getString(R.string.settings_account_delete_footer),
+                ),
+            )
         }
     }
 
@@ -168,19 +182,37 @@ class SettingsActivity : AppCompatActivity() {
             addView(PaafektScreenViews.createLinkLabel(this@SettingsActivity, getString(R.string.settings_terms_of_service)) {
                 openUrl("https://paafekt.com/terms")
             })
+            addView(PaafektScreenViews.createLinkLabel(this@SettingsActivity, getString(R.string.settings_support)) {
+                startActivity(Intent(this@SettingsActivity, HelpActivity::class.java))
+            })
             addView(PaafektScreenViews.createLinkLabel(this@SettingsActivity, getString(R.string.settings_credits)) {
                 startActivity(Intent(this@SettingsActivity, CreditsActivity::class.java))
             })
             addView(PaafektScreenViews.createLinkLabel(this@SettingsActivity, getString(R.string.settings_licenses)) {
                 startActivity(Intent(this@SettingsActivity, LicensesActivity::class.java))
             })
+            addView(
+                PaafektScreenViews.createCaptionLabel(
+                    this@SettingsActivity,
+                    getString(R.string.settings_legal_summary),
+                ),
+            )
         }
     }
 
     private fun createAboutSection(): LinearLayout {
         return PaafektScreenViews.createSectionCard(this).apply {
             addView(PaafektScreenViews.createSectionLabel(this@SettingsActivity, getString(R.string.profile_about)))
-            addView(PaafektScreenViews.createSecondaryLabel(this@SettingsActivity, getString(R.string.app_version_display)))
+            addView(
+                PaafektScreenViews.createSecondaryLabel(
+                    this@SettingsActivity,
+                    getString(
+                        R.string.app_version_dynamic,
+                        BuildConfig.VERSION_NAME,
+                        BuildConfig.VERSION_CODE,
+                    ),
+                ),
+            )
         }
     }
 
@@ -248,6 +280,33 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showDeleteAccountConfirmation() {
+        AlertDialog.Builder(this, R.style.DarkDialogTheme)
+            .setTitle(R.string.settings_delete_account_confirm_title)
+            .setMessage(R.string.settings_delete_account_confirm_message)
+            .setPositiveButton(R.string.settings_delete_account) { _, _ ->
+                authManager.deleteCurrentAccount { result ->
+                    runOnUiThread {
+                        result.onSuccess {
+                            navigateToLogin()
+                        }.onFailure { error ->
+                            Toast.makeText(
+                                this,
+                                getString(
+                                    R.string.settings_delete_account_failed,
+                                    error.localizedMessage
+                                        ?: getString(R.string.settings_delete_account_unknown_error),
+                                ),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton(R.string.common_cancel, null)
+            .show()
+    }
+
     private fun navigateToLogin() {
         val intent = Intent(this, LoginActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -259,7 +318,7 @@ class SettingsActivity : AppCompatActivity() {
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         } catch (_: Exception) {
-            // Ignore if no browser available
+            Toast.makeText(this, R.string.settings_open_link_failed, Toast.LENGTH_SHORT).show()
         }
     }
 }

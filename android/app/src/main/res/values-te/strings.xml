@@ -314,7 +314,7 @@
     <string name="email_copied_clipboard">Email copied to clipboard</string>
     <string name="deleted_room">Deleted %s</string>
     <string name="app_version_display">Paafekt v1.0.0</string>
-    <string name="home_create_room_helper">Tap here to create rooms</string>
+    <string name="home_create_room_toolbar_label">ఫోటో → 3D</string>
     <string name="photo_room_back_confirm_title">Leave this screen?</string>
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
     <string name="photo_room_back_stay">ఇక్కడే ఉండండి</string>
