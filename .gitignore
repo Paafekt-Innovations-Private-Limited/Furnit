@@ -251,6 +251,9 @@ android/__pycache__/
 **/__pycache__/
 *.pyc
 
+# Shipped Android equivalent of the iOS GeoCalib model.
+!android/app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
+
 # ONNX external weight files
 *.onnx.data
 

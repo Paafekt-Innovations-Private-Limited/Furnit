@@ -9,7 +9,6 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D कमरा एक्सप्लोरर";
 "app.version" = "संस्करण";
-"app.developer" = "Paafekt टीम";
 
 // MARK: - Common Actions
 "common.done" = "हो गया";
@@ -20,7 +19,6 @@
 "common.delete" = "हटाएं";
 "common.error" = "त्रुटि";
 "common.save" = "सहेजें";
-"common.close" = "बंद करें";
 "common.apply" = "लागू करें";
 
 // MARK: - Login View
@@ -49,18 +47,18 @@
 "otp.resendFailed" = "OTP पुनः भेजने में विफल।";
 
 // MARK: - Home View
-"home.title" = "3D कमरा मॉडल";
-"home.noModels" = "कोई 3D मॉडल नहीं मिला";
-"home.noModelsDescription" = "एक फोटो से अपना पहला कमरा बनाएं!";
-"home.createRoom" = "फोटो से कमरा बनाएं";
-"home.createRoomToolbarLabel" = "फ़ोटो → 3D";
-"home.createRoomHint" = "कमरा बनाने के लिए यहाँ टैप करें";
-"home.roomsRemaining" = "%d में से %d कमरे शेष";
+"home.libraryTitle" = "रूम लाइब्रेरी";
+"home.librarySubtitle" = "इस डिवाइस पर संग्रहीत आपके सहेजे हुए 3D रूम।";
+"home.storageTitle" = "इस डिवाइस पर संग्रहीत";
+"home.storagePath" = "रूम Paafekt के निजी ऐप स्टोरेज में रहते हैं और अपने-आप अपलोड नहीं होते। आंतरिक स्थान: Documents/SavedRooms.";
+"home.storageWarning" = "Paafekt को अनइंस्टॉल करने पर सहेजे हुए रूम स्थायी रूप से हट जाते हैं। जिन्हें रखना है, उन्हें पहले साझा करें।";
+"home.noModels" = "अभी कोई रूम नहीं";
+"home.noModelsDescription" = "एक फ़ोटो से अपना पहला 3D रूम बनाएँ, या मैनुअल सेटअप से बनाएँ। रूम इस डिवाइस पर सहेजे जाते हैं।";
+"home.createRoom" = "रूम बनाएँ";
+"home.createRoomToolbarLabel" = "रूम बनाएँ";
 "home.deleteHint" = "नए बनाने के लिए पुराने कमरे हटाएं";
 "home.swipeHint" = "हटाने के लिए बाएं स्वाइप करें";
 "home.renameRoom" = "नाम बदलें";
-"home.renameRoomMessage" = "यह नाम आपकी कमरों की सूची में दिखता है। सहेजी गई फ़ाइल का नाम वही रहता है।";
-"home.roomNamePlaceholder" = "कमरे का नाम";
 "home.roomModel" = "3D कमरा मॉडल";
 "home.aiBased3DRoom" = "AI आधारित 3D कमरा";
 "home.manualBased3DRoom" = "मैनुअल आधारित 3D कमरा";
@@ -70,8 +68,8 @@
 "roomLimit.message" = "आप %d कमरों की सीमा तक पहुंच गए हैं। नए बनाने के लिए कुछ कमरे हटाएं।";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "कमरा हटाएं?";
-"deleteRoom.message" = "क्या आप वाकई '%@' को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।";
+"deleteRoom.title" = "यह रूम हटाएँ?";
+"deleteRoom.message" = "यह रूम इस डिवाइस से स्थायी रूप से हटा दिया जाएगा। यह क्रिया पूर्ववत नहीं की जा सकती।";
 
 // MARK: - Explore View
 "explore.title" = "खोजें";
@@ -100,6 +98,11 @@
 "profile.logout" = "लॉग आउट";
 "profile.logoutConfirmTitle" = "लॉग आउट";
 "profile.logoutConfirmMessage" = "क्या आप वाकई लॉग आउट करना चाहते हैं?";
+"profile.deleteAccount" = "खाता हटाएँ";
+"profile.deleteAccountConfirmTitle" = "खाता हटाएँ";
+"profile.deleteAccountConfirmMessage" = "क्या आपका खाता और साइन-इन डेटा स्थायी रूप से हटाएँ? इस डिवाइस पर सहेजे रूम तब तक रहेंगे, जब तक आप उन्हें हटाते या Paafekt को अनइंस्टॉल नहीं करते।";
+"profile.deleteAccountSuccessTitle" = "खाता हटा दिया गया";
+"profile.deleteAccountSuccessMessage" = "आपका खाता हटा दिया गया है और आपको साइन आउट कर दिया गया है।";
 "profile.sectionAccount" = "खाता";
 "profile.sectionSettings" = "सेटिंग्स";
 "profile.sectionAbout" = "के बारे में";
@@ -131,6 +134,7 @@
 "settings.legal" = "कानूनी";
 "settings.privacyPolicy" = "गोपनीयता नीति";
 "settings.termsOfService" = "सेवा की शर्तें";
+"settings.legalSummary" = "रूम प्रोसेसिंग और फर्नीचर विश्लेषण डिवाइस पर ही होते हैं। स्पष्ट रूप से साझा न किए जाने तक सहेजे रूम निजी ऐप स्टोरेज में रहते हैं। Firebase फ़ोन नंबर प्रमाणीकरण और दुरुपयोग-रोकथाम डेटा प्रोसेस करता है।";
 "settings.support" = "सहायता";
 "settings.licenses" = "लाइसेंस";
 "settings.roomViewerSection" = "रूम व्यूअर";
@@ -141,20 +145,19 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "लाइसेंस और अट्रिब्यूशन";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "ओपन सोर्स लाइसेंस";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "पूर्ण लाइसेंस देखें";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "एक फ़ोटो से रूम पुनर्निर्माण के लिए मेट्रिक इनडोर गहराई अनुमान। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "फोकल लंबाई और गुरुत्व संकेतों के लिए एकल-छवि कैमरा कैलिब्रेशन। कॉपीराइट 2024 ETH Zurich। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "डिवाइस पर Gaussian splat रेंडरिंग। कॉपीराइट (c) Sean Cier। MIT लाइसेंस के तहत लाइसेंस प्राप्त।";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "कॉपीराइट (c) Google LLC। Apache License 2.0 के तहत लाइसेंस प्राप्त।";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.rtmdet" = "फर्नीचर पहचान और सेगमेंटेशन में OpenMMLab MMDetection का RTMDet-Ins मॉडल उपयोग होता है। कॉपीराइट (c) OpenMMLab। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।";
 "licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
 "licenses.threeTitle" = "Three.js";
 
@@ -167,12 +170,6 @@
 
 
 // MARK: - Movement Speed Options
-"speed.slow" = "धीमी";
-"speed.slow.description" = "विस्तृत अन्वेषण के लिए सटीक नियंत्रण";
-"speed.normal" = "सामान्य";
-"speed.normal.description" = "आरामदायक नेविगेशन के लिए संतुलित गति";
-"speed.fast" = "तेज़";
-"speed.fast.description" = "त्वरित अन्वेषण के लिए तेज़ गति";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "सहायता और समर्थन";
@@ -188,16 +185,16 @@
 
 // FAQ - Room Creation
 "faq.roomCreation" = "कमरा निर्माण";
-"faq.howToCreate" = "3D कमरा कैसे बनाएं?";
-"faq.howToCreateAnswer" = "होम स्क्रीन टूलबार में Photo → 3D (या खाली स्थिति में Create Room from Photo) टैप करें, फिर अपने कमरे की फोटो लें या चुनें। 3D कमरा बनाने के दो विकल्प दिखेंगे।";
+"faq.howToCreate" = "मैं रूम कैसे बनाऊँ?";
+"faq.howToCreateAnswer" = "रूम बनाएँ पर टैप करें, फिर फ़ोटो लें या चुनें। अपने-आप अनुमान के लिए AI Room या स्वयं रूम निर्धारित करने के लिए मैनुअल सेटअप चुनें। तैयार रूम को रूम लाइब्रेरी में जोड़ने के लिए सहेजें।";
 "faq.howToTakePhoto" = "कमरा बनाने के लिए फोटो कैसे लें?";
 "faq.howToTakePhotoAnswer" = "कमरा बनाते समय Take a Photo चुनें। Standard (1x) या Wide Angle (0.5×) चुन सकते हैं। डिवाइस स्थिर रखकर कैप्चर टैप करें। फोटो आपके 3D कमरे के निर्माण में उपयोग होगी।";
 "faq.depthAwareRoomPhoto" = "क्या ऐप में फोटो लेने से कमरे की गुणवत्ता बेहतर होती है?";
 "faq.depthAwareRoomPhotoAnswer" = "हाँ। समर्थित डिवाइसों पर गैलरी के बजाय Take a photo इन-ऐप कैमरा और उपलब्ध होने पर गहराई का उपयोग करता है, जिससे 3D कमरा बेहतर बन सकता है।";
-"faq.twoMethods" = "कमरा बनाने के दो विकल्प क्या हैं?";
-"faq.twoMethodsAnswer" = "फोटो चुनने पर आप चुन सकते हैं: 1) AI-संचालित 3D रूम – AI से अपने आप यथार्थवादी 3D कमरा बनाता है, या 2) मैनुअल सेटअप – आप खुद कमरे की सीमाएं खींचते हैं और ज़्यादा नियंत्रण रखते हैं।";
+"faq.twoMethods" = "AI Room और मैनुअल सेटअप में क्या अंतर है?";
+"faq.twoMethodsAnswer" = "AI Room एक फ़ोटो से रूम के आयामों का अनुमान लगाकर मापयुक्त, टेक्सचरयुक्त रूप बनाता है। यह पूर्ण वॉल्यूमेट्रिक पुनर्निर्माण नहीं है। मैनुअल सेटअप में आप अधिक नियंत्रित रूप के लिए रूम की सीमाएँ स्वयं तय कर सकते हैं।";
 "faq.whatIsAIRoom" = "AI-संचालित 3D रूम क्या है?";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room डिवाइस पर गहराई के अनुमान, फर्नीचर एंकर और कैमरा कैलिब्रेशन से एक फ़ोटो के आधार पर मापयुक्त, टेक्सचरयुक्त रूम का अनुमान लगाता है। यह पूर्ण वॉल्यूमेट्रिक पुनर्निर्माण नहीं है।";
 "faq.whatIsManualRoom" = "मैनुअल सेटअप क्या है?";
 "faq.whatIsManualRoomAnswer" = "मैनुअल सेटअप में आप फोटो पर कमरे की दीवारों का आउटलाइन खींचते हैं। इससे 3D कमरे का लुक आप खुद तय कर सकते हैं। कमरे का आकार खुद ठीक करने के लिए बढ़िया है।";
 "faq.whichMethodBetter" = "मुझे कौन सा तरीका चुनना चाहिए?";
@@ -207,10 +204,20 @@
 "faq.generationFailing" = "मेरा कमरा जनरेशन क्यों विफल हो रहा है?";
 "faq.generationFailingAnswer" = "यदि फोटो बहुत अंधेरी, धुंधली है या पर्याप्त कमरे की विशेषताएं नहीं दिखाती है तो कमरा जनरेशन विफल हो सकता है। बेहतर रोशनी और व्यापक कोण के साथ नई फोटो लेने का प्रयास करें।";
 "faq.howManyRooms" = "मैं कितने कमरे बना सकता हूं?";
-"faq.howManyRoomsAnswer" = "आप 20 कमरों तक बना सकते हैं। नए कमरों के लिए जगह बनाने हेतु पुराने हटाएं। कमरों की संख्या और उपयोग किया स्टोरेज होम स्क्रीन के शीर्ष पर दिखता है।";
+"faq.howManyRoomsAnswer" = "आप अधिकतम 20 रूम सहेज सकते हैं। जगह बनाने के लिए जिन रूम की जरूरत नहीं है उन्हें हटाएँ। रूम लाइब्रेरी में मौजूदा रूम संख्या और कुल उपयोग किया गया स्टोरेज दिखता है।";
+
+// FAQ - Furniture Detection & Sizing
+"faq.aiFeatures" = "फर्नीचर पहचान और आकार निर्धारण";
+"faq.whatIsBrainIcon" = "Fit बटन क्या करता है?";
+"faq.whatIsBrainIconAnswer" = "फर्नीचर पहचानकर 3D रूम के ऊपर पारदर्शी कटआउट बनाने के लिए Fit टैप करें। कटआउट की जगह बदलने के लिए खींचें और आकार बदलने के लिए पिंच करें। Fit एक दृश्य पूर्वावलोकन है; मापयुक्त आयामी मार्गदर्शन के लिए AR-सहायित साइजिंग चाहिए।";
+"faq.whatIsViewfinderButton" = "रूम व्यूअर में पूर्ण-वीडियो मोड क्या करता है?";
+"faq.whatIsViewfinderButtonAnswer" = "Fit चालू होने पर नियंत्रण दिखाएँ और पूर्ण-वीडियो मोड टॉगल करने के लिए व्यूफाइंडर आइकन टैप करें। पहचान बॉक्स वाले लाइव कैमरा फ़ीड में एक या अधिक वस्तुएँ टैप करके Segment दबाएँ। कैमरा छिप जाता है और पारदर्शी कटआउट 3D रूम पर दिखाई देते हैं। बाहर निकलने के लिए ऊपर-दाएँ हो गया टैप करें।";
+"faq.howToScreenshot" = "मैं स्क्रीनशॉट कैसे लूँ?";
+"faq.howToScreenshotAnswer" = "नियंत्रण दिखाने के लिए रूम पर टैप करें, फिर Capture टैप करें। इससे मौजूदा दृश्य—Fit चालू होने पर फर्नीचर ओवरले सहित—Photos लाइब्रेरी में सहेजा जाता है।";
+"faq.howToSaveRoom" = "मैं रूम कैसे सहेजूँ?";
+"faq.howToSaveRoomAnswer" = "3D रूम बनने के बाद नियंत्रण दिखाने के लिए रूम पर टैप करें, फिर सहेजें आइकन (डाउनलोड तीर) टैप करके नाम दर्ज करें। बिना सहेजे पूर्वावलोकन छोड़ने पर वह रूम हटा दिया जाता है।";
 
 // FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "फर्नीचर सेगमेंटेशन";
 "faq.whatIsSegmentation" = "फर्नीचर सेगमेंटेशन क्या है?";
 "faq.whatIsSegmentationAnswer" = "रूम व्यूअर में Fit बटन से फर्नीचर segmentation चलता है। डिफ़ॉल्ट रूप में एक primary आइटम auto-segment होता है। full-video mode में पहले आइटम चुनें; Segment केवल चुने गए pieces के cutouts बनाता है।";
 "faq.howToSegment" = "रूम व्यूअर में फर्नीचर कैसे सेगमेंट करें?";
@@ -225,13 +232,10 @@
 "faq.howToViewAnswer" = "होम स्क्रीन पर किसी भी कमरे को टैप करके 3D व्यूअर खोलें। देखने के लिए खींचें, ज़ूम के लिए पिंच करें। अतिरिक्त नियंत्रण (recenter, ruler, Capture) के लिए कमरे पर टैप करें। नीचे-दाएँ सुनहरा Fit बटन हमेशा दिखता है।";
 "faq.howToPlace" = "अपने कमरे में फर्नीचर कैसे रखें?";
 "faq.howToPlaceAnswer" = "Segment टैप करने के बाद चुना हुआ फर्नीचर कमरे में overlay के रूप में दिखता है। पोजिशन करने के लिए ड्रैग करें, आकार बदलने के लिए पिंच करें, और दिशा बदलने के लिए रोटेट करें।";
-"faq.sampleRoom" = "क्या मैं अपने बजाय सैंपल रूम उपयोग कर सकता हूं?";
-"faq.sampleRoomAnswer" = "हां! ऐप प्रयोग करने के लिए सैंपल रूम प्रदान करता है। पहले अपना कमरा बनाए बिना फर्नीचर प्लेसमेंट आज़माने के लिए एक्सप्लोर सेक्शन से उन्हें एक्सेस करें।";
 "faq.accuracy" = "3D मॉडल कितना सटीक है?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "माप डिवाइस पर किए गए अनुमान हैं और फ़ोटो की गुणवत्ता, रोशनी, कैमरा कोण तथा AR ट्रैकिंग के अनुसार बदल सकते हैं। इन्हें मार्गदर्शन मानें और निर्णय लेने से पहले महत्वपूर्ण आयाम स्वयं जाँचें।";
 "faq.adjustDimensions" = "क्या मैं कमरे के आयाम समायोजित कर सकता हूं?";
 "faq.adjustDimensionsAnswer" = "AI कमरे के आयाम मैन्युअल संपादित नहीं कर सकते। सेव के बाद नियंत्रण बुलाकर ruler से अनुमानित चौड़ाई, ऊँचाई, गहराई देखें। pre-save प्रीव्यू में dimension chips छिपे रहते हैं—पहले सेव करें, फिर दोबारा खोलकर माप देखें। manual कमरे आपकी सीमाओं का पालन करते हैं।";
-"faq.furnitureMeasurements" = "फर्नीचर और माप";
 "faq.arAssistedSizing" = "AR-सहायता वाला फर्नीचर साइज़िंग क्या है?";
 "faq.arAssistedSizingAnswer" = "पहले Fit से फर्नीचर segment करें। room-relative स्केल के लिए summoned toolbar में sizing control उपयोग करें। AR/depth फ़ोन live camera depth उपयोग करते हैं; बिना depth माप अनुमानित रहते हैं।";
 "faq.measurementPill" = "छोटा माप रीडआउट क्या है?";
@@ -244,13 +248,52 @@
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "प्लेसमेंट इंटेलिजेंस और सौंदर्य";
 "faq.whatIsPlacementIntelligence" = "प्लेसमेंट इंटेलिजेंस क्या है?";
-"faq.whatIsPlacementIntelligenceAnswer" = "समर्थित 3D room viewers में Fit चालू होने पर Placement Intelligence card दिखाता है कि पता चला फर्नीचर कमरे के आयामों में फिट होता है या नहीं। विवरण के लिए header टैप करें, जगह बचाने के लिए collapsed रखें।";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence किसी वस्तु की अनुमानित चौड़ाई, ऊँचाई और निकाली गई गहराई की तुलना रूम की सीमा से करता है। यह केवल आयामी अनुकूलता बताता है और फर्श पर खाली स्थान नहीं खोजता।";
 "faq.furnitureColorAesthetic" = "ऐस्थेटिक स्कोर के लिए रंग कैसे चुना जाता है?";
-"faq.furnitureColorAestheticAnswer" = "ऐप AI फर्नीचर कटआउट (वही सेगमेंटेड ओवरले) के अंदर दिखाई देने वाले पिक्सेल का RGB औसत निकालता है और उसे फर्श, दीवारों और छत से सैंपल किए रंगों से तुलता है। कटआउट तैयार न होने पर सेगमेंटेशन के वास्तविक नमूने आने तक कमरे की पैलेट से फॉलबैक रंग लिया जाता है।";
+"faq.furnitureColorAestheticAnswer" = "ऐप AI फर्नीचर कटआउट के भीतर दिखाई देने वाले पिक्सेल का सीधा औसत RGB रंग निकालकर रूम से लिए रंगों से तुलना करता है। कोई नमूना न मिले तो बनावटी स्कोर दिखाने के बजाय सौंदर्य मार्गदर्शन उपलब्ध नहीं रहता।";
 "faq.whatDoHarmonyContrastMean" = "हार्मनी, कंट्रास्ट और स्टाइल फिट का क्या मतलब है?";
 "faq.whatDoHarmonyContrastMeanAnswer" = "ये सरल डिज़ाइन नियम हैं, स्वाद का फैसला नहीं। हार्मनी बताता है कि फर्नीचर का रंग कमरे की पैलेट से कैसे जुड़ता है (जैसे समान या पूरक रंग)। कंट्रास्ट सामान्य फर्श या दीवार की चमक से अंतर मापता है। स्टाइल फिट कमरे के चौड़े स्टाइल टैग को डिफ़ॉल्ट आधुनिक प्रोफ़ाइल से मिलाता है—इसलिए अनुमानित है।";
 "faq.whenDoesAestheticScoreLow" = "ऐस्थेटिक स्कोर कब कम दिख सकता है या \"clash\" दिख सकता है?";
 "faq.whenDoesAestheticScoreLowAnswer" = "चमकीले, संतृप्त वस्तुएँ अक्सर कम स्कोर पाती हैं जब उनका रंग टोन आपके कमरे के सैंपल के मुकाबले ऐप के सामंजस्य नियमों से न मिले—जैसे एसिड ग्रीन, मैजेंटा, बैंगनी या सेफ्टी-ऑरेंज गर्म बेज या भूरे कमरे में, या लगभग एक ही रंग के कमरे में ज़ोरदार प्राइमरी। फर्श या दीवार से बहुत मिलती चमक (भूरे पर भूरा, ग्रे पर ग्रे) कंट्रास्ट घटा सकती है भले ही आपको पसंद हो। रस्टिक या पारंपरिक कमरों में स्टाइल फिट कम हो सकता है क्योंकि फर्नीचर प्रोफ़ाइल में डिफ़ॉल्ट आधुनिक/मिनिमल टैग होते हैं। व्यस्त पृष्ठभूमि से धूसर औसत कभी-कभी \"न्यूट्रल\" बैंड में आता है, clash नहीं। स्कोर केवल मार्गदर्शन हैं; असली सजावट में अपनी आँख पर भरोसा करें।";
+"faq.aiRoomManualSetup" = "AI Room और मैनुअल सेटअप";
+"faq.aestheticGuidance" = "सौंदर्य मार्गदर्शन";
+"faq.aestheticScore" = "सौंदर्य स्कोर कैसे निकाला जाता है?";
+"faq.aestheticScoreAnswer" = "ऐप सेगमेंट किए गए फर्नीचर के औसत दिखाई देने वाले रंग की तुलना रूम से लिए गए रंगों से करता है। रंग सामंजस्य, चमक का कंट्रास्ट और व्यापक शैली अनुकूलता स्कोर में योगदान देते हैं। ये अनुमानित डिज़ाइन संकेत हैं, पसंद के नियम नहीं।";
+"faq.aestheticUnavailable" = "सौंदर्य मार्गदर्शन उपलब्ध क्यों नहीं है?";
+"faq.aestheticUnavailableAnswer" = "सौंदर्य मार्गदर्शन के लिए रूम और सेगमेंट किए फर्नीचर दोनों से उपयोगी रंग नमूने चाहिए। कोई नमूना उपलब्ध न हो तो Paafekt मनगढ़ंत स्कोर नहीं दिखाता।";
+"faq.freeFloorLocation" = "क्या Placement Intelligence फर्श पर उपलब्ध जगह खोजता है?";
+"faq.freeFloorLocationAnswer" = "नहीं। यह जाँचता है कि अनुमानित फर्नीचर आयाम रूम की सीमा के अनुकूल हैं या नहीं। यह खाली फर्श नहीं पहचानता और न ही कोई खास खुली जगह बताता है।";
+"faq.dimensionalFit" = "आयामी फिट कैसे निकाला जाता है?";
+"faq.dimensionalFitAnswer" = "वस्तु की अनुमानित चौड़ाई, ऊँचाई और निकाली गई गहराई की तुलना रूम के अनुमानित आयामों से की जाती है; जहाँ उपयोगी हो वहाँ घुमाए गए आधार को भी देखा जाता है। दोनों आयाम अनुमानित हैं, इसलिए परिणाम को मार्गदर्शन मानें।";
+"faq.measurementsAccuracy" = "माप और सटीकता";
+"faq.purchaseReliance" = "क्या फर्नीचर खरीदते समय मैं Paafekt पर निर्भर कर सकता हूँ?";
+"faq.purchaseRelianceAnswer" = "Paafekt को मार्गदर्शन मानें, गारंटी नहीं। खरीदने से पहले विक्रेता से आयाम, खाली जगह और उपयुक्तता हमेशा पक्की करें।";
+"faq.savedRoomsStorage" = "सहेजे गए रूम और स्टोरेज";
+"faq.whereRoomsSaved" = "मेरे रूम कहाँ सहेजे जाते हैं?";
+"faq.whereRoomsSavedAnswer" = "रूम इस डिवाइस पर Paafekt के निजी ऐप स्टोरेज में रहते हैं और अपने-आप अपलोड नहीं होते। आंतरिक स्थान: Documents/SavedRooms.";
+"faq.uninstallRooms" = "Paafekt अनइंस्टॉल करने पर मेरे रूम का क्या होगा?";
+"faq.uninstallRoomsAnswer" = "Paafekt अनइंस्टॉल करने पर उसके निजी ऐप स्टोरेज में रखे रूम स्थायी रूप से हट जाते हैं। जिन्हें रखना है उन्हें अनइंस्टॉल करने से पहले साझा करें।";
+"faq.sharingExporting" = "साझा करना और निर्यात";
+"faq.exportRoom" = "मैं किसी रूम का बैकअप या निर्यात कैसे करूँ?";
+"faq.exportRoomAnswer" = "उस रूम प्रकार के लिए Share उपलब्ध हो तो उसका उपयोग करें। Capture मौजूदा दृश्य की छवि साझा करता है, पुनर्स्थापित किया जा सकने वाला रूम बैकअप नहीं। Paafekt अभी क्लाउड सिंक या पूरी लाइब्रेरी का सुनिश्चित बैकअप नहीं देता।";
+"faq.privacyAccount" = "गोपनीयता और खाता";
+"faq.arePhotosUploaded" = "क्या मेरे रूम की फ़ोटो अपलोड होती हैं?";
+"faq.arePhotosUploadedAnswer" = "नहीं। रूम बनाना, फर्नीचर पहचान और Placement Intelligence इस डिवाइस पर चलते हैं। Firebase अलग से फ़ोन नंबर प्रमाणीकरण और दुरुपयोग-रोकथाम डेटा प्रोसेस करता है। सामग्री Paafekt से तभी बाहर जाती है जब आप उसे स्पष्ट रूप से साझा करते हैं।";
+"faq.firebaseData" = "Firebase कौन-सा डेटा प्रोसेस करता है?";
+"faq.firebaseDataAnswer" = "Firebase आपका फ़ोन नंबर, प्रमाणीकरण रिकॉर्ड और सत्यापन तथा दुरुपयोग रोकने के लिए प्रयुक्त डिवाइस इंस्टॉलेशन पहचानकर्ता प्रोसेस करता है। रूम निर्माण और फर्नीचर प्रोसेसिंग इस डिवाइस पर रहती है।";
+"faq.deleteAccountEffect" = "खाता हटाने पर क्या होता है?";
+"faq.deleteAccountEffectAnswer" = "खाता हटाने पर Firebase प्रमाणीकरण खाता हटता है और आपको साइन आउट कर दिया जाता है। इस डिवाइस पर सहेजे रूम अपने-आप नहीं हटते; उन्हें Paafekt में हटाएँ या ऐप अनइंस्टॉल करें।";
+"faq.troubleshootingSupport" = "समस्या निवारण और सहायता";
+"faq.contactSupport" = "मैं सहायता से कैसे संपर्क करूँ?";
+"faq.contactSupportAnswer" = "सेटिंग्स → सहायता और समर्थन खोलें, फिर support@paafekt.com पर ईमेल करें।";
+"faq.howToNavigate" = "मैं रूम के अंदर कैसे चलूँ?";
+"faq.howToNavigateAnswer" = "कैमरा घुमाने के लिए रूम पर खींचें और ज़ूम करने के लिए पिंच करें। टूलबार दिखाने के लिए स्क्रीन टैप करें, फिर डिफ़ॉल्ट दृश्य लौटाने के लिए रीसेंटर टैप करें। नियंत्रण छिपे होने पर नीचे-बाएँ छोटा नियंत्रण भी टूलबार वापस लाता है।";
+"faq.whatDoArrowsDo" = "व्यूअर नियंत्रण कैसे दिखाएँ या छिपाएँ?";
+"faq.whatDoArrowsDoAnswer" = "रूम व्यूअर इमर्सिव मोड का उपयोग करता है—साफ दृश्य के लिए नियंत्रण छिप जाते हैं। टूलबार दिखाने के लिए रूम पर टैप करें। नीचे-दाएँ सुनहरा Fit बटन हमेशा दिखता है। Fit चालू होने पर सेगमेंटेशन से बाहर निकलने के लिए ऊपर-दाएँ हो गया दिखाई देता है।";
+"faq.whatIsMemoryDisplay" = "MB संख्या का क्या अर्थ है?";
+"faq.whatIsMemoryDisplayAnswer" = "रूम में दिखाया गया MB (मेगाबाइट) फ़ाइल का आकार बताता है और स्टोरेज प्रबंधित करने में मदद करता है। सभी रूम द्वारा उपयोग किया गया कुल स्टोरेज होम स्क्रीन के ऊपर दिखता है।";
+"faq.pinchOverlaySize" = "सेगमेंट किए फर्नीचर को पिंच करने पर क्या होता है?";
+"faq.pinchOverlaySizeAnswer" = "पिंच करने पर फर्नीचर ओवरले बड़ा या छोटा होता है। साइजिंग मोड चालू और Furni पिल दिखाई देने पर वह रूम के लिए बदले हुए फर्नीचर आकार के मौजूदा अनुमान से अपडेट होती है। साइजिंग मोड बंद हो तो पिंच केवल स्क्रीन पर ओवरले का दृश्य आकार बदलता है।";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "कमरे की सीमाएं";
@@ -261,8 +304,6 @@
 "boundary.vanish" = "वैनिश पॉइंट";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "फर्नीचर जोड़ें";
-"viewer.capture" = "कैप्चर";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "कैमरा शुरू हो रहा है...";
@@ -405,26 +446,6 @@
 "accessibility.help" = "सहायता";
 "accessibility.createRoom" = "फोटो से कमरा बनाएं";
 
-// FAQ - AI Features (added)
-"faq.aiFeatures" = "AI सुविधाएं";
-"faq.whatIsBrainIcon" = "Fit बटन क्या करता है?";
-"faq.whatIsBrainIconAnswer" = "रूम व्यूअर में नीचे-दाएँ सुनहरे Fit बटन से SmartyPants फर्नीचर segmentation शुरू करें। डिफ़ॉल्ट रूप से सबसे भरोसेमंद आइटम को 3D कमरे पर पारदर्शी cutout के रूप में auto-segment करता है। बाहर निकलने के लिए ऊपर-दाएँ Done टैप करें। खास आइटम चुनने के लिए पहले नियंत्रण बुलाएँ और full-video mode चालू करें।";
-"faq.whatIsViewfinderButton" = "रूम व्यूअर में full-video mode क्या करता है?";
-"faq.whatIsViewfinderButtonAnswer" = "Fit चालू होने पर नियंत्रण बुलाएँ और viewfinder आइकन से full-video mode टॉगल करें। लाइव कैमरा और detection boxes—एक या अधिक आइटम टैप करें, फिर Segment। कैमरा छिप जाता है और cutouts 3D कमरे पर दिखते हैं। segment mode छोड़ने या Fit बंद करने के लिए ऊपर-दाएँ Done टैप करें।";
-"faq.howToScreenshot" = "स्क्रीनशॉट कैसे लें?";
-"faq.howToScreenshotAnswer" = "कमरे पर टैप करके नियंत्रण बुलाएँ, फिर Capture टैप करें। Fit चालू होने पर फर्नीचर overlays सहित वर्तमान दृश्य Photos लाइब्रेरी में सेव होता है।";
-"faq.howToSaveRoom" = "रूम कैसे सेव करें?";
-"faq.howToSaveRoomAnswer" = "3D कमरा बनने के बाद कमरे पर टैप करके नियंत्रण बुलाएँ, फिर सेव आइकन (डाउनलोड तीर) टैप करके नाम दर्ज करें। बिना सेव किए प्रीव्यू छोड़ने पर वह कमरा हटा दिया जाता है।";
-
-// FAQ - 3D Room Controls (added)
-"faq.roomControls" = "3D रूम नियंत्रण";
-"faq.howToNavigate" = "रूम के अंदर कैसे नेविगेट करें?";
-"faq.howToNavigateAnswer" = "कमरे पर खींचकर कैमरा घुमाएँ और पिंच से ज़ूम करें। टूलबार बुलाने के लिए स्क्रीन टैप करें, recenter के लिए viewfinder आइकन उपयोग करें। नीचे-बाएँ quiet summon disk छिपे नियंत्रण वापस लाता है।";
-"faq.whatDoArrowsDo" = "व्यूअर नियंत्रण कैसे दिखाएँ या छिपाएँ?";
-"faq.whatDoArrowsDoAnswer" = "रूम व्यूअर immersive mode उपयोग करता है—साफ़ दृश्य के लिए नियंत्रण छिपे रहते हैं। टूलबार बुलाने के लिए कमरे पर टैप करें। नीचे-दाएँ सुनहरा Fit बटन हमेशा दिखता है। Fit चालू होने पर segmentation छोड़ने के लिए ऊपर-दाएँ Done दिखता है।";
-"faq.whatIsMemoryDisplay" = "MB नंबर का क्या मतलब है?";
-"faq.whatIsMemoryDisplayAnswer" = "रूम में दिखाया गया MB (मेगाबाइट्स) फाइल साइज इंगित करता है। यह आपको स्टोरेज मैनेज करने में मदद करता है। सभी रूम द्वारा उपयोग किया गया कुल स्टोरेज होम स्क्रीन के शीर्ष पर दिखाया जाता है।";
-
 // MARK: - Single Photo Room (added)
 "photoRoom.howToCreate" = "आप अपना 3D कमरा कैसे बनाना चाहते हैं?";
 "photoRoom.tapOption" = "जारी रखने के लिए नीचे एक विकल्प टैप करें";
@@ -465,7 +486,6 @@
 
 // MARK: - i18n sync (Hindi)
 "common.or" = "या";
-"common.retry" = "पुनः प्रयास";
 "settings.fullVideoWithIdentifications" = "पहचान के साथ पूर्ण वीडियो";
 "settings.fullVideoWithIdentificationsDescription" = "खंडित फर्नीचर ओवरले को स्वतः केंद्रित करने के बजाय पहचान बॉक्स और लेबल के साथ लाइव कैमरा फ़ीड दिखाएँ।";
 
@@ -509,16 +529,6 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "मापन सूचना";
 "help.measurementAccuracyBody" = "जिन फ़ोन में AR depth सपोर्ट नहीं है, वे कमरे और फ़र्नीचर का प्रीव्यू दिखा सकते हैं, लेकिन कमरे और खासकर फ़र्नीचर के माप केवल अनुमानित होंगे।";
-"faq.whatIsBrainIconAnswer" = "रूम व्यूअर में नीचे-दाएँ सुनहरे Fit बटन से SmartyPants फर्नीचर segmentation शुरू करें। डिफ़ॉल्ट रूप से सबसे भरोसेमंद आइटम को 3D कमरे पर पारदर्शी cutout के रूप में auto-segment करता है। बाहर निकलने के लिए ऊपर-दाएँ Done टैप करें। खास आइटम चुनने के लिए पहले नियंत्रण बुलाएँ और full-video mode चालू करें।";
-"faq.howToSegmentAnswer" = "रूम व्यूअर में Fit टैप करें। जल्दी जाँच के लिए मुख्य आइटम auto-segment होता है। खास pieces के लिए: नियंत्रण बुलाएँ, full-video mode चालू करें, कैमरा फर्नीचर की ओर करें, boxes टैप करें, फिर Segment। बाहर निकलने के लिए ऊपर-दाएँ Done टैप करें।";
-"faq.accuracyAnswer" = "3D कमरा एक फोटो से बना अनुमान है। कमरे की डाइमेंशन मार्गदर्शन के लिए उपयोगी हो सकती हैं, लेकिन वे सर्वे-ग्रेड नहीं हैं। फ़र्नीचर मापन AR या depth सपोर्ट वाले फ़ोन पर सबसे अधिक भरोसेमंद होता है।";
-"faq.adjustDimensionsAnswer" = "AI कमरे के आयाम मैन्युअल संपादित नहीं कर सकते। सेव के बाद नियंत्रण बुलाकर ruler से अनुमानित चौड़ाई, ऊँचाई, गहराई देखें। pre-save प्रीव्यू में dimension chips छिपे रहते हैं—पहले सेव करें, फिर दोबारा खोलकर माप देखें। manual कमरे आपकी सीमाओं का पालन करते हैं।";
-"faq.arAssistedSizingAnswer" = "पहले Fit से फर्नीचर segment करें। room-relative स्केल के लिए summoned toolbar में sizing control उपयोग करें। AR/depth फ़ोन live camera depth उपयोग करते हैं; बिना depth माप अनुमानित रहते हैं।";
-"faq.measurementPillAnswer" = "फ़र्नीचर साइज पिल तभी दिखती है जब sizing mode चालू हो और ऐप के पास उपयोगी live height estimate हो। ruler बटन एक छोटे कार्ड में कमरे की मौजूदा चौड़ाई, ऊँचाई और गहराई दिखाता है। non-AR फ़ोन पर ये रीडिंग, खासकर फ़र्नीचर के लिए, कम भरोसेमंद होती हैं।";
-"faq.resetOverlayScaleAnswer" = "अब overflow menu नहीं है। overlay गलत लगे तो Done से Fit बंद करके फिर Fit टैप करें, या pinch से आकार ठीक करें।";
-
-"faq.pinchOverlaySize" = "सेगमेंट किए गए फर्नीचर को पिंच करने पर क्या होता है?";
-"faq.pinchOverlaySizeAnswer" = "पिंच करने पर फर्नीचर ओवरले बड़ा या छोटा होता है। अगर sizing mode चालू है और Furni pill दिख रही है, तो वही pill कमरे के हिसाब से बदले हुए फर्नीचर आकार के अनुमान पर अपडेट हो जाती है। अगर sizing mode बंद है, तो पिंच केवल स्क्रीन पर ओवरले का दृश्य आकार बदलता है।";
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
@@ -551,5 +561,29 @@
 "credits.openAIBody" = "OpenAI के टूल्स, जिनमें ChatGPT शामिल है, का उपयोग उत्पाद विचार, इम्प्लीमेंटेशन सहायता, ड्राफ्टिंग और तकनीकी अन्वेषण के लिए किया गया।";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Anthropic के टूल्स का उपयोग शोध, कोड सहायता, इम्प्लीमेंटेशन विवरणों पर विचार और विकास पुनरावृत्ति में सहायता के लिए किया गया।";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Luma AI के टूल्स और उत्पाद संदर्भों ने हमारे विज़ुअल AI और 3D वर्कफ़्लो अन्वेषण के कुछ हिस्सों को प्रभावित किया।";
+"settings.accountDeleteFooter" = "खाता हटाने से आपका साइन-इन खाता हटता है। इस डिवाइस पर सहेजे रूम अपने-आप नहीं हटते।";
+"licenses.hypersimTitle" = "Hypersim डेटासेट";
+"licenses.hypersim" = "Apple के कृत्रिम इनडोर Hypersim डेटासेट का उपयोग करके मेट्रिक इनडोर मॉडल को बेहतर ढंग से प्रशिक्षित किया गया। Hypersim को CC BY-SA 3.0 के अंतर्गत लाइसेंस दिया गया है।";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "iOS Gaussian-splat पाइपलाइन में SPZ डिकोडिंग का उपयोग होता है। कॉपीराइट Niantic, Inc., Sean Cier और योगदानकर्ताओं का है। MIT लाइसेंस के अंतर्गत लाइसेंस प्राप्त।";
+"licenses.cocoTitle" = "COCO डेटासेट";
+"licenses.coco" = "RTMDet को COCO का उपयोग करके प्रशिक्षित किया गया। COCO एनोटेशन CC BY 4.0 के अंतर्गत लाइसेंस प्राप्त हैं; अलग-अलग चित्र उनके मालिकों की शर्तों के अधीन हैं।";
+"roomViewer.furnitureHeightEstimate" = "फर्नीचर की ऊँचाई ~ %.2f मी";
+"photoRoom.backAlertTitle" = "AI या मैनुअल के साथ जारी रखें?";
+"photoRoom.backAlertMessage" = "अपना रूम बनाना शुरू करने के लिए AI या मैनुअल टैप करें, या वापस जाने के लिए ठीक है टैप करें।";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "मैनुअल";
+"camera.title" = "कैमरा";
+"camera.chooseMode" = "कैमरा मोड चुनें";
+"camera.chooseModeHint" = "अपने रूम के लिए कैमरा लेंस चुनें";
+"camera.ar.hint" = "कैमरा रूम की ओर रखें, स्थिर रखें, फिर फ़ोटो लें। सटीक कैमरा इंट्रिनसिक्स के लिए हम AR का उपयोग करते हैं (और LiDAR पर दृश्य की गहराई)।";
+"camera.standard" = "स्टैंडर्ड";
+"camera.wideAngle" = "वाइड एंगल";
+"camera.standard.desc" = "स्टैंडर्ड 1x लेंस • किसी भी दिशा में पकड़ें";
+"camera.wideAngle.desc" = "अल्ट्रा-वाइड 0.5x लेंस • अधिक क्षेत्र कैप्चर करता है";
+"camera.wideAngle.info" = "अधिक विस्तृत दृश्य के लिए अल्ट्रा-वाइड 0.5x लेंस का उपयोग करता है";
+"camera.selectWideAngle" = "वाइड फ़ोटो चुनें";
+"camera.captureWideAngle" = "वाइड फ़ोटो लें";
+"camera.wideAngle.holdSteady" = "स्थिर रखें • अल्ट्रा-वाइड लेंस अधिक क्षेत्र कैप्चर करता है";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android, ARCore, Filament और Firebase Android ऐप में उपयोग होने वाली प्लेटफ़ॉर्म, AR, 3D रेंडरिंग और प्रमाणीकरण क्षमताएँ प्रदान करते हैं।";

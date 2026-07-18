@@ -9,7 +9,6 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D-Raum-Explorer";
 "app.version" = "Version";
-"app.developer" = "Paafekt Team";
 
 // MARK: - Common Actions
 "common.done" = "Fertig";
@@ -20,7 +19,6 @@
 "common.delete" = "Löschen";
 "common.error" = "Fehler";
 "common.save" = "Speichern";
-"common.close" = "Schließen";
 "common.apply" = "Anwenden";
 
 // MARK: - Login View
@@ -49,18 +47,18 @@
 "otp.resendFailed" = "Code konnte nicht erneut gesendet werden.";
 
 // MARK: - Home View
-"home.title" = "3D-Raummodelle";
-"home.noModels" = "Keine 3D-Modelle gefunden";
-"home.noModelsDescription" = "Erstellen Sie Ihren ersten Raum aus einem Foto!";
-"home.createRoom" = "Raum aus Foto erstellen";
-"home.createRoomToolbarLabel" = "Foto → 3D";
-"home.createRoomHint" = "Tippe hier, um einen Raum zu erstellen";
-"home.roomsRemaining" = "%d von %d Räumen verfügbar";
+"home.libraryTitle" = "Raumbibliothek";
+"home.librarySubtitle" = "Ihre gespeicherten 3D-Räume auf diesem Gerät.";
+"home.storageTitle" = "Auf diesem Gerät gespeichert";
+"home.storagePath" = "Räume verbleiben im privaten App-Speicher von Paafekt und werden nicht automatisch hochgeladen. Interner Speicherort: Documents/SavedRooms.";
+"home.storageWarning" = "Durch die Deinstallation von Paafekt werden gespeicherte Räume dauerhaft gelöscht. Teilen Sie vorher alles, was Sie behalten möchten.";
+"home.noModels" = "Noch keine Räume";
+"home.noModelsDescription" = "Erstellen Sie Ihren ersten 3D-Raum aus einem Foto oder richten Sie ihn mit Manual Setup ein. Räume werden auf diesem Gerät gespeichert.";
+"home.createRoom" = "Raum erstellen";
+"home.createRoomToolbarLabel" = "Raum erstellen";
 "home.deleteHint" = "Alte Räume löschen, um neue zu erstellen";
-"home.swipeHint" = "Nach links wischen zum Löschen";
+"home.swipeHint" = "Zum Umbenennen nach rechts, zum Löschen nach links wischen";
 "home.renameRoom" = "Umbenennen";
-"home.renameRoomMessage" = "Dieser Name erscheint in deiner Raumliste. Der gespeicherte Dateiname bleibt gleich.";
-"home.roomNamePlaceholder" = "Raumname";
 "home.roomModel" = "3D-Raummodell";
 "home.aiBased3DRoom" = "KI-basiertes 3D-Zimmer";
 "home.manualBased3DRoom" = "Manuell erstelltes 3D-Zimmer";
@@ -70,8 +68,8 @@
 "roomLimit.message" = "Sie haben das Limit von %d Räumen erreicht. Löschen Sie einige Räume, um neue zu erstellen.";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "Raum löschen?";
-"deleteRoom.message" = "Möchten Sie '%@' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.";
+"deleteRoom.title" = "Diesen Raum löschen?";
+"deleteRoom.message" = "Dieser Raum wird dauerhaft von diesem Gerät entfernt. Diese Aktion kann nicht rückgängig gemacht werden.";
 
 // MARK: - Explore View
 "explore.title" = "Entdecken";
@@ -100,6 +98,11 @@
 "profile.logout" = "Abmelden";
 "profile.logoutConfirmTitle" = "Abmelden";
 "profile.logoutConfirmMessage" = "Möchten Sie sich wirklich abmelden?";
+"profile.deleteAccount" = "Konto löschen";
+"profile.deleteAccountConfirmTitle" = "Konto löschen";
+"profile.deleteAccountConfirmMessage" = "Ihr Konto und Ihre Anmeldedaten dauerhaft löschen? Auf diesem Gerät gespeicherte Räume bleiben erhalten, bis Sie sie löschen oder Paafekt deinstallieren.";
+"profile.deleteAccountSuccessTitle" = "Konto gelöscht";
+"profile.deleteAccountSuccessMessage" = "Ihr Konto wurde gelöscht und Sie wurden abgemeldet.";
 "profile.sectionAccount" = "Konto";
 "profile.sectionSettings" = "Einstellungen";
 "profile.sectionAbout" = "Über";
@@ -131,6 +134,7 @@
 "settings.legal" = "Rechtliches";
 "settings.privacyPolicy" = "Datenschutzrichtlinie";
 "settings.termsOfService" = "Nutzungsbedingungen";
+"settings.legalSummary" = "Raumverarbeitung und Möbelanalyse erfolgen auf dem Gerät. Gespeicherte Räume verbleiben im privaten App-Speicher, sofern Sie sie nicht ausdrücklich teilen. Firebase verarbeitet die Telefonnummernauthentifizierung und Daten zur Missbrauchsprävention.";
 "settings.support" = "Support";
 "settings.licenses" = "Lizenzen";
 "settings.roomViewerSection" = "Raum-Viewer";
@@ -141,7 +145,6 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "Lizenzen & Zuschreibungen";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "Open-Source-Lizenzen";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "Vollständige Lizenz anzeigen";
@@ -167,12 +170,6 @@
 
 
 // MARK: - Movement Speed Options
-"speed.slow" = "Langsam";
-"speed.slow.description" = "Präzise Steuerung für detaillierte Erkundung";
-"speed.normal" = "Normal";
-"speed.normal.description" = "Ausgewogene Geschwindigkeit für komfortable Navigation";
-"speed.fast" = "Schnell";
-"speed.fast.description" = "Schnelle Bewegung für zügige Erkundung";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "Hilfe & Support";
@@ -187,53 +184,61 @@
 "help.emailBody" = "Hallo Paafekt Support-Team,\n\nich benötige Hilfe bei:\n\n";
 
 // FAQ - Room Creation
-"faq.roomCreation" = "Raumerstellung";
-"faq.howToCreate" = "Wie erstelle ich einen 3D-Raum?";
-"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
+"faq.roomCreation" = "Erste Schritte";
+"faq.howToCreate" = "Wie erstelle ich einen Raum?";
+"faq.howToCreateAnswer" = "Tippen Sie auf Raum erstellen und nehmen Sie dann ein Foto auf oder wählen Sie eines aus. Wählen Sie AI Room für eine automatische Schätzung oder Manual Setup, um den Raum selbst festzulegen. Speichern Sie den fertigen Raum, um ihn Ihrer Raumbibliothek hinzuzufügen.";
 "faq.howToTakePhoto" = "Wie nehme ich ein Foto auf, um einen Raum zu erstellen?";
 "faq.howToTakePhotoAnswer" = "Beim Erstellen eines Raums wählen Sie Foto aufnehmen. Standard (1x) oder Weitwinkel (0.5×). Gerät ruhig halten und aufnehmen. Das Foto wird für Ihren 3D-Raum verwendet.";
 "faq.depthAwareRoomPhoto" = "Hilft ein Foto in der App der Raumqualität?";
 "faq.depthAwareRoomPhotoAnswer" = "Ja. Auf unterstützten Geräten nutzt „Foto aufnehmen“ (statt Galerie) die In-App-Kamera mit Tiefendaten, sofern verfügbar – das kann Aufbau und Maßstab des 3D-Raums verbessern.";
-"faq.twoMethods" = "Was sind die beiden Optionen zur Raumerstellung?";
-"faq.twoMethodsAnswer" = "Nach der Fotowahl können Sie wählen: 1) KI-gestützter 3D-Raum – erstellt automatisch einen realistischen 3D-Raum, oder 2) Manuelle Einrichtung – Sie zeichnen die Raumgrenzen selbst für mehr Kontrolle.";
+"faq.twoMethods" = "Worin unterscheiden sich AI Room und Manual Setup?";
+"faq.twoMethodsAnswer" = "AI Room schätzt die Raummaße anhand eines Fotos und erzeugt eine vermessene, texturierte Darstellung. Es handelt sich nicht um eine vollständige volumetrische Rekonstruktion. Mit Manual Setup können Sie die Raumgrenzen selbst festlegen und die Darstellung gezielter steuern.";
 "faq.whatIsAIRoom" = "Was ist der KI-gestützte 3D-Raum?";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room nutzt Tiefenschätzung, Möbelanker und Kamerakalibrierung auf dem Gerät, um anhand eines Fotos einen vermessenen, texturierten Raum zu schätzen. Es handelt sich nicht um eine vollständige volumetrische Rekonstruktion.";
 "faq.whatIsManualRoom" = "Was ist die manuelle Einrichtung?";
-"faq.whatIsManualRoomAnswer" = "Bei der manuellen Einrichtung zeichnen Sie den Umriss der Wände auf dem Foto. So haben Sie mehr Kontrolle über die Form des 3D-Raums.";
+"faq.whatIsManualRoomAnswer" = "Mit Manual Setup können Sie die Raumgrenzen direkt auf dem Foto festlegen und die resultierende Darstellung genauer steuern.";
 "faq.whichMethodBetter" = "Welche Methode soll ich wählen?";
-"faq.whichMethodBetterAnswer" = "Probieren Sie zuerst die KI-Option – sie ist schneller und passt für die meisten Räume. Passt das Ergebnis nicht, nutzen Sie die manuelle Einrichtung. Sie können beides ausprobieren!";
+"faq.whichMethodBetterAnswer" = "Wählen Sie AI Room für eine schnellere automatische Schätzung. Wählen Sie Manual Setup, wenn Sie die Raumgrenzen direkt steuern möchten. Falls ein Ergebnis ungeeignet ist, probieren Sie die andere Methode.";
 "faq.bestPhotos" = "Welche Art von Fotos funktionieren am besten?";
 "faq.bestPhotosAnswer" = "Für beste Ergebnisse machen Sie Fotos bei guter Beleuchtung mit waagerecht gehaltener Kamera. Versuchen Sie, den gesamten Raum einschließlich Böden, Wänden und Deckenkanten zu erfassen. Vermeiden Sie unscharfe oder dunkle Fotos.";
 "faq.generationFailing" = "Warum schlägt meine Raumerstellung fehl?";
 "faq.generationFailingAnswer" = "Die Raumerstellung kann fehlschlagen, wenn das Foto zu dunkel, unscharf ist oder nicht genügend Raummerkmale zeigt. Versuchen Sie, ein neues Foto mit besserer Beleuchtung und einem weiteren Winkel aufzunehmen.";
 "faq.howManyRooms" = "Wie viele Räume kann ich erstellen?";
-"faq.howManyRoomsAnswer" = "Sie können bis zu 20 Räume erstellen. Löschen Sie ältere Räume, um Platz zu schaffen. Oben auf dem Startbildschirm sehen Sie die Raumanzahl und den belegten Speicher.";
+"faq.howManyRoomsAnswer" = "Sie können bis zu 20 Räume speichern. Löschen Sie nicht mehr benötigte Räume, um Platz zu schaffen. Die Raumbibliothek zeigt die aktuelle Raumanzahl und den insgesamt belegten Speicher.";
 "faq.howToSaveRoom" = "Wie speichere ich einen Raum?";
 "faq.howToSaveRoomAnswer" = "Nach der 3D-Erstellung auf den Raum tippen, Steuerung einblenden, dann Speichern-Symbol (Download-Pfeil) und Namen eingeben. Ohne Speichern verlassen wird die Vorschau verworfen.";
+"faq.whereRoomsSaved" = "Wo werden meine Räume gespeichert?";
+"faq.whereRoomsSavedAnswer" = "Räume werden im privaten App-Speicher von Paafekt auf diesem Gerät gespeichert und nicht automatisch hochgeladen. Interner Speicherort: Documents/SavedRooms.";
+"faq.arePhotosUploaded" = "Werden meine Raumfotos hochgeladen?";
+"faq.arePhotosUploadedAnswer" = "Nein. Raumerstellung, Möbelerkennung und Placement Intelligence laufen auf diesem Gerät. Firebase verarbeitet separat die Telefonnummernauthentifizierung und Daten zur Missbrauchsprävention. Inhalte verlassen Paafekt nur, wenn Sie sie ausdrücklich teilen.";
 "faq.howToScreenshot" = "Wie mache ich einen Screenshot?";
 "faq.howToScreenshotAnswer" = "Tippen Sie auf den Raum, um die Steuerung einzublenden, dann auf Aufnahme. Speichert die aktuelle Ansicht (einschließlich Möbel-Overlays bei aktivem Fit) in Ihrer Fotomediathek.";
 
 // FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "Möbel-Segmentierung";
+"faq.aiFeatures" = "Möbelerkennung und Größenbestimmung";
+"faq.whatIsBrainIcon" = "Was macht die Fit-Taste?";
+"faq.whatIsBrainIconAnswer" = "Tippen Sie auf Fit, um ein Möbelstück zu erkennen und als transparenten Ausschnitt über Ihrem 3D-Raum einzublenden. Ziehen Sie den Ausschnitt an die gewünschte Position und ändern Sie seine Größe mit einer Pinch-Geste. Fit ist eine visuelle Vorschau; Maßangaben erfordern eine AR-gestützte Größenbestimmung.";
+"faq.whatIsViewfinderButton" = "Was bewirkt der Vollbild-Videomodus im Raum-Viewer?";
+"faq.whatIsViewfinderButtonAnswer" = "Blenden Sie bei aktivem Fit die Steuerung ein und tippen Sie auf das Suchersymbol, um den Vollbild-Videomodus umzuschalten. Im Live-Kamerabild werden Erkennungsrahmen angezeigt. Tippen Sie auf ein oder mehrere Objekte und anschließend auf Segmentieren. Die Kamera wird ausgeblendet und transparente Ausschnitte werden über den 3D-Raum gelegt. Tippen Sie oben rechts auf Fertig, um den Segmentierungsmodus oder Fit vollständig zu verlassen.";
 "faq.whatIsSegmentation" = "Was ist Möbel-Segmentierung?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
+"faq.whatIsSegmentationAnswer" = "Die Möbelsegmentierung erkennt ein Objekt im Kamerabild und trennt seine sichtbaren Pixel vom Hintergrund, sodass es als verschiebbarer Ausschnitt dargestellt werden kann. Die Verarbeitung erfolgt auf diesem Gerät.";
 "faq.howToSegment" = "Wie segmentiere ich Möbel im Raum-Viewer?";
 "faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf Fit. Für eine schnelle Prüfung wird das Hauptobjekt automatisch segmentiert. Für bestimmte Stücke: Steuerung einblenden, Full-Video-Modus aktivieren, Kamera auf Möbel richten, Rahmen tippen, dann Segmentieren. Oben rechts auf Fertig tippen zum Beenden.";
 "faq.notDetected" = "Warum werden meine Möbel nicht erkannt?";
 "faq.notDetectedAnswer" = "Die Möbelerkennung funktioniert am besten mit klaren, gut beleuchteten Fotos, auf denen die Möbel deutlich sichtbar sind. Stellen Sie sicher, dass die Möbel nicht teilweise verdeckt sind oder mit dem Hintergrund verschmelzen.";
 "faq.multiplePieces" = "Kann ich mehrere Möbelstücke segmentieren?";
-"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
+"faq.multiplePiecesAnswer" = "Wählen Sie im Vollbild-Videomodus mehrere Erkennungsrahmen aus und tippen Sie auf Segmentieren, um die Ausschnitte gemeinsam zu erstellen. Mit dem standardmäßigen Fit-Ablauf können Sie Möbelstücke auch einzeln segmentieren.";
 
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "Wie prüfe ich, ob Möbel passen?";
-"faq.roomFitmentAnswer" = "Nach der Segmentierung können Sie Möbelausschnitte in Ihrem 3D-Raum vergrößern und verschieben. Im Vollvideo-Modus legt Segment ausgewählte Stücke über den Raum, damit Sie mehrere Elemente gleichzeitig mit dem Raum vergleichen können.";
+"faq.roomFitmentAnswer" = "Aktivieren Sie nach der Segmentierung die AR-Größenbestimmung, um Breite und Höhe des Möbelstücks zu messen. Placement Intelligence vergleicht diese Werte und die abgeleitete Tiefe mit der Raumhülle. Ein garantiert freier Platz auf dem Boden wird nicht ermittelt.";
 
 // FAQ - Placement intelligence & aesthetic
-"faq.placementIntelligence" = "Platzierung & Ästhetik";
+"faq.placementIntelligence" = "Placement Intelligence";
 "faq.whatIsPlacementIntelligence" = "Was ist „Placement Intelligence“?";
-"faq.whatIsPlacementIntelligenceAnswer" = "Wenn Fit in unterstützten 3D-Raum-Viewern aktiv ist, zeigt eine Placement-Intelligence-Karte, ob erkanntes Möbel in die Raummaße passt. Tippen Sie auf die Überschrift für Details oder lassen Sie sie eingeklappt.";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence vergleicht die geschätzte Breite und Höhe sowie die abgeleitete Tiefe eines Objekts mit der Raumhülle. Es wird ausschließlich die maßliche Kompatibilität bewertet; ein freier Platz auf dem Boden wird nicht ermittelt.";
 "faq.furnitureColorAesthetic" = "Wie wählt die App eine Farbe für die Ästhetikbewertung?";
-"faq.furnitureColorAestheticAnswer" = "Die App mittelt die RGB-Farbe der sichtbaren Pixel in der KI-Möbelauswahl (demselben segmentierten Overlay). Diese mittlere Farbe wird mit Farben verglichen, die aus Boden, Wänden und Decke Ihres Raums gesampelt wurden. Ist die Auswahl noch nicht bereit, nutzt die App vorerst eine Farbe aus der Raumpalette, bis die Segmentierung echte Pixel liefert.";
+"faq.furnitureColorAestheticAnswer" = "Die App mittelt die unveränderten RGB-Farbwerte der sichtbaren Pixel im KI-Möbelausschnitt und vergleicht sie mit Farben, die aus dem Raum ermittelt wurden. Fehlt eine der beiden Stichproben, bleiben ästhetische Empfehlungen aus, statt eine Bewertung zu erfinden.";
 "faq.whatDoHarmonyContrastMean" = "Was bedeuten Harmonie, Kontrast und Stil-Treffer?";
 "faq.whatDoHarmonyContrastMeanAnswer" = "Das sind einfache Design-Heuristiken, kein Geschmacksurteil. Harmonie beschreibt, wie sich die Möbelfarbe zur Raumpalette verhält (z. B. analogue oder komplementäre Töne). Kontrast ist, wie unterschiedlich die Helligkeit zu typischen Boden- oder Wandfarben ist. Stil-Treffer vergleicht grobe Stil-Labels des Raums mit einem standardmäßig modernen Profil und ist daher nur annähernd.";
 "faq.whenDoesAestheticScoreLow" = "Wann können ästhetische Werte niedrig sein oder „clash“ zeigen?";
@@ -242,22 +247,20 @@
 "faq.howToViewAnswer" = "Tippen Sie auf einen Raum auf dem Startbildschirm, um den 3D-Viewer zu öffnen. Ziehen zum Umsehen, kneifen zum Zoomen. Tippen Sie auf den Raum für weitere Steuerung (Zentrieren, Lineal, Aufnahme). Die goldene Fit-Taste bleibt unten rechts sichtbar.";
 "faq.howToPlace" = "Wie platziere ich Möbel in meinem Raum?";
 "faq.howToPlaceAnswer" = "Nach dem Tippen auf Segment erscheint das ausgewählte Möbel als Überlagerung im Raum. Ziehen Sie es zum Positionieren, nutzen Sie Pinch zum Ändern der Größe und drehen Sie es für die Ausrichtung.";
-"faq.sampleRoom" = "Kann ich einen Beispielraum anstelle meines eigenen verwenden?";
-"faq.sampleRoomAnswer" = "Ja! Die App bietet Beispielräume zum Experimentieren. Greifen Sie über den Entdecken-Bereich darauf zu, um die Möbelplatzierung auszuprobieren, ohne zuerst Ihren eigenen Raum zu erstellen.";
-"faq.accuracy" = "Wie genau ist das 3D-Modell?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracy" = "Wie genau sind Raum- und Möbelmaße?";
+"faq.accuracyAnswer" = "Die Messwerte sind Schätzungen auf dem Gerät und können je nach Fotoqualität, Beleuchtung, Kamerawinkel und AR-Tracking variieren. Nutzen Sie sie als Orientierung und prüfen Sie wichtige Maße selbst, bevor Sie Entscheidungen treffen.";
 "faq.adjustDimensions" = "Kann ich die Raummaße anpassen?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.furnitureMeasurements" = "Möbel & Maße";
-"faq.arAssistedSizing" = "Was ist AR-gestützte Möbelgröße?";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
+"faq.adjustDimensionsAnswer" = "Die Maße eines AI Room können nicht manuell bearbeitet werden. Blenden Sie nach dem Speichern die Steuerung ein und tippen Sie auf das Lineal, um die geschätzte Breite, Höhe und Tiefe anzuzeigen. In der Vorschau vor dem Speichern sind die Maßangaben ausgeblendet. Speichern Sie den Raum zuerst und öffnen Sie ihn anschließend erneut. Räume aus Manual Setup folgen den von Ihnen gezeichneten Grenzen.";
+"faq.arAssistedSizing" = "Was ist die AR-gestützte Größenbestimmung?";
+"faq.arAssistedSizingAnswer" = "Die AR-gestützte Größenbestimmung schätzt die Abmessungen eines Möbelstücks mithilfe unterstützter Kamera- und Tiefenfunktionen. Die Ergebnisse hängen von der Aufnahmequalität und den Tracking-Bedingungen ab und bleiben Schätzwerte.";
 "faq.measurementPill" = "Was bedeutet die kleine Maßanzeige?";
-"faq.measurementPillAnswer" = "Während SmartyPants aktiv ist, kann eine kleine Anzeige geschätzte Möbel- und Raumhöhe zeigen. Tippen Sie darauf, um reale Maße einzugeben. War das Raumfoto mit Weitwinkel (0,5×) aufgenommen, markieren Sie das.";
+"faq.measurementPillAnswer" = "Die Möbelgrößenanzeige erscheint nur, wenn der Größenmodus aktiv ist und die App über eine brauchbare Live-Höhenschätzung verfügt. Die Lineal-Schaltfläche zeigt die aktuelle Breite, Höhe und Tiefe des Raums in einer kleinen Karte an. Auf Telefonen ohne AR sind diese Werte weniger zuverlässig, insbesondere bei Möbeln.";
 "faq.resetOverlayScale" = "Die Maske wirkt falsch gezoomt – was tun?";
 "faq.resetOverlayScaleAnswer" = "Es gibt kein Überlaufmenü mehr. Wenn das Overlay falsch wirkt, tippen Sie auf Fertig, um Fit zu beenden, und erneut auf Fit, oder passen Sie die Größe per Kneifen an.";
+"faq.pinchOverlaySize" = "Was geschieht, wenn ich das segmentierte Möbelstück mit einer Pinch-Geste vergrößere oder verkleinere?";
+"faq.pinchOverlaySizeAnswer" = "Durch die Pinch-Geste wird die Möbelüberlagerung größer oder kleiner. Ist der Größenmodus aktiv und die Furni-Anzeige sichtbar, wird dort die aktuelle, an den Raum angepasste Möbelschätzung angezeigt. Ist der Größenmodus deaktiviert, verändert die Pinch-Geste nur die sichtbare Größe der Überlagerung auf dem Bildschirm.";
 
 // FAQ - 3D Room Controls
-"faq.roomControls" = "3D-Raum-Steuerung";
 "faq.howToNavigate" = "Wie bewege ich mich im Raum?";
 "faq.howToNavigateAnswer" = "Ziehen Sie auf dem Raum, um die Kamera zu drehen, und kneifen Sie zum Zoomen. Tippen Sie auf den Bildschirm, um die Symbolleiste einzublenden, dann das Sucher-Symbol zum Zentrieren. Eine ruhige Einblendscheibe unten links bringt versteckte Steuerung zurück.";
 "faq.whatDoArrowsDo" = "Wie blende ich Viewer-Steuerung ein oder aus?";
@@ -265,6 +268,35 @@
 "faq.whatIsMemoryDisplay" = "Was bedeutet die MB-Zahl?";
 "faq.whatIsMemoryDisplayAnswer" = "Die in Räumen angezeigte MB (Megabyte) gibt die Dateigröße an. So verwalten Sie den Speicher. Der von allen Räumen genutzte Speicher wird oben auf dem Startbildschirm angezeigt.";
 
+// FAQ - Categories and new questions
+"faq.aiRoomManualSetup" = "AI Room und Manual Setup";
+"faq.aestheticGuidance" = "Ästhetische Empfehlungen";
+"faq.measurementsAccuracy" = "Messungen und Genauigkeit";
+"faq.savedRoomsStorage" = "Gespeicherte Räume und Speicher";
+"faq.sharingExporting" = "Teilen und Exportieren";
+"faq.privacyAccount" = "Datenschutz und Konto";
+"faq.troubleshootingSupport" = "Fehlerbehebung und Support";
+"faq.uninstallRooms" = "Was geschieht mit meinen Räumen, wenn ich Paafekt deinstalliere?";
+"faq.uninstallRoomsAnswer" = "Durch die Deinstallation von Paafekt werden die im privaten App-Speicher abgelegten Räume dauerhaft gelöscht. Teilen Sie vor der Deinstallation alles, was Sie behalten möchten.";
+"faq.exportRoom" = "Wie kann ich einen Raum sichern oder exportieren?";
+"faq.exportRoomAnswer" = "Verwenden Sie Teilen, sofern diese Funktion für den jeweiligen Raumtyp verfügbar ist. Mit Capture wird ein Bild der aktuellen Ansicht geteilt, keine wiederherstellbare Raumsicherung. Paafekt bietet derzeit weder Cloud-Synchronisierung noch eine garantierte Sicherung der gesamten Bibliothek.";
+"faq.freeFloorLocation" = "Findet Placement Intelligence einen freien Platz auf dem Boden?";
+"faq.freeFloorLocationAnswer" = "Nein. Die Funktion prüft, ob die geschätzten Möbelmaße mit der Raumhülle kompatibel sind. Sie erkennt weder freie Bodenfläche noch eine bestimmte freie Position.";
+"faq.dimensionalFit" = "Wie wird die maßliche Eignung berechnet?";
+"faq.dimensionalFitAnswer" = "Die geschätzte Breite und Höhe sowie die abgeleitete Tiefe des Objekts werden mit den geschätzten Raummaßen verglichen. Dabei wird gegebenenfalls auch eine gedrehte Grundfläche berücksichtigt. Da beide Maßsätze Schätzungen sind, dient das Ergebnis nur als Orientierung.";
+"faq.aestheticScore" = "Wie wird die ästhetische Bewertung berechnet?";
+"faq.aestheticScoreAnswer" = "Die App vergleicht die durchschnittliche sichtbare Farbe des segmentierten Möbelstücks mit Farben, die aus dem Raum ermittelt wurden. Farbharmonie, Helligkeitskontrast und eine grobe stilistische Kompatibilität fließen in die Bewertung ein. Dies sind ungefähre Gestaltungshinweise, keine Geschmacksregeln.";
+"faq.aestheticUnavailable" = "Warum sind keine ästhetischen Empfehlungen verfügbar?";
+"faq.aestheticUnavailableAnswer" = "Ästhetische Empfehlungen benötigen brauchbare Farbstichproben sowohl aus dem Raum als auch vom segmentierten Möbelstück. Fehlt eine der Stichproben, zeigt Paafekt keine Bewertung an, statt eine zu erfinden.";
+"faq.purchaseReliance" = "Kann ich mich beim Möbelkauf auf Paafekt verlassen?";
+"faq.purchaseRelianceAnswer" = "Nutzen Sie Paafekt als Orientierung, nicht als Garantie. Prüfen Sie vor dem Kauf Maße, Abstände und Eignung stets beim Anbieter.";
+"faq.deleteAccountEffect" = "Was geschieht, wenn ich mein Konto lösche?";
+"faq.deleteAccountEffectAnswer" = "Beim Löschen Ihres Kontos wird das Firebase-Authentifizierungskonto entfernt und Sie werden abgemeldet. Auf diesem Gerät gespeicherte Räume werden nicht automatisch gelöscht. Löschen Sie sie in Paafekt oder deinstallieren Sie die App, um sie zu entfernen.";
+"faq.firebaseData" = "Welche Daten verarbeitet Firebase?";
+"faq.firebaseDataAnswer" = "Firebase verarbeitet Ihre Telefonnummer, Authentifizierungsdaten und eine Geräteinstallationskennung zur Verifizierung und Missbrauchsprävention. Raumerstellung und Möbelverarbeitung verbleiben auf diesem Gerät.";
+"faq.contactSupport" = "Wie kontaktiere ich den Support?";
+"faq.contactSupportAnswer" = "Öffnen Sie Einstellungen → Hilfe & Support und senden Sie anschließend eine E-Mail an support@paafekt.com.";
+
 // MARK: - Room Boundary Detection
 "boundary.title" = "Raumgrenzen";
 "boundary.instructions" = "Ziehen Sie die Kreise, um die Grenzen anzupassen";
@@ -274,29 +306,6 @@
 "boundary.vanish" = "Fluchtpunkt";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "Möbel hinzufügen";
-"viewer.capture" = "Aufnehmen";
-
-// MARK: - SmartyPants (Segmentation)
-"smartypants.starting" = "Kamera wird gestartet...";
-"smartypants.resizing" = "Größe wird angepasst...";
-"smartypants.preprocessing" = "Vorverarbeitung...";
-"smartypants.runningModel" = "Modell wird ausgeführt...";
-"smartypants.extracting" = "Erkennungen werden extrahiert...";
-"smartypants.buildingMask" = "Maske wird erstellt...";
-"smartypants.compositing" = "Zusammensetzung...";
-
-// MARK: - Room Boundary Detection
-"boundary.title" = "Raumgrenzen";
-"boundary.instructions" = "Ziehen Sie die Kreise, um die Grenzen anzupassen";
-"boundary.floor" = "Boden";
-"boundary.ceiling" = "Decke";
-"boundary.walls" = "Wände";
-"boundary.vanish" = "Fluchtpunkt";
-
-// MARK: - Model Viewer
-"viewer.furniture" = "Möbel hinzufügen";
-"viewer.capture" = "Aufnehmen";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "Kamera wird gestartet...";
@@ -371,7 +380,7 @@
 "roomViewer.roomDimensionsDefaultValues" = "Standardwerte";
 "roomViewer.roomDimensionsWHDWithDefault" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "B × H\n%.2f × %.2f m (%@)";
-"roomViewer.roomDimensionsNearAccurateValues" = "Nahezu genaue Werte";
+"roomViewer.roomDimensionsNearAccurateValues" = "Geschätzte Maße";
 "roomViewer.roomDimensionsWHDWithNearAccurate" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Raum wird vermessen…";
 "roomViewer.goingBack" = "Zurück…";
@@ -479,7 +488,6 @@
 
 // MARK: - i18n sync (German)
 "common.or" = "oder";
-"common.retry" = "Erneut versuchen";
 "settings.fullVideoWithIdentifications" = "Vollbild-Video mit Erkennungen";
 "settings.fullVideoWithIdentificationsDescription" = "Live-Kamerabild mit Erkennungsrahmen und Beschriftungen anzeigen statt die segmentierte Möbel-Einblendung automatisch zu zentrieren.";
 
@@ -520,23 +528,9 @@
 "generationProgress.preparing" = "Wird vorbereitet...";
 "generationProgress.mayTakeFewMinutes" = "Dies kann einige Minuten dauern";
 
-// FAQ overrides
+// FAQ measurement notice
 "help.measurementAccuracyTitle" = "Hinweis zur Messung";
 "help.measurementAccuracyBody" = "Auf Telefonen ohne AR-Tiefensensor können Räume und Möbel weiterhin angezeigt werden, aber Raummaße und besonders Möbelmaße sind nur Näherungen.";
-"faq.aiFeatures" = "KI-Funktionen";
-"faq.whatIsBrainIcon" = "Was macht die Fit-Taste?";
-"faq.whatIsBrainIconAnswer" = "Tippen Sie im Raum-Viewer unten rechts auf die goldene Fit-Taste, um SmartyPants-Möbelsegmentierung zu starten. Standardmäßig wird das Objekt mit höchster Konfidenz als transparenter Ausschnitt über Ihrem 3D-Raum segmentiert. Tippen Sie oben rechts auf Fertig zum Beenden. Für die Auswahl bestimmter Stücke zuerst Steuerung einblenden und Full-Video-Modus aktivieren.";
-"faq.whatIsViewfinderButton" = "Was macht der Full-Video-Modus im Raum-Viewer?";
-"faq.whatIsViewfinderButtonAnswer" = "Während Fit aktiv ist, Steuerung einblenden und das Sucher-Symbol tippen, um den Full-Video-Modus umzuschalten. Live-Kamera mit Erkennungsrahmen—ein oder mehrere Objekte tippen, dann Segmentieren. Die Kamera wird ausgeblendet und transparente Ausschnitte werden über den 3D-Raum gelegt. Oben rechts auf Fertig tippen, um den Segmentmodus zu verlassen oder Fit zu beenden.";
-"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf Fit. Für eine schnelle Prüfung wird das Hauptobjekt automatisch segmentiert. Für bestimmte Stücke: Steuerung einblenden, Full-Video-Modus aktivieren, Kamera auf Möbel richten, Rahmen tippen, dann Segmentieren. Oben rechts auf Fertig tippen zum Beenden.";
-"faq.accuracyAnswer" = "Der 3D-Raum ist eine Schätzung aus nur einem Foto. Die Raummaße können als Orientierung dienen, sind aber keine exakten Vermessungsdaten. Möbelmaße sind auf Telefonen mit AR-/Tiefenunterstützung am zuverlässigsten.";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
-"faq.measurementPillAnswer" = "Die kleine Möbelgrößenanzeige erscheint nur, wenn der Größenmodus aktiv ist und die App eine brauchbare Live-Höhenschätzung hat. Die Lineal-Schaltfläche zeigt die aktuelle Raum-Breite, -Höhe und -Tiefe in einer kleinen Karte an. Auf Telefonen ohne AR sind diese Werte weniger zuverlässig, besonders bei Möbeln.";
-"faq.resetOverlayScaleAnswer" = "Es gibt kein Überlaufmenü mehr. Wenn das Overlay falsch wirkt, tippen Sie auf Fertig, um Fit zu beenden, und erneut auf Fit, oder passen Sie die Größe per Kneifen an.";
-
-"faq.pinchOverlaySize" = "Was passiert, wenn ich die segmentierten Möbel per Pinch vergrößere oder verkleinere?";
-"faq.pinchOverlaySizeAnswer" = "Durch die Pinch-Geste wird die Möbelüberlagerung größer oder kleiner. Wenn der Größenmodus aktiv ist und die Furni-Anzeige sichtbar ist, wird diese Anzeige auf die aktuell angepasste Möbelschätzung für den Raum aktualisiert. Ist der Größenmodus aus, ändert Pinch nur die sichtbare Overlay-Größe auf dem Bildschirm.";
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
@@ -569,5 +563,31 @@
 "credits.openAIBody" = "OpenAI-Tools, einschließlich ChatGPT, wurden zur Unterstützung von Produktideen, Implementierungshilfe, Formulierungen und technischer Exploration während der Entwicklung eingesetzt.";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Anthropic-Tools wurden eingesetzt, um Recherche, Code-Unterstützung, das Durchdenken von Implementierungsdetails und die Entwicklungsiteration zu unterstützen.";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Luma-AI-Tools und Produktreferenzen haben Teile unserer visuellen KI- und 3D-Workflow-Erkundung während der Produktentwicklung geprägt.";
+
+// MARK: - Full catalog parity
+"settings.accountDeleteFooter" = "Durch das Löschen Ihres Kontos wird Ihr Anmeldekonto entfernt. Auf diesem Gerät gespeicherte Räume werden nicht automatisch gelöscht.";
+"licenses.hypersimTitle" = "Hypersim-Datensatz";
+"licenses.hypersim" = "Das metrische Innenraummodell wurde mit Apples synthetischem Hypersim-Innenraumdatensatz feinabgestimmt. Hypersim ist unter CC BY-SA 3.0 lizenziert.";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "SPZ-Dekodierung für die iOS-Gaussian-Splat-Pipeline. Copyright Niantic, Inc., Sean Cier und Mitwirkende. Lizenziert unter der MIT-Lizenz.";
+"licenses.cocoTitle" = "COCO-Datensatz";
+"licenses.coco" = "RTMDet wurde mit COCO trainiert. COCO-Annotationen sind unter CC BY 4.0 lizenziert; einzelne Bilder unterliegen weiterhin den Bedingungen ihrer jeweiligen Rechteinhaber.";
+"photoRoom.backAlertTitle" = "Mit AI oder Manual fortfahren?";
+"photoRoom.backAlertMessage" = "Tippen Sie auf AI oder Manual, um mit der Raumerstellung zu beginnen, oder auf OK, um zurückzugehen.";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
+"camera.title" = "Kamera";
+"camera.chooseMode" = "Kameramodus auswählen";
+"camera.chooseModeHint" = "Wählen Sie das Kameraobjektiv für Ihren Raum aus";
+"camera.ar.hint" = "Richten Sie die Kamera auf den Raum, halten Sie das Gerät ruhig und nehmen Sie das Foto auf. Wir verwenden AR für präzise Kameraparameter und auf LiDAR-Geräten auch für die Szenentiefe.";
+"camera.standard" = "Standard";
+"camera.wideAngle" = "Weitwinkel";
+"camera.standard.desc" = "Standardobjektiv 1x • In beliebiger Ausrichtung halten";
+"camera.wideAngle.desc" = "Ultraweitwinkelobjektiv 0,5x • Erfasst einen größeren Bereich";
+"camera.wideAngle.info" = "Verwendet das Ultraweitwinkelobjektiv 0,5x für ein größeres Sichtfeld";
+"camera.selectWideAngle" = "Weitwinkelfoto auswählen";
+"camera.captureWideAngle" = "Weitwinkelfoto aufnehmen";
+"camera.wideAngle.holdSteady" = "Ruhig halten • Das Ultraweitwinkelobjektiv erfasst mehr";
+"roomViewer.furnitureHeightEstimate" = "Möbelhöhe ~ %.2f m";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android, ARCore, Filament und Firebase stellen Plattform-, AR-, 3D-Rendering- und Authentifizierungsfunktionen für die Android-App bereit.";

@@ -140,8 +140,8 @@ object RoomHeightMeasure {
             )
         }
 
-        val floorRow = RoomMath.median(floorRows)
-        val ceilingRow = RoomMath.median(ceilingRows)
+        val floorRow = RoomMath.upperMedian(floorRows)
+        val ceilingRow = RoomMath.upperMedian(ceilingRows)
         val selfCheckOK = floorRow > ceilingRow && ceilingRow < horizonRow && horizonRow < floorRow
         val selfCheck = "vCeil=%.1f vHorizon=%.1f vFloor=%.1f ok=%s %s".format(
             ceilingRow, horizonRow, floorRow, if (selfCheckOK) "true" else "false", variantLabel,

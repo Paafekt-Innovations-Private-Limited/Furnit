@@ -12,6 +12,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 data class MeasurementObjectRect(
@@ -177,14 +178,14 @@ object MeasurementObjectDetection {
             var x = x0
             while (x <= x1) {
                 val value = depth[y * imageWidth + x]
-                if (value.isFinite() && value > 0f) samples += value
+                if (value.isFinite() && value > 0.1f && value < 50f) samples += value
                 x += step
             }
             y += step
         }
         if (samples.isEmpty()) return null
         samples.sort()
-        val index = ((samples.size - 1) * fraction).toInt().coerceIn(0, samples.lastIndex)
+        val index = ((samples.size - 1) * fraction).roundToInt().coerceIn(0, samples.lastIndex)
         return samples[index]
     }
 }

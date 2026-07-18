@@ -9,19 +9,12 @@ This folder mirrors the Swift photo-to-3D-room asset contract:
 Packaged Android assets:
 
 - `depth_anything/depth_anything_v2_metric_indoor_small.onnx`
+- `geocalib/geocalib_pinhole_cnn.onnx`
 - `../rtmdet-ins-m-raw.onnx`
 
-Optional local asset:
-
-- `geocalib/geocalib_pinhole_cnn.onnx` is gitignored and is not present in a clean checkout. Runtime code detects its absence and uses fallback calibration.
-
-Export GeoCalib ONNX when preparing a build that includes it:
-
-```bash
-python3 scripts/export_geocalib_to_coreml.py --export-onnx --skip-coreml
-cp Furnit/Models/GeoCalib/geocalib-pinhole-cnn.onnx \
-   android/app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
-```
+The Android GeoCalib ONNX and iOS GeoCalib ML package are exported from the same
+pretrained pinhole checkpoint. Their platform-native inference wrappers feed the same
+perspective-field outputs into matching native LM solvers.
 
 Do not copy Core ML packages into Android assets.
 

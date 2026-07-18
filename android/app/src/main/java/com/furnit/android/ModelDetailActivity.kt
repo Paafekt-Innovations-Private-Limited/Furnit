@@ -39,7 +39,6 @@ import com.furnit.android.theme.PaafektImmersiveSummonedToolbar
 import com.furnit.android.theme.ImmersiveSummonedToolbarHolder
 import com.furnit.android.theme.PaafektSavingRoomOverlay
 import com.furnit.android.theme.PaafektSnackbar
-import com.furnit.android.services.DepthAnythingRoomMeasurer
 import com.furnit.android.models.ModelManager
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
@@ -56,7 +55,6 @@ import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -601,23 +599,6 @@ class ModelDetailActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun saveProgressSubtitle(progress: Float): String {
-        return when {
-            progress < 0.58f -> getString(R.string.room_viewer_measuring_room)
-            progress < 0.85f -> getString(R.string.generation_progress_generating_3d_model)
-            else -> getString(R.string.room_viewer_saving_room_ellipsis)
-        }
-    }
-
-    private fun resolveSourcePhotoFile(): File? {
-        val folder = glbPath?.let { File(it).parentFile } ?: return null
-        listOf("source_photo.jpg", "source_photo.png", "front_wall.png").forEach { name ->
-            val candidate = File(folder, name)
-            if (candidate.exists() && candidate.length() > 0L) return candidate
-        }
-        return null
-    }
-
     private fun saveRoom(name: String) {
         val path = glbPath
         if (path == null) {
@@ -642,29 +623,10 @@ class ModelDetailActivity : AppCompatActivity() {
                 val previewRoomFolder = glbFile.parentFile
                     ?: throw IllegalStateException("Missing room folder")
 
-                val sourcePhoto = resolveSourcePhotoFile()
-                if (sourcePhoto != null && isFlatPhotoRoomMesh) {
-                    val progressJob = launch {
-                        var progress = 0.05f
-                        while (progress < 0.85f && isActive) {
-                            overlay.setProgress(progress, saveProgressSubtitle(progress))
-                            delay(100)
-                            progress += 0.02f
-                        }
-                    }
-                    val measured = withContext(Dispatchers.Default) {
-                        DepthAnythingRoomMeasurer.measureFromFile(this@ModelDetailActivity, sourcePhoto)
-                    }
-                    progressJob.cancel()
-                    if (measured.measured) {
-                        roomWidth = measured.width
-                        roomHeight = measured.height
-                        roomDepth = measured.depth
-                    }
-                    overlay.setProgress(0.88f, getString(R.string.room_viewer_saving_room_ellipsis))
-                } else {
-                    overlay.setProgress(0.35f, getString(R.string.room_viewer_saving_room_ellipsis))
-                }
+                // Room generation already measured the original image with its URI/EXIF metadata.
+                // Re-running from the JPEG copy here loses that calibration input and can change
+                // the displayed height at save time.
+                overlay.setProgress(0.35f, getString(R.string.room_viewer_saving_room_ellipsis))
 
                 withContext(Dispatchers.IO) {
                     val roomsDir = File(filesDir, "rooms").apply { mkdirs() }
@@ -672,15 +634,42 @@ class ModelDetailActivity : AppCompatActivity() {
                     previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
 
                     val createdAtMillis = System.currentTimeMillis()
+                    val previewMetadata = RoomFolderMetadata.readFromFolder(savedRoomFolder)
+                        ?: RoomFolderMetadata.Snapshot()
+                    val committedType = previewMetadata.type
+                        ?: if (isFlatPhotoRoomMesh) "photo" else "manual"
+                    val committedApproach = previewMetadata.roomDimsApproach
+                        ?: if (isFlatPhotoRoomMesh) "depth_anything_metric" else null
+                    RoomFolderMetadata.writeToFolder(
+                        savedRoomFolder,
+                        previewMetadata.copy(
+                            name = name,
+                            createdAt = createdAtMillis,
+                            type = committedType,
+                            roomWidth = roomWidth,
+                            roomHeight = roomHeight,
+                            roomDepth = roomDepth,
+                            roomDimsApproach = committedApproach,
+                            roomSceneWidth = previewMetadata.roomSceneWidth ?: roomWidth,
+                            roomSceneHeight = previewMetadata.roomSceneHeight ?: roomHeight,
+                            roomSceneDepth = previewMetadata.roomSceneDepth ?: roomDepth,
+                            previewOnly = false,
+                        ),
+                    )
                     val metadataFile = File(savedRoomFolder, "metadata.txt")
                     metadataFile.writeText(
                         buildString {
                             append("name=$name\n")
                             append("created=$createdAtMillis\n")
-                            append("type=manual\n")
+                            append("type=$committedType\n")
+                            append("glb=${glbFile.name}\n")
                             append("roomWidth=$roomWidth\n")
                             append("roomHeight=$roomHeight\n")
                             append("roomDepth=$roomDepth\n")
+                            append("photoOrientation=${previewMetadata.normalizedOrientation()}\n")
+                            append("photoWideAngle=${previewMetadata.photoWideAngle}\n")
+                            committedApproach?.let { append("roomDimsApproach=$it\n") }
+                            append("previewOnly=false\n")
                         },
                     )
 

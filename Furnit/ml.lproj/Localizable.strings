@@ -9,7 +9,6 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D റൂം എക്സ്പ്ലോറർ";
 "app.version" = "പതിപ്പ്";
-"app.developer" = "Paafekt ടീം";
 
 // MARK: - Common Actions
 "common.done" = "പൂർത്തിയായി";
@@ -20,7 +19,6 @@
 "common.delete" = "ഇല്ലാതാക്കുക";
 "common.error" = "പിശക്";
 "common.save" = "സേവ്";
-"common.close" = "അടയ്ക്കുക";
 "common.apply" = "പ്രയോഗിക്കുക";
 
 // MARK: - Login View
@@ -49,18 +47,9 @@
 "otp.resendFailed" = "കോഡ് വീണ്ടും അയയ്ക്കൽ പരാജയപ്പെട്ടു.";
 
 // MARK: - Home View
-"home.title" = "3D റൂം മോഡലുകൾ";
-"home.noModels" = "3D മോഡലുകൾ കണ്ടെത്തിയില്ല";
-"home.noModelsDescription" = "ഫോട്ടോയിൽ നിന്ന് നിങ്ങളുടെ ആദ്യ മുറി സൃഷ്ടിക്കുക!";
-"home.createRoom" = "ഫോട്ടോയിൽ നിന്ന് മുറി സൃഷ്ടിക്കുക";
-"home.createRoomToolbarLabel" = "ഫോട്ടോ → 3D";
-"home.createRoomHint" = "മുറി സൃഷ്ടിക്കാൻ ഇവിടെ തട്ടുക";
-"home.roomsRemaining" = "%d/%d മുറികൾ ബാക്കി";
 "home.deleteHint" = "പുതിയവ സൃഷ്ടിക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക";
 "home.swipeHint" = "ഇല്ലാതാക്കാൻ ഇടത്തേക്ക് സ്വൈപ്പ് ചെയ്യുക";
 "home.renameRoom" = "പേരുമാറ്റുക";
-"home.renameRoomMessage" = "ഈ പേര് നിങ്ങളുടെ മുറികളുടെ പട്ടികയിൽ കാണിക്കും. സംരക്ഷിച്ച ഫയലിന്റെ പേര് മാറില്ല.";
-"home.roomNamePlaceholder" = "മുറിയുടെ പേര്";
 "home.roomModel" = "3D റൂം മോഡൽ";
 "home.aiBased3DRoom" = "AI അടിസ്ഥാനമുള്ള 3D മുറി";
 "home.manualBased3DRoom" = "മാനുവൽ അടിസ്ഥാനമുള്ള 3D മുറി";
@@ -70,8 +59,6 @@
 "roomLimit.message" = "നിങ്ങൾ %d മുറികളുടെ പരിധി എത്തി. പുതിയവ സൃഷ്ടിക്കാൻ ചിലത് ഇല്ലാതാക്കുക.";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "മുറി ഇല്ലാതാക്കണോ?";
-"deleteRoom.message" = "'%@' ഇല്ലാതാക്കണമെന്ന് ഉറപ്പാണോ? ഇത് പഴയപടിയാക്കാൻ കഴിയില്ല.";
 
 // MARK: - Explore View
 "explore.title" = "പര്യവേക്ഷണം";
@@ -141,7 +128,6 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "ലൈസൻസുകളും അടിസ്ഥാനകാരണങ്ങളും";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "പൂർണ്ണ ലൈസൻസ് കാണുക";
@@ -167,12 +153,6 @@
 
 
 // MARK: - Movement Speed Options
-"speed.slow" = "മന്ദഗതി";
-"speed.slow.description" = "വിശദമായ പര്യവേക്ഷണത്തിനുള്ള കൃത്യമായ നിയന്ത്രണം";
-"speed.normal" = "സാധാരണ";
-"speed.normal.description" = "സുഖകരമായ നാവിഗേഷനുള്ള സന്തുലിത വേഗത";
-"speed.fast" = "വേഗത";
-"speed.fast.description" = "ചടുലമായ പര്യവേക്ഷണത്തിനുള്ള ദ്രുത ചലനം";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "സഹായവും പിന്തുണയും";
@@ -187,53 +167,34 @@
 "help.emailBody" = "Hi Paafekt Support Team,\n\nI need help with:\n\n";
 
 // FAQ - Room Creation
-"faq.roomCreation" = "മുറി സൃഷ്ടി";
-"faq.howToCreate" = "3D മുറി എങ്ങനെ സൃഷ്ടിക്കാം?";
-"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "മുറി സൃഷ്ടിക്കാൻ ഫോട്ടോ എങ്ങനെ എടുക്കാം?";
 "faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.depthAwareRoomPhoto" = "ആപ്പിൽ ഫോട്ടോ എടുക്കുന്നത് ഗുണനിലവാരത്തിന് സഹായിക്കുമോ?";
 "faq.depthAwareRoomPhotoAnswer" = "അതെ. പിന്തുണയുള്ള ഉപകരണങ്ങളിൽ, ഗാലറിക്ക് പകരം Take a photo ആഴം-അവബോധ ക്യാമറ ഉപയോഗിക്കുന്നു (ലഭ്യമെങ്കിൽ), ഇത് 3D മുറി മെച്ചപ്പെടുത്താം.";
-"faq.twoMethods" = "മുറി സൃഷ്ടിക്കാനുള്ള രണ്ട് ഓപ്ഷനുകൾ എന്താണ്?";
-"faq.twoMethodsAnswer" = "ഒരു ഫോട്ടോ തിരഞ്ഞെടുക്കുമ്പോൾ നിങ്ങൾക്ക് തിരഞ്ഞെടുക്കാം: 1) AI-നിയന്ത്രിത 3D മുറി - കൃത്രിമ ബുദ്ധി ഉപയോഗിച്ച് യഥാർത്ഥ 3D മുറി സ്വയമേവ സൃഷ്ടിക്കുന്നു, അല്ലെങ്കിൽ 2) മാനുവൽ സെറ്റപ്പ് - കൂടുതൽ നിയന്ത്രണത്തിനായി മുറി അതിർത്തികൾ നിങ്ങൾ സ്വയം വരയ്ക്കാം.";
 "faq.whatIsAIRoom" = "AI-നിയന്ത്രിത 3D മുറി എന്താണ്?";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "മാനുവൽ സെറ്റപ്പ് എന്താണ്?";
-"faq.whatIsManualRoomAnswer" = "മാനുവൽ സെറ്റപ്പിൽ, ഫോട്ടോയിൽ നിങ്ങളുടെ മുറിയുടെ ചുവരുകളുടെ ഔട്ട്ലൈൻ വരയ്ക്കുക. 3D മുറി കൃത്യമായി എങ്ങനെ കാണപ്പെടുന്നു എന്നതിൽ കൂടുതൽ നിയന്ത്രണം നൽകുന്നു. മുറിയുടെ ആകൃതി സ്വയം ഫൈൻ-ട്യൂൺ ചെയ്യാൻ ആഗ്രഹിക്കുമ്പോൾ മികച്ചത്.";
 "faq.whichMethodBetter" = "ഞാൻ ഏത് രീതി തിരഞ്ഞെടുക്കണം?";
-"faq.whichMethodBetterAnswer" = "ആദ്യം AI-നിയന്ത്രിത പരീക്ഷിക്കുക - വേഗത്തിലും മിക്ക മുറികൾക്കും നന്നായി പ്രവർത്തിക്കുന്നു. ഫലം ശരിയായി കാണപ്പെടുന്നില്ലെങ്കിൽ, ചുവരുകൾ നിങ്ങൾക്ക് ആവശ്യമുള്ളിടത്ത് വരയ്ക്കാൻ മാനുവൽ സെറ്റപ്പ് ഉപയോഗിക്കുക. രണ്ടും പരീക്ഷിച്ച് ഏതാണ് ഇഷ്ടം എന്ന് കാണാം!";
 "faq.bestPhotos" = "ഏത് തരം ഫോട്ടോകളാണ് നന്നായി പ്രവർത്തിക്കുന്നത്?";
 "faq.bestPhotosAnswer" = "മികച്ച ഫലങ്ങൾക്ക്, നല്ല വെളിച്ചത്തിൽ ഉപകരണം സ്ഥിരമായി പിടിച്ച് ഫോട്ടോകൾ എടുക്കുക. തറ, ചുവരുകൾ, സീലിംഗ് അരികുകൾ എന്നിവയുൾപ്പെടെ മുഴുവൻ മുറിയും പിടിച്ചെടുക്കാൻ ശ്രമിക്കുക. മങ്ങിയ അല്ലെങ്കിൽ ഇരുണ്ട ഫോട്ടോകൾ ഒഴിവാക്കുക.";
 "faq.generationFailing" = "എന്റെ മുറി ജനറേഷൻ എന്തുകൊണ്ട് പരാജയപ്പെടുന്നു?";
 "faq.generationFailingAnswer" = "ഫോട്ടോ വളരെ ഇരുണ്ടതോ, മങ്ങിയതോ, അല്ലെങ്കിൽ മതിയായ മുറി സവിശേഷതകൾ കാണിക്കുന്നില്ലെങ്കിലോ മുറി ജനറേഷൻ പരാജയപ്പെട്ടേക്കാം. മെച്ചപ്പെട്ട വെളിച്ചവും വീതിയേറിയ കോണും ഉപയോഗിച്ച് പുതിയ ഫോട്ടോ എടുക്കാൻ ശ്രമിക്കുക.";
 "faq.howManyRooms" = "എനിക്ക് എത്ര മുറികൾ സൃഷ്ടിക്കാം?";
-"faq.howManyRoomsAnswer" = "നിങ്ങൾക്ക് 20 മുറികൾ വരെ സൃഷ്ടിക്കാം. പുതിയതിനായി ഇടം ഉണ്ടാക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക. മുറി എണ്ണവും ഉപയോഗിച്ച സ്റ്റോറേജും ഹോം സ്ക്രീനിന്റെ മുകളിൽ കാണാം.";
 
 // FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ";
 "faq.whatIsSegmentation" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ എന്താണ്?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "Room viewer-ൽ furniture എങ്ങനെ segment ചെയ്യാം?";
 "faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "എന്റെ ഫർണിച്ചർ എന്തുകൊണ്ട് കണ്ടെത്തിയില്ല?";
 "faq.notDetectedAnswer" = "ഫർണിച്ചർ കണ്ടെത്തൽ വ്യക്തമായ, നല്ല വെളിച്ചമുള്ള ഫോട്ടോകളിൽ ഫർണിച്ചർ വ്യക്തമായി കാണുമ്പോൾ നന്നായി പ്രവർത്തിക്കുന്നു. ഫർണിച്ചർ ഭാഗികമായി മൂടപ്പെട്ടിട്ടില്ലെന്നോ പശ്ചാത്തലവുമായി കലർന്നിട്ടില്ലെന്നോ ഉറപ്പാക്കുക.";
 "faq.multiplePieces" = "ഒന്നിലധികം ഫർണിച്ചർ കഷണങ്ങൾ സെഗ്മെന്റ് ചെയ്യാമോ?";
-"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "എന്റെ 3D മുറി എങ്ങനെ കാണാം?";
 "faq.howToViewAnswer" = "Tap any room on the home screen to open the 3D viewer. Drag to look around and pinch to zoom. Tap the room to summon extra controls (recenter, ruler, Capture). The gold Fit button stays visible at bottom-right.";
 "faq.howToPlace" = "എന്റെ മുറിയിൽ ഫർണിച്ചർ എങ്ങനെ വയ്ക്കാം?";
 "faq.howToPlaceAnswer" = "Segment ടാപ്പ് ചെയ്ത ശേഷം തിരഞ്ഞെടുത്ത ഫർണിച്ചർ മുറിയിൽ overlay ആയി കാണും. സ്ഥാനം മാറ്റാൻ drag ചെയ്യുക, വലിപ്പം മാറ്റാൻ pinch ചെയ്യുക, ദിശ മാറ്റാൻ rotate ചെയ്യുക.";
-"faq.sampleRoom" = "എന്റേതിന് പകരം സാമ്പിൾ റൂം ഉപയോഗിക്കാമോ?";
-"faq.sampleRoomAnswer" = "അതെ! ആപ്പ് പരീക്ഷിക്കാൻ സാമ്പിൾ റൂമുകൾ നൽകുന്നു. ആദ്യം നിങ്ങളുടെ സ്വന്തം മുറി സൃഷ്ടിക്കാതെ ഫർണിച്ചർ പ്ലേസ്മെന്റ് പരീക്ഷിക്കാൻ എക്സ്പ്ലോർ വിഭാഗത്തിൽ നിന്ന് അവ ആക്സസ് ചെയ്യുക.";
-"faq.accuracy" = "3D മോഡൽ എത്ര കൃത്യമാണ്?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "മുറി അളവുകൾ ക്രമീകരിക്കാമോ?";
 "faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.furnitureMeasurements" = "ഫർണിച്ചറും അളവുകളും";
-"faq.arAssistedSizing" = "AR-സഹായിത ഫർണിച്ചർ സൈസിംഗ് എന്താണ്?";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "ചെറിയ അളവ് വായന എന്താണ്?";
 "faq.measurementPillAnswer" = "SmartyPants സജീവമാകുമ്പോൾ അനുമാനിച്ച ഫർണിച്ചർ, മുറി ഉയരം കാണാം. ടാപ്പ് ചെയ്ത് യഥാർത്ഥ അളവുകൾ നൽകുക. മുറി ഫോട്ടോ വൈഡ്-ആംഗിൾ (0.5×) ആണെങ്കിൽ അടയാളപ്പെടുത്തുക.";
 "faq.resetOverlayScale" = "മാസ്ക് തെറ്റായി സൂം ചെയ്തതായി തോന്നുന്നുവോ?";
@@ -242,9 +203,7 @@
 "faq.roomFitmentAnswer" = "segmentation-ന് ശേഷം 3D room-ൽ cutouts resize/reposition. full-video-ൽ Segment selected pieces room-ന്റെ മുകളിൽ composite ചെയ്ത് several items compare ചെയ്യാം.";
 
 // FAQ - Placement intelligence & aesthetic
-"faq.placementIntelligence" = "പ്ലേസ്മെന്റ് ബുദ്ധിയും സൗന്ദര്യവും";
 "faq.whatIsPlacementIntelligence" = "പ്ലേസ്മെന്റ് ഇന്റലിജൻസ് എന്താണ്?";
-"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "സൗന്ദര്യ സ്കോറിന് നിറം ആപ്പ് എങ്ങനെ തിരഞ്ഞെടുക്കുന്നു?";
 "faq.furnitureColorAestheticAnswer" = "നിങ്ങൾ കാണുന്ന AI ഫർണിച്ചർ കട്ട്‌ഔട്ടിനുള്ളിൽ (അതേ സെഗ്‌മെന്റഡ് ഓവർലേ) കാണാവുന്ന പിക്സലുകളുടെ RGB ശരാശരി ആപ്പ് കണക്കാക്കി നിലം, മതിലുകൾ, മേൽക്കൂര എന്നിവയിൽ നിന്ന് സാമ്പിൾ ചെയ്ത നിറങ്ങളുമായി താരതമ്യം ചെയ്യുന്നു. കട്ട്‌ഔട്ട് തയ്യാറാകാത്ത പക്ഷം സെഗ്‌മെന്റേഷൻ യഥാർത്ഥ സാമ്പിൾ നൽകുന്നതുവരെ മുറിയുടെ പാലറ്റിൽ നിന്ന് ഫോൾബാക്ക് നിറം ഉപയോഗിക്കുന്നു.";
 "faq.whatDoHarmonyContrastMean" = "ഹാർമണി, കോൺട്രാസ്റ്റ്, സ്റ്റൈൽ ഫിറ്റ് എന്നാൽ എന്ത്?";
@@ -261,8 +220,6 @@
 "boundary.vanish" = "വാനിഷിംഗ് പോയിന്റ്";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "ഫർണിച്ചർ ചേർക്കുക";
-"viewer.capture" = "ക്യാപ്ചർ";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "ക്യാമറ ആരംഭിക്കുന്നു...";
@@ -337,7 +294,6 @@
 "roomViewer.roomDimensionsDefaultValues" = "ഡിഫോൾട്ട് മൂല്യങ്ങൾ";
 "roomViewer.roomDimensionsWHDWithDefault" = "വീതി × ഉയരം × ആഴം\n%.2f × %.2f × %.2f മീ (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "വീതി × ഉയരം\n%.2f × %.2f മീ (%@)";
-"roomViewer.roomDimensionsNearAccurateValues" = "ഏതാണ്ട് കൃത്യമായ മൂല്യങ്ങൾ";
 "roomViewer.roomDimensionsWHDWithNearAccurate" = "വീതി × ഉയരം × ആഴം\n%.2f × %.2f × %.2f മീ (%@)";
 "roomViewer.measuringRoom" = "മുറി അളക്കുന്നു...";
 "roomViewer.goingBack" = "പിൻവാങ്ങുന്നു...";
@@ -406,9 +362,7 @@
 "accessibility.createRoom" = "ഫോട്ടോയിൽ നിന്ന് മുറി സൃഷ്ടിക്കുക";
 
 // FAQ - AI Features (added)
-"faq.aiFeatures" = "AI സവിശേഷതകൾ";
 "faq.whatIsBrainIcon" = "What does the Fit button do?";
-"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
 "faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
 "faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "സ്ക്രീൻഷോട്ട് എങ്ങനെ എടുക്കും?";
@@ -417,7 +371,6 @@
 "faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - 3D Room Controls (added)
-"faq.roomControls" = "3D മുറി നിയന്ത്രണങ്ങൾ";
 "faq.howToNavigate" = "മുറിക്കുള്ളിൽ എങ്ങനെ നാവിഗേറ്റ് ചെയ്യും?";
 "faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
 "faq.whatDoArrowsDo" = "How do I show or hide viewer controls?";
@@ -465,7 +418,6 @@
 
 // MARK: - i18n sync (Malayalam)
 "common.or" = "അല്ലെങ്കിൽ";
-"common.retry" = "വീണ്ടും ശ്രമിക്കുക";
 "settings.fullVideoWithIdentifications" = "തിരിച്ചറിയലുകളോടെ പൂർണ്ണ വീഡിയോ";
 "settings.fullVideoWithIdentificationsDescription" = "വിഭജിച്ച ഫർണിച്ചർ ഓവർലേ സ്വയം കേന്ദ്രീകരിക്കുന്നതിന് പകരം കണ്ടെത്തൽ ബോക്സുകളും ലേബലുകളും കൊണ്ടുള്ള തത്സമയ ക്യാമറ ഫീഡ് കാണിക്കുക.";
 
@@ -509,13 +461,6 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "അളവ് അറിയിപ്പ്";
 "help.measurementAccuracyBody" = "AR depth പിന്തുണയില്ലാത്ത ഫോണുകളിലും മുറിയും ഫർണിച്ചറും പ്രിവ്യൂ കാണാം, എന്നാൽ മുറിയുടെ അളവും പ്രത്യേകിച്ച് ഫർണിച്ചറിന്റെ അളവും ഏകദേശമായിരിക്കും.";
-"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
-"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
-"faq.accuracyAnswer" = "3D മുറി ഒരു ഫോട്ടോയെ അടിസ്ഥാനമാക്കിയുള്ള ഏകദേശ കണക്കാണ്. മുറിയുടെ അളവുകൾ മാർഗ്ഗനിർദേശമായി ഉപകാരപ്പെടാം, പക്ഷേ അവ സർവേ നിലവാരത്തിലുള്ള കൃത്യതയുള്ളതല്ല. ഫർണിച്ചർ അളക്കൽ AR അല്ലെങ്കിൽ depth പിന്തുണയുള്ള ഫോണുകളിൽ കൂടുതൽ വിശ്വസനീയമാണ്.";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
-"faq.measurementPillAnswer" = "ഫർണിച്ചർ സൈസ് പിൽ sizing mode ഓണായിരിക്കുമ്പോഴും ആപ്പിന് ഉപയോഗിക്കാവുന്ന live height estimate ലഭിക്കുമ്പോഴും മാത്രമേ പ്രത്യക്ഷപ്പെടൂ. ruler ബട്ടൺ നിലവിലെ മുറിയുടെ വീതി, ഉയരം, ആഴം എന്നിവ ചെറിയ കാർഡിൽ കാണിക്കും. non-AR ഫോണുകളിൽ ഈ റീഡിംഗുകൾ, പ്രത്യേകിച്ച് ഫർണിച്ചറിനായി, കുറച്ച് കുറവായി വിശ്വസനീയമാണ്.";
-"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 "faq.pinchOverlaySize" = "സെഗ്മെന്റ് ചെയ്ത ഫർണിച്ചർ pinch ചെയ്യുമ്പോൾ എന്ത് സംഭവിക്കും?";
 "faq.pinchOverlaySizeAnswer" = "pinch ചെയ്‌താൽ ഫർണിച്ചർ ഓവർലേ വലുതാകുകയോ ചെറുതാകുകയോ ചെയ്യും. sizing mode ഓണായിരിക്കുമ്പോഴും Furni pill കാണുമ്പോഴും ആ pill മുറിക്ക് അനുസരിച്ചുള്ള ഇപ്പോഴത്തെ resized ഫർണിച്ചർ അളവിലേക്ക് അപ്‌ഡേറ്റ് ചെയ്യും. sizing mode ഓഫ് ആണെങ്കിൽ pinch സ്ക്രീനിലെ ഓവർലേയുടെ ദൃശ്യ വലിപ്പം മാത്രം മാറ്റും.";
@@ -551,5 +496,99 @@
 "credits.openAIBody" = "ChatGPT ഉൾപ്പെടെയുള്ള OpenAI ഉപകരണങ്ങൾ ഉൽപ്പന്ന ആശയവത്കരണം, ഇംപ്ലിമെന്റേഷൻ സഹായം, കരട് തയ്യാറാക്കൽ, സാങ്കേതിക അന്വേഷണങ്ങൾ എന്നിവയിൽ ഉപയോഗിച്ചു.";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Anthropic ഉപകരണങ്ങൾ ഗവേഷണം, കോഡ് സഹായം, ഇംപ്ലിമെന്റേഷൻ വിശദാംശങ്ങളെ കുറിച്ചുള്ള ചിന്ത, വികസന ആവർത്തനം എന്നിവയ്ക്ക് പിന്തുണയായി ഉപയോഗിച്ചു.";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Luma AI ഉപകരണങ്ങളും ഉൽപ്പന്ന റഫറൻസുകളും ഞങ്ങളുടെ ദൃശ്യ AI, 3D പ്രവാഹാന്വേഷണത്തിന്റെ ചില ഭാഗങ്ങളെ സ്വാധീനിച്ചു.";
+
+// MARK: - Room Library, account, legal, and FAQ refresh
+"home.libraryTitle" = "മുറി ലൈബ്രറി";
+"home.librarySubtitle" = "ഈ ഉപകരണത്തിൽ സൂക്ഷിച്ചിരിക്കുന്ന നിങ്ങളുടെ 3D മുറികൾ.";
+"home.storageTitle" = "ഈ ഉപകരണത്തിൽ സൂക്ഷിച്ചിരിക്കുന്നു";
+"home.storagePath" = "മുറികൾ Paafekt-ന്റെ സ്വകാര്യ ആപ്പ് സംഭരണത്തിൽ തുടരുന്നു; അവ സ്വയമേവ അപ്‌ലോഡ് ചെയ്യില്ല. ആന്തരിക സ്ഥാനം: Documents/SavedRooms.";
+"home.storageWarning" = "Paafekt അൺഇൻസ്റ്റാൾ ചെയ്താൽ സൂക്ഷിച്ച മുറികൾ ശാശ്വതമായി ഇല്ലാതാകും. നിലനിർത്തേണ്ടവ ആദ്യം പങ്കിടുക.";
+"home.noModels" = "ഇതുവരെ മുറികളില്ല";
+"home.noModelsDescription" = "ഫോട്ടോയിൽ നിന്ന് ആദ്യ 3D മുറി സൃഷ്ടിക്കുകയോ Manual Setup ഉപയോഗിച്ച് നിർമ്മിക്കുകയോ ചെയ്യുക. മുറികൾ ഈ ഉപകരണത്തിൽ സൂക്ഷിക്കും.";
+"home.createRoom" = "മുറി സൃഷ്ടിക്കുക";
+"home.createRoomToolbarLabel" = "മുറി സൃഷ്ടിക്കുക";
+"deleteRoom.title" = "ഈ മുറി ഇല്ലാതാക്കണോ?";
+"deleteRoom.message" = "ഈ മുറി ഈ ഉപകരണത്തിൽ നിന്ന് ശാശ്വതമായി നീക്കം ചെയ്യും. ഈ നടപടി പഴയപടിയാക്കാനാകില്ല.";
+"profile.deleteAccount" = "അക്കൗണ്ട് ഇല്ലാതാക്കുക";
+"profile.deleteAccountConfirmTitle" = "അക്കൗണ്ട് ഇല്ലാതാക്കുക";
+"profile.deleteAccountConfirmMessage" = "നിങ്ങളുടെ അക്കൗണ്ടും സൈൻ-ഇൻ ഡാറ്റയും ശാശ്വതമായി ഇല്ലാതാക്കണോ? ഈ ഉപകരണത്തിൽ സൂക്ഷിച്ച മുറികൾ നിങ്ങൾ ഇല്ലാതാക്കുന്നതുവരെ അല്ലെങ്കിൽ Paafekt അൺഇൻസ്റ്റാൾ ചെയ്യുന്നതുവരെ തുടരും.";
+"profile.deleteAccountSuccessTitle" = "അക്കൗണ്ട് ഇല്ലാതാക്കി";
+"profile.deleteAccountSuccessMessage" = "നിങ്ങളുടെ അക്കൗണ്ട് ഇല്ലാതാക്കി; നിങ്ങളെ സൈൻ ഔട്ട് ചെയ്തു.";
+"settings.legalSummary" = "മുറി പ്രോസസ്സിംഗും ഫർണിച്ചർ വിശകലനവും ഉപകരണത്തിൽ തന്നെ നടക്കുന്നു. നിങ്ങൾ വ്യക്തമായി പങ്കിടാത്തിടത്തോളം സൂക്ഷിച്ച മുറികൾ സ്വകാര്യ ആപ്പ് സംഭരണത്തിൽ തുടരും. Firebase ഫോൺ-നമ്പർ സ്ഥിരീകരണവും ദുരുപയോഗ-പ്രതിരോധ ഡാറ്റയും പ്രോസസ്സ് ചെയ്യുന്നു.";
+"faq.roomCreation" = "ആരംഭിക്കുക";
+"faq.howToCreate" = "ഒരു മുറി എങ്ങനെ സൃഷ്ടിക്കാം?";
+"faq.howToCreateAnswer" = "മുറി സൃഷ്ടിക്കുക ടാപ്പ് ചെയ്ത് ഫോട്ടോ എടുക്കുകയോ തിരഞ്ഞെടുക്കുകയോ ചെയ്യുക. സ്വയമേവ കണക്കാക്കാൻ AI Room അല്ലെങ്കിൽ മുറി സ്വയം നിർവചിക്കാൻ Manual Setup തിരഞ്ഞെടുക്കുക. പൂർത്തിയായ മുറി മുറി ലൈബ്രറിയിൽ ചേർക്കാൻ സേവ് ചെയ്യുക.";
+"faq.twoMethods" = "AI Room-ഉം Manual Setup-ഉം തമ്മിലുള്ള വ്യത്യാസമെന്ത്?";
+"faq.twoMethodsAnswer" = "AI Room ഒരു ഫോട്ടോയിൽ നിന്ന് മുറിയുടെ അളവുകൾ കണക്കാക്കി അളവോടുകൂടിയ ടെക്സ്ചർ പ്രതിനിധാനം സൃഷ്ടിക്കുന്നു. ഇത് പൂർണ്ണ വോള്യൂമെട്രിക് പുനർനിർമ്മാണമല്ല. Manual Setup മുറിയുടെ അതിരുകൾ സ്വയം നിർവചിക്കാൻ അനുവദിക്കുന്നു.";
+"faq.whatIsAIRoomAnswer" = "AI Room ഉപകരണത്തിലെ ഡെപ്ത് എസ്റ്റിമേഷൻ, ഫർണിച്ചർ ആങ്കറുകൾ, ക്യാമറ കാലിബ്രേഷൻ എന്നിവ ഉപയോഗിച്ച് ഒരു ഫോട്ടോയിൽ നിന്ന് അളവോടുകൂടിയ ടെക്സ്ചർ മുറി കണക്കാക്കുന്നു. ഇത് പൂർണ്ണ വോള്യൂമെട്രിക് പുനർനിർമ്മാണമല്ല.";
+"faq.whatIsManualRoomAnswer" = "ഫലമായ പ്രതിനിധാനത്തിൽ കൂടുതൽ നിയന്ത്രണത്തിനായി ഫോട്ടോയിൽ നേരിട്ട് മുറിയുടെ അതിരുകൾ നിർവചിക്കാൻ Manual Setup അനുവദിക്കുന്നു.";
+"faq.whichMethodBetterAnswer" = "വേഗത്തിലുള്ള സ്വയമേവ കണക്കിന് AI Room തിരഞ്ഞെടുക്കുക. മുറിയുടെ അതിരുകളിൽ നേരിട്ടുള്ള നിയന്ത്രണം വേണമെങ്കിൽ Manual Setup തിരഞ്ഞെടുക്കുക. ഒരു ഫലം അനുയോജ്യമല്ലെങ്കിൽ മറ്റേ രീതി പരീക്ഷിക്കുക.";
+"faq.howManyRoomsAnswer" = "നിങ്ങൾക്ക് 20 മുറികൾ വരെ സൂക്ഷിക്കാം. ഇടം ലഭിക്കാൻ ആവശ്യമില്ലാത്ത മുറികൾ ഇല്ലാതാക്കുക. മുറി ലൈബ്രറി നിലവിലെ മുറികളുടെ എണ്ണവും ഉപയോഗിച്ച ആകെ സംഭരണവും കാണിക്കുന്നു.";
+"faq.whereRoomsSaved" = "എന്റെ മുറികൾ എവിടെയാണ് സൂക്ഷിക്കുന്നത്?";
+"faq.whereRoomsSavedAnswer" = "മുറികൾ ഈ ഉപകരണത്തിലെ Paafekt-ന്റെ സ്വകാര്യ ആപ്പ് സംഭരണത്തിലാണ്; അവ സ്വയമേവ അപ്‌ലോഡ് ചെയ്യില്ല. ആന്തരിക സ്ഥാനം: Documents/SavedRooms.";
+"faq.arePhotosUploaded" = "എന്റെ മുറിയുടെ ഫോട്ടോകൾ അപ്‌ലോഡ് ചെയ്യുമോ?";
+"faq.arePhotosUploadedAnswer" = "ഇല്ല. മുറി സൃഷ്ടിക്കൽ, ഫർണിച്ചർ കണ്ടെത്തൽ, Placement Intelligence എന്നിവ ഈ ഉപകരണത്തിൽ നടക്കുന്നു. Firebase ഫോൺ-നമ്പർ സ്ഥിരീകരണവും ദുരുപയോഗ-പ്രതിരോധ ഡാറ്റയും പ്രത്യേകം പ്രോസസ്സ് ചെയ്യുന്നു. നിങ്ങൾ വ്യക്തമായി പങ്കിടുമ്പോൾ മാത്രം ഉള്ളടക്കം Paafekt-ൽ നിന്ന് പുറത്തുപോകും.";
+"faq.aiFeatures" = "ഫർണിച്ചർ കണ്ടെത്തലും വലുപ്പനിർണ്ണയവും";
+"faq.whatIsBrainIconAnswer" = "ഫർണിച്ചർ കണ്ടെത്തി 3D മുറിക്ക് മുകളിൽ സുതാര്യ കട്ട്‌ഔട്ട് സൃഷ്ടിക്കാൻ Fit ടാപ്പ് ചെയ്യുക. സ്ഥാനം മാറ്റാൻ കട്ട്‌ഔട്ട് വലിച്ചിടുക; വലുപ്പം മാറ്റാൻ പിഞ്ച് ചെയ്യുക. Fit ദൃശ്യ പ്രിവ്യൂ മാത്രമാണ്; അളവുകളുള്ള മാർഗ്ഗനിർദേശത്തിന് AR-സഹായിത വലുപ്പനിർണ്ണയം വേണം.";
+"faq.whatIsSegmentationAnswer" = "ക്യാമറ കാഴ്ചയിലെ ഫർണിച്ചർ കണ്ടെത്തി അതിന്റെ ദൃശ്യ പിക്സലുകൾ പശ്ചാത്തലത്തിൽ നിന്ന് വേർതിരിച്ച് നീക്കാവുന്ന കട്ട്‌ഔട്ടാക്കുന്നതാണ് ഫർണിച്ചർ സെഗ്മെന്റേഷൻ. പ്രോസസ്സിംഗ് ഈ ഉപകരണത്തിൽ നടക്കുന്നു.";
+"faq.accuracy" = "മുറിയുടെയും ഫർണിച്ചറിന്റെയും അളവുകൾ എത്ര കൃത്യമാണ്?";
+"faq.accuracyAnswer" = "അളവുകൾ ഉപകരണത്തിൽ കണക്കാക്കുന്ന ഏകദേശ മൂല്യങ്ങളാണ്; ഫോട്ടോയുടെ ഗുണമേന്മ, വെളിച്ചം, ക്യാമറ കോണം, AR ട്രാക്കിംഗ് എന്നിവ അനുസരിച്ച് മാറാം. മാർഗ്ഗനിർദേശമായി മാത്രം ഉപയോഗിച്ച് പ്രധാന അളവുകൾ തീരുമാനങ്ങൾക്ക് മുമ്പ് സ്വയം സ്ഥിരീകരിക്കുക.";
+"faq.arAssistedSizing" = "AR-സഹായിത വലുപ്പനിർണ്ണയം എന്താണ്?";
+"faq.arAssistedSizingAnswer" = "പിന്തുണയുള്ള ക്യാമറ, ഡെപ്ത് കഴിവുകൾ ഉപയോഗിച്ച് ഫർണിച്ചറിന്റെ അളവുകൾ കണക്കാക്കുന്നതാണ് AR-സഹായിത വലുപ്പനിർണ്ണയം. ഫലങ്ങൾ ക്യാപ്ചർ ഗുണമേന്മയെയും ട്രാക്കിംഗ് സാഹചര്യങ്ങളെയും ആശ്രയിക്കുന്ന ഏകദേശ മൂല്യങ്ങളാണ്.";
+"faq.multiplePiecesAnswer" = "പൂർണ്ണ-വീഡിയോ മോഡിൽ നിരവധി കണ്ടെത്തൽ ബോക്സുകൾ തിരഞ്ഞെടുത്ത് Segment ടാപ്പ് ചെയ്താൽ അവയുടെ കട്ട്‌ഔട്ടുകൾ ഒരുമിച്ച് സൃഷ്ടിക്കും. ഡിഫോൾട്ട് Fit പ്രവാഹത്തിൽ ഓരോ ഇനവും വേറെയും സെഗ്മെന്റ് ചെയ്യാം.";
+"faq.placementIntelligence" = "Placement Intelligence";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence ഒരു ഇനത്തിന്റെ കണക്കാക്കിയ വീതി, ഉയരം, നിർണ്ണയിച്ച ആഴം എന്നിവ മുറിയുടെ പരിധിയുമായി താരതമ്യം ചെയ്യുന്നു. ഇത് അളവുകളുടെ പൊരുത്തം മാത്രം റിപ്പോർട്ട് ചെയ്യും; ഒഴിവുള്ള നിലസ്ഥാനം കണ്ടെത്തില്ല.";
+"faq.aiRoomManualSetup" = "AI Room & Manual Setup";
+"faq.aestheticGuidance" = "സൗന്ദര്യ മാർഗ്ഗനിർദേശം";
+"faq.measurementsAccuracy" = "അളവുകളും കൃത്യതയും";
+"faq.savedRoomsStorage" = "സൂക്ഷിച്ച മുറികളും സംഭരണവും";
+"faq.sharingExporting" = "പങ്കിടലും എക്സ്പോർട്ടും";
+"faq.privacyAccount" = "സ്വകാര്യതയും അക്കൗണ്ടും";
+"faq.troubleshootingSupport" = "പ്രശ്നപരിഹാരവും പിന്തുണയും";
+"faq.uninstallRooms" = "Paafekt അൺഇൻസ്റ്റാൾ ചെയ്താൽ എന്റെ മുറികൾക്ക് എന്ത് സംഭവിക്കും?";
+"faq.uninstallRoomsAnswer" = "Paafekt അൺഇൻസ്റ്റാൾ ചെയ്താൽ അതിന്റെ സ്വകാര്യ ആപ്പ് സംഭരണത്തിലുള്ള മുറികൾ ശാശ്വതമായി ഇല്ലാതാകും. നിലനിർത്തേണ്ടവ അൺഇൻസ്റ്റാൾ ചെയ്യുന്നതിന് മുമ്പ് പങ്കിടുക.";
+"faq.exportRoom" = "ഒരു മുറി ബാക്കപ്പ് ചെയ്യുകയോ എക്സ്പോർട്ട് ചെയ്യുകയോ എങ്ങനെ?";
+"faq.exportRoomAnswer" = "ആ മുറി തരത്തിന് Share ലഭ്യമാകുമ്പോൾ ഉപയോഗിക്കുക. Capture നിലവിലെ കാഴ്ചയുടെ ചിത്രം പങ്കിടുന്നു; പുനഃസ്ഥാപിക്കാവുന്ന മുറി ബാക്കപ്പ് അല്ല. Paafekt ഇപ്പോൾ ക്ലൗഡ് സിങ്കോ ഉറപ്പുള്ള പൂർണ്ണ-ലൈബ്രറി ബാക്കപ്പോ നൽകുന്നില്ല.";
+"faq.freeFloorLocation" = "Placement Intelligence നിലയിലെ ഒഴിവുള്ള സ്ഥാനം കണ്ടെത്തുമോ?";
+"faq.freeFloorLocationAnswer" = "ഇല്ല. കണക്കാക്കിയ ഫർണിച്ചർ അളവുകൾ മുറിയുടെ പരിധിയോട് പൊരുത്തപ്പെടുന്നുവോ എന്ന് മാത്രം പരിശോധിക്കുന്നു. ഒഴിവുള്ള നിലസ്ഥലമോ പ്രത്യേക തുറന്ന സ്ഥാനമോ കണ്ടെത്തുന്നില്ല.";
+"faq.dimensionalFit" = "അളവുപൊരുത്തം എങ്ങനെ കണക്കാക്കുന്നു?";
+"faq.dimensionalFitAnswer" = "ഇനത്തിന്റെ കണക്കാക്കിയ വീതി, ഉയരം, നിർണ്ണയിച്ച ആഴം എന്നിവ മുറിയുടെ കണക്കാക്കിയ അളവുകളുമായി താരതമ്യം ചെയ്യുന്നു; സഹായകരമെങ്കിൽ തിരിച്ചതായ അടിത്തറയും പരിഗണിക്കും. രണ്ടും ഏകദേശമായതിനാൽ ഫലം മാർഗ്ഗനിർദേശമായി കാണുക.";
+"faq.aestheticScore" = "സൗന്ദര്യ സ്കോർ എങ്ങനെ കണക്കാക്കുന്നു?";
+"faq.aestheticScoreAnswer" = "സെഗ്മെന്റ് ചെയ്ത ഫർണിച്ചറിന്റെ ശരാശരി ദൃശ്യനിറം മുറിയിൽ നിന്ന് സാമ്പിൾ ചെയ്ത നിറങ്ങളുമായി ആപ്പ് താരതമ്യം ചെയ്യുന്നു. നിറസമന്വയം, തെളിച്ച വ്യത്യാസം, വിശാലമായ ശൈലിപൊരുത്തം എന്നിവ സ്കോറിൽ ഉൾപ്പെടുന്നു. ഇവ ഏകദേശ ഡിസൈൻ മാർഗ്ഗനിർദേശങ്ങളാണ്.";
+"faq.aestheticUnavailable" = "സൗന്ദര്യ മാർഗ്ഗനിർദേശം ലഭ്യമല്ലാത്തത് എന്തുകൊണ്ട്?";
+"faq.aestheticUnavailableAnswer" = "മുറിയിൽ നിന്നും സെഗ്മെന്റ് ചെയ്ത ഫർണിച്ചറിൽ നിന്നും ഉപയോഗിക്കാവുന്ന നിറസാമ്പിളുകൾ ആവശ്യമാണ്. ഒന്നെങ്കിലും ലഭ്യമല്ലെങ്കിൽ Paafekt കൃത്രിമ സ്കോർ കാണിക്കില്ല.";
+"faq.purchaseReliance" = "ഫർണിച്ചർ വാങ്ങുമ്പോൾ Paafekt-നെ ആശ്രയിക്കാമോ?";
+"faq.purchaseRelianceAnswer" = "Paafekt-നെ മാർഗ്ഗനിർദേശമായി ഉപയോഗിക്കുക, ഉറപ്പായി അല്ല. വാങ്ങുന്നതിന് മുമ്പ് അളവുകൾ, വിടവുകൾ, അനുയോജ്യത എന്നിവ വിൽപ്പനക്കാരനോട് സ്ഥിരീകരിക്കുക.";
+"faq.deleteAccountEffect" = "എന്റെ അക്കൗണ്ട് ഇല്ലാതാക്കിയാൽ എന്ത് സംഭവിക്കും?";
+"faq.deleteAccountEffectAnswer" = "അക്കൗണ്ട് ഇല്ലാതാക്കുന്നത് Firebase ഓതന്റിക്കേഷൻ അക്കൗണ്ട് നീക്കി നിങ്ങളെ സൈൻ ഔട്ട് ചെയ്യും. ഈ ഉപകരണത്തിലെ മുറികൾ സ്വയമേവ ഇല്ലാതാകില്ല; അവ നീക്കാൻ Paafekt-ൽ ഇല്ലാതാക്കുകയോ ആപ്പ് അൺഇൻസ്റ്റാൾ ചെയ്യുകയോ ചെയ്യുക.";
+"faq.firebaseData" = "Firebase ഏത് ഡാറ്റയാണ് പ്രോസസ്സ് ചെയ്യുന്നത്?";
+"faq.firebaseDataAnswer" = "Firebase നിങ്ങളുടെ ഫോൺ നമ്പർ, ഓതന്റിക്കേഷൻ രേഖകൾ, സ്ഥിരീകരണത്തിനും ദുരുപയോഗം തടയുന്നതിനുമുള്ള ഉപകരണ ഇൻസ്റ്റലേഷൻ ഐഡന്റിഫയർ എന്നിവ പ്രോസസ്സ് ചെയ്യുന്നു. മുറി സൃഷ്ടിക്കലും ഫർണിച്ചർ പ്രോസസ്സിംഗും ഈ ഉപകരണത്തിൽ തുടരുന്നു.";
+"faq.contactSupport" = "പിന്തുണയെ എങ്ങനെ ബന്ധപ്പെടാം?";
+"faq.contactSupportAnswer" = "ക്രമീകരണങ്ങൾ → സഹായവും പിന്തുണയും തുറന്ന് support@paafekt.com-ലേക്ക് ഇമെയിൽ ചെയ്യുക.";
+"roomViewer.roomDimensionsNearAccurateValues" = "കണക്കാക്കിയ അളവുകൾ";
+"camera.title" = "ക്യാമറ";
+"camera.chooseMode" = "ക്യാമറ മോഡ് തിരഞ്ഞെടുക്കുക";
+"camera.chooseModeHint" = "നിങ്ങളുടെ മുറിക്കായി ക്യാമറ ലെൻസ് തിരഞ്ഞെടുക്കുക";
+"camera.ar.hint" = "ക്യാമറ മുറിയിലേക്ക് ചൂണ്ടി സ്ഥിരമായി പിടിച്ച് ക്യാപ്ചർ ചെയ്യുക. കൃത്യമായ ക്യാമറ ഇൻട്രിൻസിക്സിന് AR ഉപയോഗിക്കുന്നു (LiDAR-ൽ സീൻ ഡെപ്തും).";
+"camera.standard" = "സ്റ്റാൻഡേർഡ്";
+"camera.wideAngle" = "വൈഡ് ആംഗിൾ";
+"camera.standard.desc" = "സ്റ്റാൻഡേർഡ് 1x ലെൻസ് • ഏത് ദിശയിലും പിടിക്കാം";
+"camera.wideAngle.desc" = "അൾട്രാ-വൈഡ് 0.5x ലെൻസ് • കൂടുതൽ പ്രദേശം പകർത്തുന്നു";
+"camera.wideAngle.info" = "വിശാലമായ കാഴ്ചയ്ക്കായി അൾട്രാ-വൈഡ് 0.5x ലെൻസ് ഉപയോഗിക്കുന്നു";
+"camera.selectWideAngle" = "വൈഡ് ഫോട്ടോ തിരഞ്ഞെടുക്കുക";
+"camera.captureWideAngle" = "വൈഡ് ഫോട്ടോ എടുക്കുക";
+"camera.wideAngle.holdSteady" = "സ്ഥിരമായി പിടിക്കുക • അൾട്രാ-വൈഡ് ലെൻസ് കൂടുതൽ പകർത്തുന്നു";
+"licenses.hypersimTitle" = "Hypersim ഡാറ്റാസെറ്റ്";
+"licenses.hypersim" = "മെട്രിക് ഇൻഡോർ മോഡൽ Apple-ന്റെ Hypersim സിന്തറ്റിക് ഇൻഡോർ ഡാറ്റാസെറ്റ് ഉപയോഗിച്ച് ഫൈൻ-ട്യൂൺ ചെയ്തു. Hypersim CC BY-SA 3.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "iOS Gaussian-splat പൈപ്പ്‌ലൈൻ ഉപയോഗിക്കുന്ന SPZ ഡീകോഡിംഗ്. പകർപ്പവകാശം Niantic, Inc., Sean Cier, സംഭാവകർ. MIT ലൈസൻസ്.";
+"licenses.cocoTitle" = "COCO ഡാറ്റാസെറ്റ്";
+"licenses.coco" = "RTMDet COCO ഉപയോഗിച്ച് പരിശീലിപ്പിച്ചു. COCO അനോട്ടേഷനുകൾ CC BY 4.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു; ചിത്രങ്ങൾ അവയുടെ ഉടമകളുടെ നിബന്ധനകൾക്ക് വിധേയമാണ്.";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android, ARCore, Filament, Firebase എന്നിവ Android ആപ്പ് ഉപയോഗിക്കുന്ന പ്ലാറ്റ്‌ഫോം, AR, 3D റെൻഡറിംഗ്, ഓതന്റിക്കേഷൻ ശേഷികൾ നൽകുന്നു.";
+"photoRoom.backAlertTitle" = "AI അല്ലെങ്കിൽ Manual ഉപയോഗിച്ച് തുടരണോ?";
+"photoRoom.backAlertMessage" = "മുറി സൃഷ്ടിക്കാൻ AI അല്ലെങ്കിൽ Manual ടാപ്പ് ചെയ്യുക; പിന്നോട്ട് പോകാൻ ശരി ടാപ്പ് ചെയ്യുക.";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
+"roomViewer.furnitureHeightEstimate" = "ഫർണിച്ചർ ഉയരം ~ %.2f മീ";
+"settings.accountDeleteFooter" = "അക്കൗണ്ട് ഇല്ലാതാക്കുന്നത് നിങ്ങളുടെ സൈൻ-ഇൻ അക്കൗണ്ട് നീക്കും. ഈ ഉപകരണത്തിൽ സൂക്ഷിച്ച മുറികളെ അത് ഇല്ലാതാക്കില്ല.";

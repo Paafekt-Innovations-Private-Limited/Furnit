@@ -2,14 +2,13 @@
   Localizable.strings
   Furnit
 
-  Spanish (Spain) localization
+  English (Base) localization
 */
 
 // MARK: - App General
 "app.name" = "Paafekt";
 "app.tagline" = "Explorador de habitaciones 3D";
 "app.version" = "Versión";
-"app.developer" = "Equipo Paafekt";
 
 // MARK: - Common Actions
 "common.done" = "Hecho";
@@ -20,8 +19,8 @@
 "common.delete" = "Eliminar";
 "common.error" = "Error";
 "common.save" = "Guardar";
-"common.close" = "Cerrar";
 "common.apply" = "Aplicar";
+"common.or" = "o";
 
 // MARK: - Login View
 "login.yourName" = "Tu nombre";
@@ -49,18 +48,18 @@
 "otp.resendFailed" = "No se pudo reenviar el código.";
 
 // MARK: - Home View
-"home.title" = "Modelos de habitación 3D";
-"home.noModels" = "No se encontraron modelos 3D";
-"home.noModelsDescription" = "¡Crea tu primera habitación a partir de una foto!";
-"home.createRoom" = "Crear habitación desde foto";
-"home.createRoomToolbarLabel" = "Foto → 3D";
-"home.createRoomHint" = "Toca aquí para crear una habitación";
-"home.roomsRemaining" = "%d de %d habitaciones disponibles";
+"home.libraryTitle" = "Biblioteca de habitaciones";
+"home.librarySubtitle" = "Tus habitaciones 3D guardadas, almacenadas en este dispositivo.";
+"home.storageTitle" = "Almacenadas en este dispositivo";
+"home.storagePath" = "Las habitaciones permanecen en el almacenamiento privado de Paafekt y no se suben automáticamente. Ubicación interna: Documents/SavedRooms.";
+"home.storageWarning" = "Al desinstalar Paafekt, las habitaciones guardadas se eliminan de forma permanente. Comparte primero todo lo que quieras conservar.";
+"home.noModels" = "Aún no hay habitaciones";
+"home.noModelsDescription" = "Crea tu primera habitación 3D a partir de una foto o constrúyela con Configuración manual. Las habitaciones se guardan en este dispositivo.";
+"home.createRoom" = "Crear habitación";
+"home.createRoomToolbarLabel" = "Crear habitación";
 "home.deleteHint" = "Elimina habitaciones antiguas para crear nuevas";
 "home.swipeHint" = "Desliza a la izquierda para eliminar";
 "home.renameRoom" = "Cambiar nombre";
-"home.renameRoomMessage" = "Este nombre aparece en tu lista de habitaciones. El nombre del archivo guardado no cambia.";
-"home.roomNamePlaceholder" = "Nombre de la habitación";
 "home.roomModel" = "Modelo de habitación 3D";
 "home.aiBased3DRoom" = "Habitación 3D basada en IA";
 "home.manualBased3DRoom" = "Habitación 3D manual";
@@ -70,8 +69,8 @@
 "roomLimit.message" = "Has alcanzado el límite de %d habitaciones. Elimina algunas para crear nuevas.";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "¿Eliminar habitación?";
-"deleteRoom.message" = "¿Estás seguro de que quieres eliminar '%@'? Esta acción no se puede deshacer.";
+"deleteRoom.title" = "¿Eliminar esta habitación?";
+"deleteRoom.message" = "Esta habitación se eliminará permanentemente de este dispositivo. Esta acción no se puede deshacer.";
 
 // MARK: - Explore View
 "explore.title" = "Explorar";
@@ -94,18 +93,23 @@
 "profile.editProfile" = "Editar perfil";
 "profile.notifications" = "Notificaciones";
 "profile.privacy" = "Privacidad";
+"profile.privacySettings" = "Ajustes de privacidad";
 "profile.general" = "General";
+"profile.generalSettings" = "Ajustes generales";
 "profile.about" = "Acerca de";
 "profile.helpSupport" = "Ayuda y soporte";
 "profile.logout" = "Cerrar sesión";
 "profile.logoutConfirmTitle" = "Cerrar sesión";
 "profile.logoutConfirmMessage" = "¿Estás seguro de que quieres cerrar sesión?";
+"profile.deleteAccount" = "Eliminar cuenta";
+"profile.deleteAccountConfirmTitle" = "Eliminar cuenta";
+"profile.deleteAccountConfirmMessage" = "¿Quieres eliminar permanentemente tu cuenta y los datos de inicio de sesión? Las habitaciones guardadas en este dispositivo permanecerán hasta que las elimines o desinstales Paafekt.";
+"profile.deleteAccountSuccessTitle" = "Cuenta eliminada";
+"profile.deleteAccountSuccessMessage" = "Tu cuenta se ha eliminado y se ha cerrado tu sesión.";
 "profile.sectionAccount" = "Cuenta";
 "profile.sectionSettings" = "Ajustes";
 "profile.sectionAbout" = "Acerca de";
 "profile.notificationSettings" = "Ajustes de notificaciones";
-"profile.privacySettings" = "Ajustes de privacidad";
-"profile.generalSettings" = "Ajustes generales";
 
 // MARK: - Settings View
 "settings.title" = "Ajustes";
@@ -131,6 +135,8 @@
 "settings.legal" = "Legal";
 "settings.privacyPolicy" = "Política de Privacidad";
 "settings.termsOfService" = "Términos de Servicio";
+"settings.legalSummary" = "El procesamiento de habitaciones y el análisis de muebles se realizan en el dispositivo. Las habitaciones guardadas permanecen en el almacenamiento privado de la app salvo que las compartas expresamente. Firebase procesa el número de teléfono para la autenticación y datos para prevenir abusos.";
+"settings.accountDeleteFooter" = "Al eliminar tu cuenta, se borra tu cuenta de inicio de sesión. Las habitaciones guardadas en este dispositivo no se eliminan automáticamente.";
 "settings.support" = "Soporte";
 "settings.licenses" = "Licencias";
 "settings.roomViewerSection" = "Visor de habitación";
@@ -138,25 +144,32 @@
 "settings.autoOrbitDescription" = "Rotar la cámara lentamente en reposo";
 "settings.infiniteZoom" = "Zoom infinito";
 "settings.infiniteZoomDescription" = "Zoom sin límite; puede atravesar paredes al vacío gris";
+"settings.fullVideoWithIdentifications" = "Vídeo completo con identificaciones";
+"settings.fullVideoWithIdentificationsDescription" = "Muestra la cámara en vivo con cuadros y etiquetas de detección en lugar de centrar automáticamente la superposición de muebles segmentados.";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licencias y atribuciones";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "Licencias de código abierto";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "Ver licencia completa";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Estimación métrica de profundidad en interiores para reconstruir habitaciones a partir de una sola foto. Bajo la licencia Apache 2.0.";
+"licenses.hypersimTitle" = "Conjunto de datos Hypersim";
+"licenses.hypersim" = "El modelo métrico para interiores se ajustó con el conjunto de datos sintéticos de interiores Hypersim de Apple. Hypersim se distribuye bajo la licencia CC BY-SA 3.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Calibración de cámara a partir de una sola imagen para obtener indicaciones de distancia focal y gravedad. Copyright 2024 ETH Zurich. Bajo la licencia Apache 2.0.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
-"licenses.metalSplatter" = "Renderizado Gaussian splat en el dispositivo. Copyright (c) Sean Cier. Bajo licencia MIT.";
+"licenses.metalSplatter" = "Renderizado de Gaussian splats en el dispositivo. Copyright (c) Sean Cier. Bajo la licencia MIT.";
 "licenses.firebaseTitle" = "Firebase";
-"licenses.firebase" = "Copyright (c) Google LLC. Bajo licencia Apache 2.0.";
+"licenses.firebase" = "Copyright (c) Google LLC. Bajo la licencia Apache 2.0.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
-"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.rtmdet" = "La detección y segmentación de muebles utilizan el modelo RTMDet-Ins de OpenMMLab MMDetection. Copyright (c) OpenMMLab. Bajo la licencia Apache 2.0.";
+"licenses.three" = "Compatibilidad WebGL incluida para los visores de habitaciones 3D. Copyright (c) 2010-2024, autores de three.js. Bajo la licencia MIT.";
 "licenses.threeTitle" = "Three.js";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "Decodificación SPZ utilizada por el flujo de Gaussian splats de iOS. Copyright Niantic, Inc., Sean Cier y colaboradores. Bajo la licencia MIT.";
+"licenses.cocoTitle" = "Conjunto de datos COCO";
+"licenses.coco" = "RTMDet se entrenó con COCO. Las anotaciones de COCO se distribuyen bajo la licencia CC BY 4.0; cada imagen sigue sujeta a las condiciones de su propietario.";
 
 // MARK: - Quality Options
 "quality.standard" = "Estándar";
@@ -165,14 +178,6 @@
 
 "quality.best" = "Óptima";
 
-
-// MARK: - Movement Speed Options
-"speed.slow" = "Lenta";
-"speed.slow.description" = "Control preciso para exploración detallada";
-"speed.normal" = "Normal";
-"speed.normal.description" = "Velocidad equilibrada para navegación cómoda";
-"speed.fast" = "Rápida";
-"speed.fast.description" = "Movimiento rápido para exploración ágil";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "Ayuda y soporte";
@@ -189,71 +194,112 @@
 "help.emailBody" = "Hola equipo Paafekt,\n\nNecesito ayuda con:\n\n";
 
 // FAQ - Room Creation
-"faq.roomCreation" = "Creación de habitaciones";
-"faq.howToCreate" = "¿Cómo creo una habitación 3D?";
-"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
+"faq.roomCreation" = "Primeros pasos";
+"faq.howToCreate" = "¿Cómo creo una habitación?";
+"faq.howToCreateAnswer" = "Toca Crear habitación y, a continuación, haz o elige una foto. Selecciona Habitación con IA para obtener una estimación automática o Configuración manual para definirla tú mismo. Guarda la habitación terminada para añadirla a tu Biblioteca de habitaciones.";
 "faq.howToTakePhoto" = "¿Cómo tomo una foto para crear una habitación?";
-"faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
-"faq.depthAwareRoomPhoto" = "¿Ayuda tomar la foto dentro de la app?";
-"faq.depthAwareRoomPhotoAnswer" = "Sí. En dispositivos compatibles, «Tomar una foto» (en lugar de la galería) usa la cámara de la app con profundidad si está disponible, lo que puede mejorar la escala y reconstrucción 3D.";
-"faq.twoMethods" = "¿Cuáles son las dos opciones para crear una habitación?";
-"faq.twoMethodsAnswer" = "Al elegir una foto: 1) Habitación 3D con IA – crea automáticamente una habitación realista, o 2) Configuración manual – dibujas los límites tú mismo para más control.";
+"faq.howToTakePhotoAnswer" = "Al crear una habitación, elige Hacer una foto. Puedes seleccionar Estándar (1x) o Gran angular (ultra gran angular 0,5×). Mantén el dispositivo estable y toca el botón de captura. La foto se utiliza después para crear tu habitación 3D.";
+"faq.twoMethods" = "¿En qué se diferencian Habitación con IA y Configuración manual?";
+"faq.twoMethodsAnswer" = "Habitación con IA estima las dimensiones a partir de una foto y genera una representación texturizada con medidas. No es una reconstrucción volumétrica completa. Configuración manual te permite definir los límites de la habitación para obtener una representación más controlable.";
 "faq.whatIsAIRoom" = "¿Qué es la habitación 3D con IA?";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
+"faq.whatIsAIRoomAnswer" = "Habitación con IA utiliza estimación de profundidad, referencias de muebles y calibración de cámara en el dispositivo para obtener a partir de una foto una habitación texturizada con medidas estimadas. No es una reconstrucción volumétrica completa.";
 "faq.whatIsManualRoom" = "¿Qué es la configuración manual?";
-"faq.whatIsManualRoomAnswer" = "Dibujas el contorno de las paredes en la foto para controlar mejor la forma de la habitación 3D.";
+"faq.whatIsManualRoomAnswer" = "Configuración manual te permite definir los límites de la habitación directamente sobre la foto para tener un mayor control sobre la representación resultante.";
 "faq.whichMethodBetter" = "¿Qué método elijo?";
-"faq.whichMethodBetterAnswer" = "Prueba primero la IA: es más rápida y suele funcionar bien. Si no convence, usa la configuración manual. ¡Puedes probar ambas!";
+"faq.whichMethodBetterAnswer" = "Elige Habitación con IA para obtener una estimación automática más rápida. Elige Configuración manual si quieres controlar directamente los límites de la habitación. Si un resultado no es adecuado, prueba el otro método.";
 "faq.bestPhotos" = "¿Qué tipo de fotos funcionan mejor?";
 "faq.bestPhotosAnswer" = "Para mejores resultados, toma fotos con buena iluminación y la cámara en horizontal. Intenta capturar toda la habitación incluyendo suelos, paredes y bordes del techo. Evita fotos borrosas u oscuras.";
 "faq.generationFailing" = "¿Por qué falla la generación de mi habitación?";
 "faq.generationFailingAnswer" = "La generación de habitación puede fallar si la foto es demasiado oscura, borrosa o no muestra suficientes características de la habitación. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.";
 "faq.howManyRooms" = "¿Cuántas habitaciones puedo crear?";
-"faq.howManyRoomsAnswer" = "Puedes crear hasta 20 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior verás el número de habitaciones y el almacenamiento usado.";
+"faq.howManyRoomsAnswer" = "Puedes guardar hasta 20 habitaciones. Elimina las que ya no necesites para liberar espacio. La Biblioteca de habitaciones muestra el número actual y el almacenamiento total utilizado.";
+"faq.howToSaveRoom" = "¿Cómo guardo una habitación?";
+"faq.howToSaveRoomAnswer" = "Después de generar una habitación 3D, toca la habitación para mostrar los controles, pulsa el icono de guardar (flecha de descarga) e introduce un nombre. Si sales de la vista previa sin guardar, la habitación se descarta.";
+"faq.whereRoomsSaved" = "¿Dónde se guardan mis habitaciones?";
+"faq.whereRoomsSavedAnswer" = "Las habitaciones se almacenan en el espacio privado de Paafekt en este dispositivo y no se suben automáticamente. Ubicación interna: Documents/SavedRooms.";
+"faq.arePhotosUploaded" = "¿Se suben las fotos de mis habitaciones?";
+"faq.arePhotosUploadedAnswer" = "No. La creación de habitaciones, la detección de muebles y Placement Intelligence se ejecutan en este dispositivo. Por separado, Firebase procesa el número de teléfono para la autenticación y datos para prevenir abusos. El contenido solo sale de Paafekt cuando lo compartes expresamente.";
 
-// FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "Segmentación de muebles";
+// FAQ - AI Features
+"faq.aiFeatures" = "Detección y dimensionamiento de muebles";
+"faq.whatIsBrainIcon" = "¿Qué hace el botón Fit?";
+"faq.whatIsBrainIconAnswer" = "Toca Fit para detectar un mueble y crear un recorte transparente sobre tu habitación 3D. Arrastra el recorte para colocarlo y pellízcalo para cambiar su tamaño. Fit es una vista previa visual; las indicaciones con medidas requieren el dimensionamiento asistido por AR.";
+"faq.whatIsViewfinderButton" = "¿Qué hace el modo de vídeo completo en el visor de habitaciones?";
+"faq.whatIsViewfinderButtonAnswer" = "Mientras Fit esté activo, muestra los controles y toca el icono del visor para activar o desactivar el modo de vídeo completo. Verás la cámara en directo con recuadros de detección: toca uno o varios objetos y después Segmentar. La cámara se oculta y los recortes transparentes se superponen a tu habitación 3D. Toca Hecho (arriba a la derecha) para salir del modo de segmentación o de Fit.";
+"faq.howToScreenshot" = "¿Cómo tomo una captura de pantalla?";
+"faq.howToScreenshotAnswer" = "Toca la habitación para mostrar controles y luego Capturar. Guarda la vista actual (incluidos overlays de muebles con Fit activo) en Fotos.";
 "faq.whatIsSegmentation" = "¿Qué es la segmentación de muebles?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
+"faq.whatIsSegmentationAnswer" = "La segmentación de muebles detecta un objeto en la vista de la cámara y separa sus píxeles visibles del fondo para mostrarlo como un recorte móvil. El procesamiento se realiza en este dispositivo.";
 "faq.howToSegment" = "¿Cómo segmento muebles en el visor de la habitación?";
-"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
+"faq.howToSegmentAnswer" = "Toca Fit en el visor de habitaciones. Para una comprobación rápida, se segmenta automáticamente el objeto principal. Para elegir objetos concretos, muestra los controles, activa el modo de vídeo completo, apunta la cámara a los muebles, toca los recuadros de detección y después Segmentar. Toca Hecho (arriba a la derecha) para salir.";
 "faq.notDetected" = "¿Por qué no se detectan mis muebles?";
 "faq.notDetectedAnswer" = "La detección de muebles funciona mejor con fotos claras y bien iluminadas donde los muebles son claramente visibles. Asegúrate de que los muebles no estén parcialmente ocultos o se confundan con el fondo.";
-"faq.multiplePieces" = "¿Puedo segmentar múltiples muebles?";
-"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
-// FAQ - 3D Room & Fitment
+// FAQ - 3D Room Controls
+"faq.howToView" = "¿Cómo veo mi habitación 3D?";
+"faq.howToViewAnswer" = "Toca cualquier habitación en inicio para abrir el visor 3D. Arrastra para mirar y pellizca para zoom. Toca la habitación para más controles (recentrar, regla, Capturar). El botón Fit dorado permanece visible abajo a la derecha.";
+"faq.howToNavigate" = "¿Cómo navego dentro de la habitación?";
+"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
+"faq.whatDoArrowsDo" = "¿Cómo mostrar u ocultar los controles del visor?";
+"faq.whatDoArrowsDoAnswer" = "El visor usa modo inmersivo—los controles se ocultan para una vista limpia. Toca la habitación para mostrar la barra. El botón Fit dorado abajo a la derecha siempre está visible. Con Fit activo, Hecho aparece arriba a la derecha para salir de la segmentación.";
+"faq.whatIsMemoryDisplay" = "¿Qué significa el número MB?";
+"faq.whatIsMemoryDisplayAnswer" = "El MB (megabytes) mostrado en las habitaciones indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todas las habitaciones se muestra en la parte superior de la pantalla de inicio.";
+"faq.howToPlace" = "¿Cómo coloco muebles en mi habitación?";
+"faq.howToPlaceAnswer" = "Después de tocar Segmentar, el mueble seleccionado aparece como una superposición en la habitación. Arrástralo para colocarlo, pellizca para cambiar el tamaño y gíralo para ajustar la orientación.";
+"faq.accuracy" = "¿Qué precisión tienen las medidas de la habitación y los muebles?";
+"faq.accuracyAnswer" = "Las medidas son estimaciones realizadas en el dispositivo y pueden variar según la calidad de la foto, la iluminación, el ángulo de la cámara y el seguimiento de AR. Úsalas como orientación y comprueba por tu cuenta las dimensiones importantes antes de tomar decisiones.";
+"faq.adjustDimensions" = "¿Puedo ajustar las dimensiones de la habitación?";
+"faq.adjustDimensionsAnswer" = "No puedes editar manualmente las dimensiones de una habitación con IA. Después de guardarla, muestra los controles y toca la regla para ver la anchura, la altura y la profundidad estimadas. Durante la vista previa previa al guardado no se muestran las etiquetas de dimensiones: guarda primero la habitación y vuelve a abrirla. Las habitaciones manuales siguen los límites que dibujes.";
+"faq.arAssistedSizing" = "¿Qué es el dimensionamiento asistido por AR?";
+"faq.arAssistedSizingAnswer" = "El dimensionamiento asistido por AR estima las dimensiones de un mueble mediante las funciones de cámara y profundidad compatibles. Los resultados dependen de la calidad de la captura y de las condiciones de seguimiento, y siguen siendo estimaciones.";
+"faq.measurementPill" = "¿Qué es la pequeña lectura de medidas?";
+"faq.measurementPillAnswer" = "La pastilla de tamaño del mueble solo aparece cuando el modo de tamaño está activado y la app tiene una estimación de altura en vivo válida. El botón de regla muestra el ancho, alto y fondo actuales de la habitación en una tarjeta pequeña. En teléfonos sin AR, estas lecturas son menos fiables, especialmente para los muebles.";
+"faq.resetOverlayScale" = "La máscara parece mal ampliada — ¿qué hago?";
+"faq.resetOverlayScaleAnswer" = "Ya no hay un menú adicional. Si la superposición no se ve bien, toca Hecho para salir de Fit y vuelve a tocar Fit, o pellizca el mueble para ajustar manualmente su tamaño.";
+"faq.depthAwareRoomPhoto" = "¿Ayuda tomar la foto dentro de la app?";
+"faq.depthAwareRoomPhotoAnswer" = "Sí. En dispositivos compatibles, «Tomar una foto» (en lugar de la galería) usa la cámara de la app con profundidad si está disponible, lo que puede mejorar la escala y reconstrucción 3D.";
+"faq.multiplePieces" = "¿Puedo segmentar múltiples muebles?";
+"faq.multiplePiecesAnswer" = "En el modo de vídeo completo, selecciona varios recuadros de detección y toca Segmentar para crear sus recortes a la vez. También puedes segmentar los objetos de uno en uno con el flujo predeterminado de Fit.";
 "faq.roomFitment" = "¿Cómo compruebo si el mueble encaja?";
-"faq.roomFitmentAnswer" = "Tras segmentar, redimensiona y reposiciona recortes en tu habitación 3D. En modo vídeo completo, Segmentar compone las piezas seleccionadas sobre la habitación para comparar varios elementos con el espacio.";
+"faq.roomFitmentAnswer" = "Tras la segmentación, activa el dimensionamiento AR para medir la anchura y la altura del mueble. Placement Intelligence compara esos valores y la profundidad calculada con el volumen de la habitación. No identifica una ubicación libre garantizada en el suelo.";
 
 // FAQ - Placement intelligence & aesthetic
-"faq.placementIntelligence" = "Inteligencia de colocación y estética";
+"faq.placementIntelligence" = "Placement Intelligence";
 "faq.whatIsPlacementIntelligence" = "¿Qué es Placement Intelligence?";
-"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence compara la anchura y la altura estimadas de un objeto, así como su profundidad calculada, con el volumen de la habitación. Solo informa de la compatibilidad dimensional; no identifica una ubicación libre en el suelo.";
 "faq.furnitureColorAesthetic" = "¿Cómo elige la app un color para la puntuación estética?";
-"faq.furnitureColorAestheticAnswer" = "La app promedia el RGB de los píxeles visibles dentro del recorte IA del mueble (la misma superposición segmentada). Ese color medio se compara con colores muestreados del suelo, paredes y techo. Si el recorte aún no está listo, se usa un color de reserva de la paleta de la habitación hasta que la segmentación aporte una muestra real.";
+"faq.furnitureColorAestheticAnswer" = "La app calcula el promedio RGB directo de los píxeles visibles dentro del recorte de muebles generado por IA y lo compara con colores muestreados de la habitación. Si alguna de las muestras no está disponible, la orientación estética permanece desactivada en lugar de inventar una puntuación.";
 "faq.whatDoHarmonyContrastMean" = "¿Qué significan armonía, contraste y ajuste de estilo?";
 "faq.whatDoHarmonyContrastMeanAnswer" = "Son heurísticas de diseño sencillas, no un juicio de gusto. La armonía describe cómo se relaciona el color del mueble con la paleta de la habitación (por ejemplo tonos análogos o complementarios). El contraste mide cuánto difiere el brillo respecto a suelos o paredes típicos. El ajuste de estilo compara etiquetas de estilo amplias inferidas para la habitación con un perfil moderno por defecto, así que es aproximado.";
 "faq.whenDoesAestheticScoreLow" = "¿Cuándo pueden verse bajas las puntuaciones estéticas o aparecer \"clash\"?";
 "faq.whenDoesAestheticScoreLowAnswer" = "Los objetos muy saturados suelen puntuar peor si su matiz no encaja con los esquemas armónicos de la app frente a tu habitación: por ejemplo verde ácido, magenta, morado o naranja de seguridad en salones cálidos beige o tostados, o primarios chillones cuando la muestra del espacio es casi monocromática. Un brillo muy parecido al suelo o la pared (marrón sobre marrón, gris sobre gris) puede bajar el contraste aunque te guste el resultado. Las habitaciones inferidas como rústicas o tradicionales pueden mostrar menos ajuste de estilo porque el perfil del mueble usa etiquetas modernas/minimal por defecto. Promedios grises o sucios con fondos cargados pueden caer en una banda \"neutral\" en lugar de clash. Las puntuaciones son solo orientativas: para decorar de verdad, confía también en tu ojo.";
-
-"faq.howToView" = "¿Cómo veo mi habitación 3D?";
-"faq.howToViewAnswer" = "Toca cualquier habitación en inicio para abrir el visor 3D. Arrastra para mirar y pellizca para zoom. Toca la habitación para más controles (recentrar, regla, Capturar). El botón Fit dorado permanece visible abajo a la derecha.";
-"faq.howToPlace" = "¿Cómo coloco muebles en mi habitación?";
-"faq.howToPlaceAnswer" = "Después de tocar Segmentar, el mueble seleccionado aparece como una superposición en la habitación. Arrástralo para colocarlo, pellizca para cambiar el tamaño y gíralo para ajustar la orientación.";
-"faq.sampleRoom" = "¿Puedo usar una habitación de ejemplo en lugar de la mía?";
-"faq.sampleRoomAnswer" = "¡Sí! La aplicación proporciona habitaciones de ejemplo para experimentar. Accede a ellas desde la sección Explorar para probar la colocación de muebles sin crear primero tu propia habitación.";
-"faq.accuracy" = "¿Qué tan preciso es el modelo 3D?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
-"faq.adjustDimensions" = "¿Puedo ajustar las dimensiones de la habitación?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.furnitureMeasurements" = "Muebles y medidas";
-"faq.arAssistedSizing" = "¿Qué es el tamaño de muebles asistido por AR?";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
-"faq.measurementPill" = "¿Qué es la pequeña lectura de medidas?";
-"faq.measurementPillAnswer" = "La pastilla de tamaño del mueble solo aparece cuando el modo de tamaño está activado y la app tiene una estimación de altura en vivo válida. El botón de regla muestra el ancho, alto y fondo actuales de la habitación en una tarjeta pequeña. En teléfonos sin AR, estas lecturas son menos fiables, especialmente para los muebles.";
-"faq.resetOverlayScale" = "La máscara parece mal ampliada — ¿qué hago?";
-"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
+"faq.aiRoomManualSetup" = "Habitación con IA y Configuración manual";
+"faq.aestheticGuidance" = "Orientación estética";
+"faq.measurementsAccuracy" = "Medidas y precisión";
+"faq.savedRoomsStorage" = "Habitaciones guardadas y almacenamiento";
+"faq.sharingExporting" = "Compartir y exportar";
+"faq.privacyAccount" = "Privacidad y cuenta";
+"faq.troubleshootingSupport" = "Solución de problemas y soporte";
+"faq.uninstallRooms" = "¿Qué ocurre con mis habitaciones si desinstalo Paafekt?";
+"faq.uninstallRoomsAnswer" = "Al desinstalar Paafekt, las habitaciones de su almacenamiento privado se eliminan de forma permanente. Comparte todo lo que quieras conservar antes de desinstalar la app.";
+"faq.exportRoom" = "¿Cómo hago una copia de seguridad o exporto una habitación?";
+"faq.exportRoomAnswer" = "Usa Compartir cuando esté disponible para ese tipo de habitación. Capturar comparte una imagen de la vista actual, no una copia de seguridad de la habitación que pueda restaurarse. Actualmente, Paafekt no ofrece sincronización en la nube ni garantiza una copia de seguridad de toda la biblioteca.";
+"faq.freeFloorLocation" = "¿Placement Intelligence encuentra una ubicación disponible en el suelo?";
+"faq.freeFloorLocationAnswer" = "No. Comprueba si las dimensiones estimadas del mueble son compatibles con el volumen de la habitación. No detecta espacio libre en el suelo ni identifica una ubicación concreta disponible.";
+"faq.dimensionalFit" = "¿Cómo se calcula el ajuste dimensional?";
+"faq.dimensionalFitAnswer" = "La anchura y la altura estimadas del objeto, así como su profundidad calculada, se comparan con las dimensiones estimadas de la habitación, incluida una huella girada cuando resulta útil. Como ambos conjuntos de dimensiones son estimaciones, considera el resultado meramente orientativo.";
+"faq.aestheticScore" = "¿Cómo se calcula la puntuación estética?";
+"faq.aestheticScoreAnswer" = "La app compara el color visible medio del mueble segmentado con colores muestreados de la habitación. La armonía, el contraste de luminosidad y la compatibilidad general de estilo contribuyen a la puntuación. Son heurísticas de diseño aproximadas, no reglas sobre el gusto.";
+"faq.aestheticUnavailable" = "¿Por qué no está disponible la orientación estética?";
+"faq.aestheticUnavailableAnswer" = "La orientación estética necesita muestras de color válidas tanto de la habitación como del mueble segmentado. Si alguna no está disponible, Paafekt no muestra ninguna puntuación en lugar de inventarla.";
+"faq.purchaseReliance" = "¿Puedo fiarme de Paafekt al comprar muebles?";
+"faq.purchaseRelianceAnswer" = "Usa Paafekt como orientación, no como garantía. Antes de comprar, confirma siempre con el vendedor las dimensiones, las holguras necesarias y la idoneidad del mueble.";
+"faq.deleteAccountEffect" = "¿Qué ocurre cuando elimino mi cuenta?";
+"faq.deleteAccountEffectAnswer" = "Al eliminar tu cuenta, se borra la cuenta de autenticación de Firebase y se cierra tu sesión. Las habitaciones guardadas en este dispositivo no se eliminan automáticamente; elimínalas en Paafekt o desinstala la app para borrarlas.";
+"faq.firebaseData" = "¿Qué datos procesa Firebase?";
+"faq.firebaseDataAnswer" = "Firebase procesa tu número de teléfono, los registros de autenticación y un identificador de instalación del dispositivo utilizado para la verificación y la prevención de abusos. La creación de habitaciones y el procesamiento de muebles permanecen en este dispositivo.";
+"faq.contactSupport" = "¿Cómo contacto con soporte?";
+"faq.contactSupportAnswer" = "Abre Ajustes → Ayuda y soporte y escribe a support@paafekt.com.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "Límites de habitación";
@@ -264,8 +310,6 @@
 "boundary.vanish" = "Punto de fuga";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "Añadir muebles";
-"viewer.capture" = "Capturar";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "Iniciando cámara...";
@@ -282,6 +326,68 @@
 "photoRoom.createSubtitle" = "Selecciona una foto para comenzar";
 "photoRoom.quickPhoto" = "Foto rápida";
 "photoRoom.quickPhotoSubtitle" = "Captura de foto única";
+"photoRoom.howToCreate" = "¿Cómo quieres crear tu habitación 3D?";
+"photoRoom.tapOption" = "Toca una opción abajo para continuar";
+"photoRoom.aiPowered" = "Construcción 3D con IA";
+"photoRoom.manualSetup" = "Configuración manual";
+"photoRoom.manualSetupDesc" = "Arrastra para ajustar las paredes";
+"photoRoom.selectPhoto" = "Elegir foto";
+"photoRoom.chooseDifferentPhoto" = "Elegir otra foto";
+"photoRoom.fromLibrary" = "De tu biblioteca de fotos";
+"photoRoom.loading" = "Cargando habitación 3D...";
+"photoRoom.downloadSuccess" = "Se descargó %@ correctamente. Consúltalo en tu lista de modelos.";
+"photoRoom.saveSuccess" = "Tu modelo 3D se ha guardado correctamente.";
+"photoRoom.error" = "Ocurrió un error al generar tu modelo 3D.";
+"photoRoom.buildingRoom" = "Construyendo tu habitación 3D...";
+"photoRoom.buildingRoomSubtext" = "Esto suele tardar unos segundos.";
+"photoRoom.reconstructorReady" = "Listo";
+"photoRoom.reconstructorAnalyzingPhoto" = "Analizando foto…";
+"photoRoom.reconstructorExtractingDepth" = "Extrayendo información de profundidad…";
+"photoRoom.reconstructorFindingWalls" = "Buscando paredes y esquinas…";
+"photoRoom.reconstructorCalculatingDimensions" = "Calculando dimensiones de la habitación…";
+"photoRoom.reconstructorBuilding3D" = "Creando modelo 3D…";
+"photoRoom.reconstructorRoomReady" = "¡Habitación lista!";
+"photoRoom.reconstructorDepthFailed" = "No se pudo estimar la profundidad";
+"photoRoom.reconstructorStarting" = "Iniciando…";
+"photoRoom.reconstructorPreparingImage" = "Preparando imagen…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Analizando límites…";
+"photoRoom.reconstructorCreatingTextures" = "Creando texturas…";
+"photoRoom.reconstructorFinalizing" = "Finalizando…";
+"photoRoom.odrOneTimeDownload" = "Descarga única (~1,2 GB)";
+"photoRoom.modelGeneratedTitle" = "Modelo 3D generado";
+"photoRoom.generationFailedTitle" = "Error al generar";
+"photoRoom.loading3DRoom" = "Cargando habitación 3D...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "Subiendo imagen";
+"generationProgress.generating3DModel" = "Generando modelo 3D";
+"generationProgress.downloadingModel" = "Descargando modelo";
+"generationProgress.complete" = "¡Completo!";
+"generationProgress.preparing" = "Preparando...";
+"generationProgress.mayTakeFewMinutes" = "Esto puede tardar unos minutos";
+
+// MARK: - Splat (on-device)
+"roomGeneration.downloadingEngine" = "Descargando motor 3D...";
+"roomGeneration.downloadingEnginePercent" = "Descargando motor 3D... %d%%";
+"roomGeneration.downloadComplete" = "Descarga completada";
+"roomGeneration.downloadFailed" = "Error en la descarga";
+"roomGeneration.gettingReady" = "Preparando...";
+"roomGeneration.notEnoughSpace" = "No hay espacio suficiente en el dispositivo";
+"roomGeneration.settingThingsUp" = "Configurando...";
+"roomGeneration.ready" = "¡Listo!";
+"roomGeneration.couldNotGetReady" = "No se pudo preparar";
+"roomGeneration.somethingWentWrong" = "Algo salió mal";
+"roomGeneration.preparingPhoto" = "Preparando tu foto...";
+"roomGeneration.creatingRoom" = "Creando tu habitación 3D...";
+"roomGeneration.almostDone" = "Casi listo...";
+"roomGeneration.done" = "¡Hecho!";
+"roomGeneration.couldNotCreateRoom" = "No se pudo crear la habitación";
+"roomGeneration.cancelled" = "Cancelado";
+"roomGeneration.liveRoom" = "Sala en vivo";
+"roomGeneration.stillRoom" = "Sala fija";
+"roomGeneration.liveRoomCameraMode" = "Modo cámara sala en vivo";
+"roomGeneration.stillRoomCameraMode" = "Modo cámara sala fija";
+"roomGeneration.cameraModeToggleAccessibilityHint" = "Cambia entre la cámara de sala fija y sala en vivo.";
 
 // MARK: - 3D Room Viewer
 "roomViewer.title" = "Vista de habitación 3D";
@@ -307,8 +413,8 @@
 "roomPreview.unsavedMessage" = "La habitación aún no se ha guardado. Si vuelves ahora, perderás esta vista previa.";
 "roomPreview.stay" = "Quedarse";
 "roomPreview.leave" = "Salir";
-"roomPreview.sourceImageUnavailable" = "No se pudo cargar la imagen de origen para medir la habitación.";
 "roomPreview.prepareSourceImageFailed" = "No se pudo preparar la imagen de origen para la vista previa de la habitación.";
+"roomPreview.sourceImageUnavailable" = "No se pudo cargar la imagen de origen para medir la habitación.";
 "roomViewer.share" = "Compartir";
 "roomViewer.calibrateWall" = "Calibrar pared";
 "roomViewer.recenterView" = "Recentrar vista";
@@ -325,9 +431,12 @@
 "roomViewer.immersiveShowControls" = "Mostrar controles";
 "roomViewer.immersiveFitShort" = "Fit";
 "roomViewer.immersiveCaptureShort" = "Capturar";
-"roomViewer.segmentationDone" = "Hecho";
 "roomViewer.brainGestureHintExplanation" = "Toca 🧠 para identificar muebles";
+"roomViewer.fullVideoFurnitureTapHint" = "Toca todos los objetos que quieras comprobar con la habitación";
+"roomGeneration.runInBackground" = "Ejecutar en segundo plano";
+"roomViewer.displayAllHelpers" = "Mostrar todas las ayudas";
 "roomViewer.segmentFurnitureAction" = "Segmentar";
+"roomViewer.segmentationDone" = "Hecho";
 "roomViewer.segmentFurnitureAccessibility" = "Segmentar muebles seleccionados";
 "roomViewer.snapshotGestureHintExplanation" = "Toca 📷 para guardar";
 "roomViewer.arFurnitureSizingHint" = "Para mejor ajuste de tamaño";
@@ -335,12 +444,12 @@
 "roomViewer.arSizingEnable" = "Activar tamaño de muebles con ayuda de la cámara";
 "roomViewer.arSizingDisable" = "Desactivar tamaño de muebles con ayuda de la cámara";
 "roomViewer.gestureHintToggleAccessibility" = "Toca este icono para mostrar u ocultar este consejo.";
-"roomViewer.approximateRoomHeight" = "Alt. aprox. - %.2f m";
 "roomViewer.checkMeasurement" = "Comprobar medida";
+"roomViewer.approximateRoomHeight" = "Alt. aprox. - %.2f m";
 "roomViewer.roomDimensionsDefaultValues" = "Valores predeterminados";
 "roomViewer.roomDimensionsWHDWithDefault" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "A × Al\n%.2f × %.2f m (%@)";
-"roomViewer.roomDimensionsNearAccurateValues" = "Valores casi exactos";
+"roomViewer.roomDimensionsNearAccurateValues" = "Dimensiones estimadas";
 "roomViewer.roomDimensionsWHDWithNearAccurate" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Midiendo la habitación…";
 "roomViewer.goingBack" = "Volviendo…";
@@ -357,6 +466,7 @@
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "La altura del mueble debe ser menor que la altura de la habitación (%.2f m).";
 "roomViewer.roomMetersShort" = "Habitación: %.2f m";
 "roomViewer.furnitureMetersShort" = "Mueble: %.2f m";
+"roomViewer.furnitureHeightEstimate" = "Altura del mueble ~ %.2f m";
 "roomViewer.wallWidthPlaceholder" = "Ancho";
 "roomViewer.wallHeightPlaceholder" = "Alto";
 "roomViewer.saveErrorUnknown" = "Error desconocido";
@@ -393,9 +503,6 @@
 "roomViewer.styleTag.scandinavian" = "escandinavo";
 "roomViewer.styleTag.nordic" = "nórdico";
 "roomViewer.styleTag.classic" = "clásico";
-"roomViewer.fullVideoFurnitureTapHint" = "Toca todos los objetos que quieras comprobar con la habitación";
-"roomGeneration.runInBackground" = "Ejecutar en segundo plano";
-"roomViewer.displayAllHelpers" = "Mostrar todas las ayudas";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Enviar informe";
@@ -408,55 +515,6 @@
 "accessibility.help" = "Ayuda";
 "accessibility.createRoom" = "Crear habitación desde foto";
 
-// FAQ - AI Features (added)
-"faq.aiFeatures" = "Funciones de IA";
-"faq.whatIsBrainIcon" = "¿Qué hace el botón Fit?";
-"faq.whatIsBrainIconAnswer" = "Toca el botón Fit dorado (abajo a la derecha) en el visor para iniciar la segmentación SmartyPants. Por defecto segmenta automáticamente el objeto de mayor confianza como recorte transparente sobre tu habitación 3D. Toca Hecho (arriba a la derecha) para salir. Para elegir piezas concretas, muestra los controles y activa el modo full-video primero.";
-"faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
-"faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
-"faq.howToScreenshot" = "¿Cómo tomo una captura de pantalla?";
-"faq.howToScreenshotAnswer" = "Toca la habitación para mostrar controles y luego Capturar. Guarda la vista actual (incluidos overlays de muebles con Fit activo) en Fotos.";
-"faq.howToSaveRoom" = "¿Cómo guardo una habitación?";
-"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
-
-// FAQ - 3D Room Controls (added)
-"faq.roomControls" = "Controles de Habitación 3D";
-"faq.howToNavigate" = "¿Cómo navego dentro de la habitación?";
-"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
-"faq.whatDoArrowsDo" = "¿Cómo mostrar u ocultar los controles del visor?";
-"faq.whatDoArrowsDoAnswer" = "El visor usa modo inmersivo—los controles se ocultan para una vista limpia. Toca la habitación para mostrar la barra. El botón Fit dorado abajo a la derecha siempre está visible. Con Fit activo, Hecho aparece arriba a la derecha para salir de la segmentación.";
-"faq.whatIsMemoryDisplay" = "¿Qué significa el número MB?";
-"faq.whatIsMemoryDisplayAnswer" = "El MB (megabytes) mostrado en las habitaciones indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todas las habitaciones se muestra en la parte superior de la pantalla de inicio.";
-
-// MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "¿Cómo quieres crear tu habitación 3D?";
-"photoRoom.tapOption" = "Toca una opción abajo para continuar";
-"photoRoom.aiPowered" = "Construcción 3D con IA";
-"photoRoom.manualSetup" = "Configuración manual";
-"photoRoom.manualSetupDesc" = "Arrastra para ajustar las paredes";
-"photoRoom.selectPhoto" = "Elegir foto";
-"photoRoom.chooseDifferentPhoto" = "Elegir otra foto";
-"photoRoom.fromLibrary" = "De tu biblioteca de fotos";
-"photoRoom.loading" = "Cargando habitación 3D...";
-"photoRoom.downloadSuccess" = "Se descargó %@ correctamente. Consúltalo en tu lista de modelos.";
-"photoRoom.saveSuccess" = "Tu modelo 3D se ha guardado correctamente.";
-"photoRoom.error" = "Ocurrió un error al generar tu modelo 3D.";
-"photoRoom.buildingRoom" = "Construyendo tu habitación 3D...";
-"photoRoom.buildingRoomSubtext" = "Esto suele tardar unos segundos.";
-"photoRoom.reconstructorReady" = "Listo";
-"photoRoom.reconstructorAnalyzingPhoto" = "Analizando foto…";
-"photoRoom.reconstructorExtractingDepth" = "Extrayendo información de profundidad…";
-"photoRoom.reconstructorFindingWalls" = "Buscando paredes y esquinas…";
-"photoRoom.reconstructorCalculatingDimensions" = "Calculando dimensiones de la habitación…";
-"photoRoom.reconstructorBuilding3D" = "Creando modelo 3D…";
-"photoRoom.reconstructorRoomReady" = "¡Habitación lista!";
-"photoRoom.reconstructorDepthFailed" = "No se pudo estimar la profundidad";
-"photoRoom.reconstructorStarting" = "Iniciando…";
-"photoRoom.reconstructorPreparingImage" = "Preparando imagen…";
-"photoRoom.reconstructorAnalyzingBoundaries" = "Analizando límites…";
-"photoRoom.reconstructorCreatingTextures" = "Creando texturas…";
-"photoRoom.reconstructorFinalizing" = "Finalizando…";
-
 // MARK: - Orientation Labels
 "orientation.portrait" = "Vertical";
 "orientation.landscape" = "Horizontal";
@@ -465,49 +523,26 @@
 
 // MARK: - Photo Selection Warning
 "photoRoom.screenshotWarning" = "No elijas capturas de pantalla: pueden causar manchas negras";
+"photoRoom.backAlertTitle" = "¿Continuar con IA o Manual?";
+"photoRoom.backAlertMessage" = "Toca IA o Manual para empezar a crear tu habitación, o Aceptar para volver.";
+"photoRoom.backAlertAI" = "IA";
+"photoRoom.backAlertManual" = "Manual";
 
-// MARK: - i18n sync (Spanish)
-"common.or" = "o";
-"common.retry" = "Reintentar";
-"settings.fullVideoWithIdentifications" = "Vídeo completo con identificaciones";
-"settings.fullVideoWithIdentificationsDescription" = "Muestra la cámara en vivo con cuadros y etiquetas de detección en lugar de centrar automáticamente la superposición de muebles segmentados.";
-
-
+// MARK: - Camera Capture
+"camera.title" = "Cámara";
 "camera.takePhoto" = "Hacer foto";
 "camera.chooseOrientationShort" = "Vertical u horizontal";
-"roomGeneration.downloadingEngine" = "Descargando motor 3D...";
-"roomGeneration.downloadingEnginePercent" = "Descargando motor 3D... %d%%";
-"roomGeneration.downloadComplete" = "Descarga completada";
-"roomGeneration.downloadFailed" = "Error en la descarga";
-"roomGeneration.gettingReady" = "Preparando...";
-"roomGeneration.notEnoughSpace" = "No hay espacio suficiente en el dispositivo";
-"roomGeneration.settingThingsUp" = "Configurando...";
-"roomGeneration.ready" = "¡Listo!";
-"roomGeneration.couldNotGetReady" = "No se pudo preparar";
-"roomGeneration.somethingWentWrong" = "Algo salió mal";
-"roomGeneration.preparingPhoto" = "Preparando tu foto...";
-"roomGeneration.creatingRoom" = "Creando tu habitación 3D...";
-"roomGeneration.almostDone" = "Casi listo...";
-"roomGeneration.done" = "¡Hecho!";
-"roomGeneration.couldNotCreateRoom" = "No se pudo crear la habitación";
-"roomGeneration.cancelled" = "Cancelado";
-"roomGeneration.liveRoom" = "Sala en vivo";
-"roomGeneration.stillRoom" = "Sala fija";
-"roomGeneration.liveRoomCameraMode" = "Modo cámara sala en vivo";
-"roomGeneration.stillRoomCameraMode" = "Modo cámara sala fija";
-"roomGeneration.cameraModeToggleAccessibilityHint" = "Cambia entre la cámara de sala fija y sala en vivo.";
-"photoRoom.odrOneTimeDownload" = "Descarga única (~1,2 GB)";
-"photoRoom.modelGeneratedTitle" = "Modelo 3D generado";
-"photoRoom.generationFailedTitle" = "Error al generar";
-"photoRoom.loading3DRoom" = "Cargando habitación 3D...";
-
-// MARK: - Generation progress overlay
-"generationProgress.uploadingImage" = "Subiendo imagen";
-"generationProgress.generating3DModel" = "Generando modelo 3D";
-"generationProgress.downloadingModel" = "Descargando modelo";
-"generationProgress.complete" = "¡Completo!";
-"generationProgress.preparing" = "Preparando...";
-"generationProgress.mayTakeFewMinutes" = "Esto puede tardar unos minutos";
+"camera.chooseMode" = "Elegir modo de cámara";
+"camera.chooseModeHint" = "Selecciona el objetivo para tu habitación";
+"camera.ar.hint" = "Apunta a la habitación, mantén el dispositivo estable y captura. Usamos AR para obtener parámetros internos precisos de la cámara (y profundidad de escena con LiDAR).";
+"camera.standard" = "Estándar";
+"camera.wideAngle" = "Gran angular";
+"camera.standard.desc" = "Objetivo estándar 1x • Sostén el dispositivo en cualquier orientación";
+"camera.wideAngle.desc" = "Objetivo ultra gran angular 0,5x • Captura más espacio";
+"camera.wideAngle.info" = "Utiliza el objetivo ultra gran angular 0,5x para ampliar el campo de visión";
+"camera.selectWideAngle" = "Seleccionar foto gran angular";
+"camera.captureWideAngle" = "Capturar foto gran angular";
+"camera.wideAngle.holdSteady" = "Mantén el dispositivo estable • El ultra gran angular captura más espacio";
 
 "faq.pinchOverlaySize" = "¿Qué pasa cuando pellizco el mueble segmentado?";
 "faq.pinchOverlaySizeAnswer" = "El gesto de pellizco hace que la superposición del mueble sea más grande o más pequeña. Si el modo de tamaño está activado y la pastilla Furni está visible, esa pastilla se actualiza con la estimación redimensionada actual del mueble para la habitación. Si el modo de tamaño está desactivado, el pellizco solo cambia visualmente la superposición en pantalla.";
@@ -533,15 +568,15 @@
 
 
 "settings.credits" = "Créditos";
-"credits.title" = "Créditos";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.title" = "Tecnología y créditos de desarrollo";
+"credits.intro" = "Paafekt se basa en tecnologías de las plataformas de Apple y Google. Las herramientas de OpenAI y Anthropic también ayudaron en la investigación, la redacción y la ingeniería durante el desarrollo.";
 "credits.disclaimer" = "Estos reconocimientos se proporcionan únicamente por transparencia. Las referencias a empresas, productos o modelos de terceros no implican patrocinio, respaldo ni afiliación.";
 "credits.visitWebsite" = "Visitar sitio web";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.appleBody" = "Los frameworks de Apple proporcionan captura con cámara, Core ML, procesamiento de AR/profundidad y renderizado 3D en el dispositivo para la app de iOS.";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android, ARCore, Filament y Firebase proporcionan las funciones de plataforma, AR, renderizado 3D y autenticación que utiliza la app de Android.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "Las herramientas de OpenAI, incluido ChatGPT, se utilizaron para apoyar la ideación de producto, la ayuda de implementación, la redacción y la exploración técnica durante el desarrollo.";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Las herramientas de Anthropic se utilizaron para apoyar la investigación, la asistencia de código, el razonamiento sobre detalles de implementación y la iteración del desarrollo.";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Las herramientas de Luma AI y las referencias de producto ayudaron a orientar partes de nuestra exploración de flujos de trabajo visuales de IA y 3D durante el desarrollo del producto.";

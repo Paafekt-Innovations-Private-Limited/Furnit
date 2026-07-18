@@ -10,6 +10,7 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import kotlin.math.atan
 import kotlin.math.max
 
 data class RoomMeasurementPipelineResult(
@@ -75,6 +76,7 @@ object DepthAnythingRoomMeasurementPipeline {
                 imageWidth = imageWidth,
                 imageHeight = imageHeight,
                 fallbackFx = focalPx,
+                cameraMetadata = cameraMetadata,
             )
             val depthRows = RoomMath.depthToRows(rawDepth, imageWidth, imageHeight)
             val arkitGravityDown = arkitGravityDownVector(cameraMetadata)
@@ -269,7 +271,24 @@ object DepthAnythingRoomMeasurementPipeline {
         imageWidth: Int,
         imageHeight: Int,
         fallbackFx: Float,
+        cameraMetadata: Map<String, Double>?,
     ): ResolvedFocal {
+        val trustedFx = cameraMetadata?.get("arkitFocalLengthXPx")?.toFloat()
+        val trustedFy = cameraMetadata?.get("arkitFocalLengthYPx")?.toFloat() ?: trustedFx
+        if (trustedFx != null && trustedFy != null &&
+            trustedFx.isFinite() && trustedFy.isFinite() &&
+            trustedFx > 1f && trustedFy > 1f
+        ) {
+            val horizontalFovDegrees =
+                2f * atan((imageWidth * 0.5f) / trustedFx) * 180f / Math.PI.toFloat()
+            return ResolvedFocal(
+                fx = trustedFx,
+                fy = trustedFy,
+                source = "sidecar_focal_px",
+                horizontalFOVDegrees = horizontalFovDegrees,
+                clamped = false,
+            )
+        }
         return FocalResolver.resolve(null, geoCalib, imageWidth, imageHeight).let { resolved ->
             if (resolved.fx > 1f) resolved else ResolvedFocal(fallbackFx, fallbackFx, "fallback_metric_focal", 70f, false)
         }

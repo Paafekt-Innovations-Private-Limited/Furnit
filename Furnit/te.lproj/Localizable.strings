@@ -9,7 +9,6 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D గది ఎక్స్‌ప్లోరర్";
 "app.version" = "వెర్షన్";
-"app.developer" = "Paafekt టీమ్";
 
 // MARK: - Common Actions
 "common.done" = "పూర్తయింది";
@@ -20,7 +19,6 @@
 "common.delete" = "తొలగించు";
 "common.error" = "లోపం";
 "common.save" = "సేవ్";
-"common.close" = "మూసివేయు";
 "common.apply" = "వర్తింపజేయి";
 
 // MARK: - Login View
@@ -49,18 +47,9 @@
 "otp.resendFailed" = "కోడ్ మళ్ళీ పంపడం విఫలమైంది.";
 
 // MARK: - Home View
-"home.title" = "3D గది మోడల్స్";
-"home.noModels" = "3D మోడల్స్ కనుగొనబడలేదు";
-"home.noModelsDescription" = "ఫోటో నుండి మీ మొదటి గదిని సృష్టించండి!";
-"home.createRoom" = "ఫోటో నుండి గది సృష్టించు";
-"home.createRoomToolbarLabel" = "ఫోటో → 3D";
-"home.createRoomHint" = "గదిని సృష్టించడానికి ఇక్కడ టాప్ చేయండి";
-"home.roomsRemaining" = "%d/%d గదులు మిగిలి ఉన్నాయి";
 "home.deleteHint" = "కొత్తవి సృష్టించడానికి పాత గదులను తొలగించండి";
 "home.swipeHint" = "తొలగించడానికి ఎడమకు స్వైప్ చేయండి";
 "home.renameRoom" = "పేరు మార్చు";
-"home.renameRoomMessage" = "ఈ పేరు మీ గదుల జాబితాలో కనిపిస్తుంది. సేవ్ చేసిన ఫైల్ పేరు అలాగే ఉంటుంది.";
-"home.roomNamePlaceholder" = "గది పేరు";
 "home.roomModel" = "3D గది మోడల్";
 "home.aiBased3DRoom" = "AI ఆధారిత 3D గది";
 "home.manualBased3DRoom" = "మాన్యువల్ ఆధారిత 3D గది";
@@ -70,8 +59,6 @@
 "roomLimit.message" = "మీరు %d గదుల పరిమితికి చేరుకున్నారు. కొత్తవి సృష్టించడానికి కొన్నింటిని తొలగించండి.";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "గది తొలగించాలా?";
-"deleteRoom.message" = "'%@' ని తొలగించాలనుకుంటున్నారా? దీన్ని రద్దు చేయలేరు.";
 
 // MARK: - Explore View
 "explore.title" = "అన్వేషించు";
@@ -141,7 +128,6 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "లైసెన్స్‌లు మరియు ఆకృతులు";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "ఓపెన్ సోర్స్ లైసెన్స్‌లు";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "పూర్తి లైసెన్స్ చూడండి";
@@ -167,12 +153,6 @@
 
 
 // MARK: - Movement Speed Options
-"speed.slow" = "నెమ్మది";
-"speed.slow.description" = "వివరమైన అన్వేషణ కోసం ఖచ్చితమైన నియంత్రణ";
-"speed.normal" = "సాధారణ";
-"speed.normal.description" = "సౌకర్యవంతమైన నావిగేషన్ కోసం సమతుల్య వేగం";
-"speed.fast" = "వేగం";
-"speed.fast.description" = "చురుకైన అన్వేషణ కోసం త్వరిత కదలిక";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "సహాయం & మద్దతు";
@@ -187,53 +167,34 @@
 "help.emailBody" = "Hi Paafekt Support Team,\n\nI need help with:\n\n";
 
 // FAQ - Room Creation
-"faq.roomCreation" = "గది సృష్టి";
-"faq.howToCreate" = "3D గదిని ఎలా సృష్టించాలి?";
-"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "గది సృష్టించడానికి ఫోటో ఎలా తీయాలి?";
 "faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.depthAwareRoomPhoto" = "యాప్‌లో ఫోటో తీయడం గది నాణ్యతకు సహాయపడుతుందా?";
 "faq.depthAwareRoomPhotoAnswer" = "అవును. మద్దతు ఉన్న పరికరాల్లో, గ్యాలరీకి బదులుగా Take a photo లోతు-అవగాహన కెమెరాను ఉపయోగిస్తుంది (అందుబాటులో ఉంటే), ఇది 3D గది నిర్మాణాన్ని మెరుగుపరచవచ్చు.";
-"faq.twoMethods" = "గది సృష్టికి రెండు ఎంపికలు ఏమిటి?";
-"faq.twoMethodsAnswer" = "ఫోటో ఎంచుకున్నప్పుడు మీరు ఎంచుకోవచ్చు: 1) AI నడిచే 3D గది - కృత్రిమ మేధస్సుతో యథార్థ 3D గదిని స్వయంచాలకంగా సృష్టిస్తుంది, లేదా 2) మాన్యువల్ సెటప్ - ఎక్కువ నియంత్రణ కోసం గది సరిహద్దులను మీరే గీయండి.";
 "faq.whatIsAIRoom" = "AI నడిచే 3D గది అంటే ఏమిటి?";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "మాన్యువల్ సెటప్ అంటే ఏమిటి?";
-"faq.whatIsManualRoomAnswer" = "మాన్యువల్ సెటప్‌తో, ఫోటోలో మీ గది గోడల అవుట్‌లైన్ గీయండి. 3D గది ఖచ్చితంగా ఎలా కనిపిస్తుందో మీకు ఎక్కువ నియంత్రణ ఇస్తుంది. గది ఆకారాన్ని మీరే ఫైన్-ట్యూన్ చేయాలనుకున్నప్పుడు బాగుంటుంది.";
 "faq.whichMethodBetter" = "నేను ఏ పద్ధతి ఎంచుకోవాలి?";
-"faq.whichMethodBetterAnswer" = "మొదట AI నడిచేది ప్రయత్నించండి - వేగంగా, చాలా గదులకు బాగా పనిచేస్తుంది. ఫలితం సరిగ్గా కనిపించకపోతే, గోడలను మీకు కావలసిన చోటు గీయడానికి మాన్యువల్ సెటప్ ఉపయోగించండి. రెండూ ప్రయత్నించి ఏది ఇష్టమో చూడండి!";
 "faq.bestPhotos" = "ఏ రకమైన ఫోటోలు బాగా పని చేస్తాయి?";
 "faq.bestPhotosAnswer" = "మంచి ఫలితాల కోసం, మంచి వెలుతురులో పరికరాన్ని స్థిరంగా పట్టుకుని ఫోటోలు తీయండి. నేలలు, గోడలు మరియు సీలింగ్ అంచులతో సహా మొత్తం గదిని క్యాప్చర్ చేయడానికి ప్రయత్నించండి. బ్లర్ లేదా చీకటి ఫోటోలను నివారించండి.";
 "faq.generationFailing" = "నా గది జనరేషన్ ఎందుకు విఫలమవుతోంది?";
 "faq.generationFailingAnswer" = "ఫోటో చాలా చీకటిగా, బ్లర్‌గా ఉంటే, లేదా తగినంత గది లక్షణాలు చూపించకపోతే గది జనరేషన్ విఫలం కావచ్చు. మెరుగైన వెలుతురు మరియు విశాల కోణంతో కొత్త ఫోటో తీయడానికి ప్రయత్నించండి.";
 "faq.howManyRooms" = "నేను ఎన్ని గదులు సృష్టించగలను?";
-"faq.howManyRoomsAnswer" = "మీరు 20 గదుల వరకు సృష్టించవచ్చు. కొత్త గదుల కోసం స్థలం కోసం పాత గదులను తొలగించండి. గది సంఖ్య మరియు ఉపయోగించిన నిల్వ మీ హోమ్ స్క్రీన్ పైభాగంలో చూపబడుతుంది.";
 
 // FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "ఫర్నిచర్ సెగ్మెంటేషన్";
 "faq.whatIsSegmentation" = "ఫర్నిచర్ సెగ్మెంటేషన్ అంటే ఏమిటి?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "Room viewer లో furniture ఎలా segment చేయాలి?";
 "faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "నా ఫర్నిచర్ ఎందుకు గుర్తించబడలేదు?";
 "faq.notDetectedAnswer" = "ఫర్నిచర్ డిటెక్షన్ స్పష్టమైన, మంచి వెలుతురు ఫోటోలలో ఫర్నిచర్ స్పష్టంగా కనిపించినప్పుడు బాగా పని చేస్తుంది. ఫర్నిచర్ పాక్షికంగా కప్పబడలేదని లేదా బ్యాక్‌గ్రౌండ్‌తో కలిసిపోలేదని నిర్ధారించుకోండి.";
 "faq.multiplePieces" = "అనేక ఫర్నిచర్ ముక్కలను సెగ్మెంట్ చేయవచ్చా?";
-"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "నా 3D గదిని ఎలా చూడాలి?";
 "faq.howToViewAnswer" = "Tap any room on the home screen to open the 3D viewer. Drag to look around and pinch to zoom. Tap the room to summon extra controls (recenter, ruler, Capture). The gold Fit button stays visible at bottom-right.";
 "faq.howToPlace" = "నా గదిలో ఫర్నిచర్ ఎలా ఉంచాలి?";
 "faq.howToPlaceAnswer" = "Segment ట్యాప్ చేసిన తర్వాత ఎంచుకున్న furniture గదిలో overlay గా కనిపిస్తుంది. Position కోసం drag చేయండి, size మార్చడానికి pinch చేయండి, orientation సర్దడానికి rotate చేయండి.";
-"faq.sampleRoom" = "నాదానికి బదులు శాంపిల్ రూమ్ ఉపయోగించవచ్చా?";
-"faq.sampleRoomAnswer" = "అవును! యాప్ ప్రయోగించడానికి శాంపిల్ రూమ్‌లను అందిస్తుంది. మొదట మీ సొంత గది సృష్టించకుండా ఫర్నిచర్ ప్లేస్‌మెంట్ ప్రయత్నించడానికి ఎక్స్‌ప్లోర్ సెక్షన్ నుండి వాటిని యాక్సెస్ చేయండి.";
-"faq.accuracy" = "3D మోడల్ ఎంత ఖచ్చితమైనది?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "గది కొలతలను సర్దుబాటు చేయవచ్చా?";
 "faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.furnitureMeasurements" = "ఫర్నిచర్ & కొలతలు";
-"faq.arAssistedSizing" = "AR-సహాయ ఫర్నిచర్ సైజింగ్ అంటే ఏమిటి?";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "చిన్న కొలత చూపు ఏమిటి?";
 "faq.measurementPillAnswer" = "SmartyPants సక్రియంగా ఉన్నప్పుడు, అంచనా వేసిన ఫర్నిచర్ మరియు గది ఎత్తు చూపబడవచ్చు. ఖచ్చితత్వం కోసం నిజమైన కొలతలను నమోదు చేయడానికి ట్యాప్ చేయండి. గది ఫోటో వైడ్-ఆంగిల్ (0.5×) తో తీస్తే దాన్ని గుర్తించండి.";
 "faq.resetOverlayScale" = "మాస్క్ తప్పుగా జూమ్ అయినట్లు అనిపిస్తే?";
@@ -242,9 +203,7 @@
 "faq.roomFitmentAnswer" = "segmentation తర్వాత 3D room లో cutouts resize/reposition. full-video లో Segment selected pieces room పై composite చేసి several items compare.";
 
 // FAQ - Placement intelligence & aesthetic
-"faq.placementIntelligence" = "ప్లేస్‌మెంట్ ఇంటెలిజెన్స్ & సౌందర్యం";
 "faq.whatIsPlacementIntelligence" = "ప్లేస్‌మెంట్ ఇంటెలిజెన్స్ అంటే ఏమిటి?";
-"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "సౌందర్య స్కోర్ కోసం రంగును యాప్ ఎలా ఎంచుకుంటుంది?";
 "faq.furnitureColorAestheticAnswer" = "యాప్ మీరు చూసే AI ఫర్నిచర్ కట్‌అవుట్ (అదే సెగ్మెంటెడ్ ఓవర్‌లే) లోపల కనిపించే పిక్సెల్‌ల RGB సగటును లెక్కించి నేల, గోడలు, పైకప్పు నుండి సాంపిల్ చేసిన రంగులతో పోల్చుతుంది. కట్‌అవుట్ సిద్ధంగా లేకపోతే సెగ్మెంటేషన్ నిజమైన సాంపిల్ ఇచ్చే వరకు గది పాలెట్ నుండి ఫాల్‌బ్యాక్ రంగు వాడుతుంది.";
 "faq.whatDoHarmonyContrastMean" = "హార్మోనీ, కాంట్రాస్ట్, స్టైల్ ఫిట్ అంటే ఏమిటి?";
@@ -261,8 +220,6 @@
 "boundary.vanish" = "వానిషింగ్ పాయింట్";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "ఫర్నిచర్ జోడించు";
-"viewer.capture" = "క్యాప్చర్";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "కెమెరా ప్రారంభమవుతోంది...";
@@ -337,7 +294,6 @@
 "roomViewer.roomDimensionsDefaultValues" = "డిఫాల్ట్ విలువలు";
 "roomViewer.roomDimensionsWHDWithDefault" = "వెడల్పు × ఎత్తు × లోతు\n%.2f × %.2f × %.2f మీ (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "వెడల్పు × ఎత్తు\n%.2f × %.2f మీ (%@)";
-"roomViewer.roomDimensionsNearAccurateValues" = "దగ్గరగా ఖచ్చితమైన విలువలు";
 "roomViewer.roomDimensionsWHDWithNearAccurate" = "వెడల్పు × ఎత్తు × లోతు\n%.2f × %.2f × %.2f మీ (%@)";
 "roomViewer.measuringRoom" = "గదిని కొలుస్తున్నారు...";
 "roomViewer.goingBack" = "వెనక్కి వెళ్తోంది...";
@@ -406,9 +362,7 @@
 "accessibility.createRoom" = "ఫోటో నుండి గది సృష్టించు";
 
 // FAQ - AI Features (added)
-"faq.aiFeatures" = "AI ఫీచర్లు";
 "faq.whatIsBrainIcon" = "What does the Fit button do?";
-"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
 "faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
 "faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "స్క్రీన్‌షాట్ ఎలా తీయాలి?";
@@ -417,7 +371,6 @@
 "faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - 3D Room Controls (added)
-"faq.roomControls" = "3D గది కంట్రోల్స్";
 "faq.howToNavigate" = "గది లోపల ఎలా నావిగేట్ చేయాలి?";
 "faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
 "faq.whatDoArrowsDo" = "How do I show or hide viewer controls?";
@@ -465,7 +418,6 @@
 
 // MARK: - i18n sync (Telugu)
 "common.or" = "లేదా";
-"common.retry" = "మళ్లీ ప్రయత్నించండి";
 "settings.fullVideoWithIdentifications" = "గుర్తింపులతో పూర్తి వీడియో";
 "settings.fullVideoWithIdentificationsDescription" = "విభజించిన ఫర్నిచర్ ఓవర్‌లేను స్వయంచాలకంగా కేంద్రీకరించడానికి బదులుగా గుర్తింపు పెట్టెలు మరియు లేబుల్‌లతో ప్రత్యక్ష కెమెరా ఫీడ్‌ను చూపించు.";
 
@@ -509,13 +461,6 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "కొలత సూచన";
 "help.measurementAccuracyBody" = "AR depth మద్దతు లేని ఫోన్లలో కూడా గది మరియు ఫర్నిచర్ ప్రివ్యూ కనిపిస్తుంది, కానీ గది కొలతలు మరియు ముఖ్యంగా ఫర్నిచర్ కొలతలు కేవలం అంచనాలే.";
-"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
-"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
-"faq.accuracyAnswer" = "3D గది ఒక ఫోటో ఆధారంగా చేసిన అంచనా. గది కొలతలు మార్గదర్శకంగా ఉపయోగపడవచ్చు, కానీ అవి survey-grade ఖచ్చితత్వం కావు. ఫర్నిచర్ కొలతలు AR లేదా depth మద్దతు ఉన్న ఫోన్లలో ఎక్కువగా నమ్మదగినవి.";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
-"faq.measurementPillAnswer" = "furniture size pill అనేది sizing mode ఆన్ అయ్యి, యాప్‌కు ఉపయోగపడే live height estimate ఉన్నప్పుడే కనిపిస్తుంది. ruler button ప్రస్తుత గది వెడల్పు, ఎత్తు, లోతును ఒక చిన్న card లో చూపిస్తుంది. non-AR ఫోన్లలో ఈ రీడింగులు, ముఖ్యంగా ఫర్నిచర్‌కు, తక్కువ నమ్మదగినవి.";
-"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 "faq.pinchOverlaySize" = "segmentation అయిన furniture ను pinch చేస్తే ఏమవుతుంది?";
 "faq.pinchOverlaySizeAnswer" = "pinch చేస్తే furniture overlay పెద్దది లేదా చిన్నది అవుతుంది. sizing mode ఆన్ అయి Furni pill కనిపిస్తే, ఆ pill గదికి సరిపోయే ప్రస్తుత resized furniture అంచనాకు అప్డేట్ అవుతుంది. sizing mode ఆఫ్‌లో ఉంటే, pinch స్క్రీన్ మీద overlay రూప పరిమాణాన్నే మాత్రమే మార్చుతుంది.";
@@ -551,5 +496,99 @@
 "credits.openAIBody" = "ChatGPT సహా OpenAI సాధనాలు ఉత్పత్తి ఆలోచన, అమలు సహాయం, ముసాయిదా రచన మరియు సాంకేతిక పరిశీలన కోసం ఉపయోగించబడ్డాయి.";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Anthropic సాధనాలు పరిశోధన, కోడ్ సహాయం, అమలు వివరాలపై ఆలోచన మరియు అభివృద్ధి పునరావృతికి మద్దతుగా ఉపయోగించబడ్డాయి.";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Luma AI సాధనాలు మరియు ఉత్పత్తి సూచనలు మా visual AI మరియు 3D workflow పరిశీలనలోని కొన్ని భాగాలకు దిశానిర్దేశం చేశాయి.";
+
+// MARK: - Room Library, account, legal, and FAQ refresh
+"home.libraryTitle" = "గది లైబ్రరీ";
+"home.librarySubtitle" = "ఈ పరికరంలో నిల్వ చేసిన మీ 3D గదులు.";
+"home.storageTitle" = "ఈ పరికరంలో నిల్వ చేయబడింది";
+"home.storagePath" = "గదులు Paafekt ప్రైవేట్ యాప్ నిల్వలోనే ఉంటాయి; స్వయంచాలకంగా అప్‌లోడ్ కావు. అంతర్గత స్థానం: Documents/SavedRooms.";
+"home.storageWarning" = "Paafekt ను అన్‌ఇన్‌స్టాల్ చేస్తే సేవ్ చేసిన గదులు శాశ్వతంగా తొలగిపోతాయి. ఉంచుకోవాల్సిన వాటిని ముందుగా షేర్ చేయండి.";
+"home.noModels" = "ఇంకా గదులు లేవు";
+"home.noModelsDescription" = "ఫోటో నుంచి మీ మొదటి 3D గదిని సృష్టించండి లేదా Manual Setup తో నిర్మించండి. గదులు ఈ పరికరంలో సేవ్ అవుతాయి.";
+"home.createRoom" = "గది సృష్టించు";
+"home.createRoomToolbarLabel" = "గది సృష్టించు";
+"deleteRoom.title" = "ఈ గదిని తొలగించాలా?";
+"deleteRoom.message" = "ఈ గది ఈ పరికరం నుంచి శాశ్వతంగా తొలగించబడుతుంది. ఈ చర్యను తిరిగి మార్చలేరు.";
+"profile.deleteAccount" = "ఖాతాను తొలగించు";
+"profile.deleteAccountConfirmTitle" = "ఖాతాను తొలగించు";
+"profile.deleteAccountConfirmMessage" = "మీ ఖాతా మరియు సైన్-ఇన్ డేటాను శాశ్వతంగా తొలగించాలా? ఈ పరికరంలో సేవ్ చేసిన గదులు మీరు తొలగించే వరకు లేదా Paafekt ను అన్‌ఇన్‌స్టాల్ చేసే వరకు ఉంటాయి.";
+"profile.deleteAccountSuccessTitle" = "ఖాతా తొలగించబడింది";
+"profile.deleteAccountSuccessMessage" = "మీ ఖాతా తొలగించబడింది; మీరు సైన్ అవుట్ అయ్యారు.";
+"settings.legalSummary" = "గది ప్రాసెసింగ్ మరియు ఫర్నిచర్ విశ్లేషణ పరికరంపైనే జరుగుతాయి. మీరు స్పష్టంగా షేర్ చేయకపోతే సేవ్ చేసిన గదులు ప్రైవేట్ యాప్ నిల్వలోనే ఉంటాయి. Firebase ఫోన్-నంబర్ ధృవీకరణ మరియు దుర్వినియోగ నివారణ డేటాను ప్రాసెస్ చేస్తుంది.";
+"faq.roomCreation" = "ప్రారంభించడం";
+"faq.howToCreate" = "గదిని ఎలా సృష్టించాలి?";
+"faq.howToCreateAnswer" = "గది సృష్టించు ట్యాప్ చేసి, ఫోటో తీయండి లేదా ఎంచుకోండి. స్వయంచాలక అంచనా కోసం AI Room లేదా గదిని మీరే నిర్వచించడానికి Manual Setup ఎంచుకోండి. పూర్తయిన గదిని గది లైబ్రరీలో చేర్చడానికి సేవ్ చేయండి.";
+"faq.twoMethods" = "AI Room మరియు Manual Setup మధ్య తేడా ఏమిటి?";
+"faq.twoMethodsAnswer" = "AI Room ఒక ఫోటో నుంచి గది కొలతలను అంచనా వేసి, కొలిచిన టెక్స్చర్ ప్రతిరూపాన్ని సృష్టిస్తుంది. ఇది పూర్తి వాల్యూమెట్రిక్ పునర్నిర్మాణం కాదు. Manual Setup లో గది సరిహద్దులను మీరే నిర్వచించవచ్చు.";
+"faq.whatIsAIRoomAnswer" = "AI Room పరికరంపైనే డెప్త్ అంచనా, ఫర్నిచర్ యాంకర్లు, కెమెరా క్యాలిబ్రేషన్ ఉపయోగించి ఒక ఫోటో నుంచి కొలిచిన టెక్స్చర్ గదిని అంచనా వేస్తుంది. ఇది పూర్తి వాల్యూమెట్రిక్ పునర్నిర్మాణం కాదు.";
+"faq.whatIsManualRoomAnswer" = "ఫలిత ప్రతిరూపంపై ఎక్కువ నియంత్రణ కోసం ఫోటోలోనే గది సరిహద్దులను నేరుగా నిర్వచించడానికి Manual Setup అనుమతిస్తుంది.";
+"faq.whichMethodBetterAnswer" = "వేగమైన స్వయంచాలక అంచనా కోసం AI Room ఎంచుకోండి. గది సరిహద్దులపై ప్రత్యక్ష నియంత్రణ కావాలంటే Manual Setup ఎంచుకోండి. ఒక ఫలితం సరిపోకపోతే మరో పద్ధతి ప్రయత్నించండి.";
+"faq.howManyRoomsAnswer" = "మీరు 20 గదుల వరకు సేవ్ చేయవచ్చు. స్థలం కోసం అవసరం లేని గదులను తొలగించండి. గది లైబ్రరీ ప్రస్తుత గదుల సంఖ్యను, ఉపయోగించిన మొత్తం నిల్వను చూపుతుంది.";
+"faq.whereRoomsSaved" = "నా గదులు ఎక్కడ సేవ్ అవుతాయి?";
+"faq.whereRoomsSavedAnswer" = "గదులు ఈ పరికరంలోని Paafekt ప్రైవేట్ యాప్ నిల్వలో ఉంటాయి; స్వయంచాలకంగా అప్‌లోడ్ కావు. అంతర్గత స్థానం: Documents/SavedRooms.";
+"faq.arePhotosUploaded" = "నా గది ఫోటోలు అప్‌లోడ్ అవుతాయా?";
+"faq.arePhotosUploadedAnswer" = "లేదు. గది సృష్టి, ఫర్నిచర్ గుర్తింపు, Placement Intelligence ఈ పరికరంపైనే జరుగుతాయి. Firebase ఫోన్-నంబర్ ధృవీకరణ మరియు దుర్వినియోగ నివారణ డేటాను విడిగా ప్రాసెస్ చేస్తుంది. మీరు స్పష్టంగా షేర్ చేసినప్పుడు మాత్రమే కంటెంట్ Paafekt నుంచి బయటకు వెళ్తుంది.";
+"faq.aiFeatures" = "ఫర్నిచర్ గుర్తింపు మరియు పరిమాణ నిర్ధారణ";
+"faq.whatIsBrainIconAnswer" = "ఫర్నిచర్‌ను గుర్తించి 3D గదిపై పారదర్శక కట్‌అవుట్ సృష్టించడానికి Fit ట్యాప్ చేయండి. స్థానాన్ని మార్చడానికి లాగండి; పరిమాణం మార్చడానికి పించ్ చేయండి. Fit దృశ్య ప్రివ్యూ మాత్రమే; కొలతల మార్గదర్శకానికి AR-సహాయ పరిమాణ నిర్ధారణ అవసరం.";
+"faq.whatIsSegmentationAnswer" = "కెమెరా దృశ్యంలో ఫర్నిచర్‌ను గుర్తించి, దాని కనిపించే పిక్సెల్‌లను నేపథ్యం నుంచి వేరు చేసి కదిలించగల కట్‌అవుట్‌గా చూపించడమే ఫర్నిచర్ సెగ్మెంటేషన్. ప్రాసెసింగ్ ఈ పరికరంపైనే జరుగుతుంది.";
+"faq.accuracy" = "గది మరియు ఫర్నిచర్ కొలతలు ఎంత ఖచ్చితమైనవి?";
+"faq.accuracyAnswer" = "కొలతలు పరికరంపైనే చేసే అంచనాలు; ఫోటో నాణ్యత, వెలుతురు, కెమెరా కోణం, AR ట్రాకింగ్ వల్ల మారవచ్చు. మార్గదర్శకంగా మాత్రమే ఉపయోగించి ముఖ్య కొలతలను నిర్ణయం ముందు మీరే నిర్ధారించండి.";
+"faq.arAssistedSizing" = "AR-సహాయ పరిమాణ నిర్ధారణ అంటే ఏమిటి?";
+"faq.arAssistedSizingAnswer" = "మద్దతు ఉన్న కెమెరా మరియు డెప్త్ సామర్థ్యాలతో ఫర్నిచర్ కొలతలను అంచనా వేయడమే AR-సహాయ పరిమాణ నిర్ధారణ. ఫలితాలు క్యాప్చర్ నాణ్యత, ట్రాకింగ్ పరిస్థితులపై ఆధారపడే అంచనాలే.";
+"faq.multiplePiecesAnswer" = "పూర్తి-వీడియో మోడ్‌లో అనేక గుర్తింపు పెట్టెలను ఎంచుకుని Segment ట్యాప్ చేస్తే వాటి కట్‌అవుట్‌లు కలిపి సృష్టించబడతాయి. డిఫాల్ట్ Fit ప్రక్రియలో ఒక్కో వస్తువును విడిగా కూడా సెగ్మెంట్ చేయవచ్చు.";
+"faq.placementIntelligence" = "Placement Intelligence";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence వస్తువు అంచనా వెడల్పు, ఎత్తు, లెక్కించిన లోతును గది పరిమితితో పోల్చుతుంది. ఇది కొలతల అనుకూలతను మాత్రమే తెలియజేస్తుంది; ఖాళీ నేల స్థానాన్ని గుర్తించదు.";
+"faq.aiRoomManualSetup" = "AI Room & Manual Setup";
+"faq.aestheticGuidance" = "సౌందర్య మార్గదర్శకం";
+"faq.measurementsAccuracy" = "కొలతలు మరియు ఖచ్చితత్వం";
+"faq.savedRoomsStorage" = "సేవ్ చేసిన గదులు మరియు నిల్వ";
+"faq.sharingExporting" = "షేరింగ్ మరియు ఎగుమతి";
+"faq.privacyAccount" = "గోప్యత మరియు ఖాతా";
+"faq.troubleshootingSupport" = "సమస్య పరిష్కారం మరియు మద్దతు";
+"faq.uninstallRooms" = "Paafekt ను అన్‌ఇన్‌స్టాల్ చేస్తే నా గదులకు ఏమవుతుంది?";
+"faq.uninstallRoomsAnswer" = "Paafekt ను అన్‌ఇన్‌స్టాల్ చేస్తే దాని ప్రైవేట్ యాప్ నిల్వలోని గదులు శాశ్వతంగా తొలగిపోతాయి. ఉంచుకోవాల్సిన వాటిని ముందే షేర్ చేయండి.";
+"faq.exportRoom" = "గదిని బ్యాకప్ లేదా ఎగుమతి చేయడం ఎలా?";
+"faq.exportRoomAnswer" = "ఆ గది రకానికి Share అందుబాటులో ఉంటే ఉపయోగించండి. Capture ప్రస్తుత దృశ్య చిత్రాన్ని షేర్ చేస్తుంది; తిరిగి పునరుద్ధరించగల గది బ్యాకప్ కాదు. Paafekt ప్రస్తుతం క్లౌడ్ సింక్ లేదా పూర్తి-లైబ్రరీ బ్యాకప్ హామీ ఇవ్వదు.";
+"faq.freeFloorLocation" = "Placement Intelligence నేలపై ఖాళీ స్థానాన్ని కనుగొంటుందా?";
+"faq.freeFloorLocationAnswer" = "లేదు. అంచనా ఫర్నిచర్ కొలతలు గది పరిమితికి అనుకూలమా అని మాత్రమే చూస్తుంది. ఖాళీ నేల స్థలాన్ని లేదా ప్రత్యేక తెరచిన స్థానాన్ని గుర్తించదు.";
+"faq.dimensionalFit" = "కొలతల సరిపోలిక ఎలా లెక్కించబడుతుంది?";
+"faq.dimensionalFitAnswer" = "వస్తువు అంచనా వెడల్పు, ఎత్తు, లెక్కించిన లోతును గది అంచనా కొలతలతో పోల్చుతారు; ఉపయోగకరమైతే తిప్పిన అడుగుభాగాన్ని కూడా పరిగణిస్తారు. రెండూ అంచనాలే కాబట్టి ఫలితాన్ని మార్గదర్శకంగా చూడండి.";
+"faq.aestheticScore" = "సౌందర్య స్కోరు ఎలా లెక్కించబడుతుంది?";
+"faq.aestheticScoreAnswer" = "సెగ్మెంట్ చేసిన ఫర్నిచర్ సగటు కనిపించే రంగును గది నుంచి నమూనా తీసిన రంగులతో యాప్ పోల్చుతుంది. రంగు సామరస్యం, ప్రకాశ వ్యత్యాసం, సాధారణ శైలి అనుకూలత స్కోరుకు తోడ్పడతాయి. ఇవి అంచనా డిజైన్ మార్గదర్శకాలే.";
+"faq.aestheticUnavailable" = "సౌందర్య మార్గదర్శకం ఎందుకు అందుబాటులో లేదు?";
+"faq.aestheticUnavailableAnswer" = "గది మరియు సెగ్మెంట్ చేసిన ఫర్నిచర్ రెండింటి నుంచి ఉపయోగపడే రంగు నమూనాలు అవసరం. ఏదైనా అందుబాటులో లేకపోతే Paafekt కల్పిత స్కోరు చూపదు.";
+"faq.purchaseReliance" = "ఫర్నిచర్ కొనేటప్పుడు Paafekt పై ఆధారపడవచ్చా?";
+"faq.purchaseRelianceAnswer" = "Paafekt ను మార్గదర్శకంగా ఉపయోగించండి, హామీగా కాదు. కొనుగోలు ముందు కొలతలు, ఖాళీలు, అనుకూలతను విక్రేతతో నిర్ధారించండి.";
+"faq.deleteAccountEffect" = "నా ఖాతాను తొలగిస్తే ఏమవుతుంది?";
+"faq.deleteAccountEffectAnswer" = "ఖాతా తొలగింపు Firebase ధృవీకరణ ఖాతాను తీసివేసి మిమ్మల్ని సైన్ అవుట్ చేస్తుంది. ఈ పరికరంలోని గదులు స్వయంచాలకంగా తొలగవు; Paafekt లో తొలగించండి లేదా యాప్‌ను అన్‌ఇన్‌స్టాల్ చేయండి.";
+"faq.firebaseData" = "Firebase ఏ డేటాను ప్రాసెస్ చేస్తుంది?";
+"faq.firebaseDataAnswer" = "Firebase మీ ఫోన్ నంబర్, ధృవీకరణ రికార్డులు, పరిశీలన మరియు దుర్వినియోగ నివారణకు ఉపయోగించే పరికర ఇన్‌స్టాలేషన్ గుర్తింపును ప్రాసెస్ చేస్తుంది. గది సృష్టి, ఫర్నిచర్ ప్రాసెసింగ్ ఈ పరికరంపైనే ఉంటాయి.";
+"faq.contactSupport" = "మద్దతును ఎలా సంప్రదించాలి?";
+"faq.contactSupportAnswer" = "సెట్టింగ్‌లు → సహాయం & మద్దతు తెరిచి support@paafekt.com కు ఇమెయిల్ చేయండి.";
+"roomViewer.roomDimensionsNearAccurateValues" = "అంచనా కొలతలు";
+"camera.title" = "కెమెరా";
+"camera.chooseMode" = "కెమెరా మోడ్ ఎంచుకోండి";
+"camera.chooseModeHint" = "మీ గదికి కెమెరా లెన్స్ ఎంచుకోండి";
+"camera.ar.hint" = "కెమెరాను గది వైపు చూపించి స్థిరంగా పట్టుకుని క్యాప్చర్ చేయండి. ఖచ్చితమైన కెమెరా అంతర్గత విలువలకు AR ఉపయోగిస్తాము (LiDARలో దృశ్య లోతుతో సహా).";
+"camera.standard" = "ప్రామాణిక";
+"camera.wideAngle" = "వైడ్ యాంగిల్";
+"camera.standard.desc" = "ప్రామాణిక 1x లెన్స్ • ఏ దిశలోనైనా పట్టుకోండి";
+"camera.wideAngle.desc" = "అల్ట్రా-వైడ్ 0.5x లెన్స్ • ఎక్కువ ప్రాంతాన్ని క్యాప్చర్ చేస్తుంది";
+"camera.wideAngle.info" = "విస్తృత దృశ్యానికి అల్ట్రా-వైడ్ 0.5x లెన్స్ ఉపయోగిస్తుంది";
+"camera.selectWideAngle" = "వైడ్ ఫోటో ఎంచుకోండి";
+"camera.captureWideAngle" = "వైడ్ ఫోటో క్యాప్చర్ చేయండి";
+"camera.wideAngle.holdSteady" = "స్థిరంగా పట్టుకోండి • అల్ట్రా-వైడ్ లెన్స్ ఎక్కువ క్యాప్చర్ చేస్తుంది";
+"licenses.hypersimTitle" = "Hypersim డేటాసెట్";
+"licenses.hypersim" = "మెట్రిక్ ఇండోర్ మోడల్‌ను Apple Hypersim సింథటిక్ ఇండోర్ డేటాసెట్‌తో ఫైన్-ట్యూన్ చేశారు. Hypersim CC BY-SA 3.0 కింద లైసెన్స్ పొందింది.";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "iOS Gaussian-splat పైప్‌లైన్ ఉపయోగించే SPZ డీకోడింగ్. కాపీరైట్ Niantic, Inc., Sean Cier మరియు సహకారులు. MIT లైసెన్స్.";
+"licenses.cocoTitle" = "COCO డేటాసెట్";
+"licenses.coco" = "RTMDet ను COCOతో శిక్షణ ఇచ్చారు. COCO అనోటేషన్లు CC BY 4.0 కింద లైసెన్స్ పొందాయి; వ్యక్తిగత చిత్రాలు వాటి యజమానుల నిబంధనలకు లోబడి ఉంటాయి.";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android, ARCore, Filament, Firebase Android యాప్ ఉపయోగించే ప్లాట్‌ఫార్మ్, AR, 3D రెండరింగ్ మరియు ధృవీకరణ సామర్థ్యాలను అందిస్తాయి.";
+"photoRoom.backAlertTitle" = "AI లేదా Manualతో కొనసాగాలా?";
+"photoRoom.backAlertMessage" = "గది సృష్టించడానికి AI లేదా Manual ట్యాప్ చేయండి; వెనక్కి వెళ్లడానికి సరే ట్యాప్ చేయండి.";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
+"roomViewer.furnitureHeightEstimate" = "ఫర్నిచర్ ఎత్తు ~ %.2f మీ";
+"settings.accountDeleteFooter" = "ఖాతా తొలగింపు మీ సైన్-ఇన్ ఖాతాను తీసివేస్తుంది. ఈ పరికరంలో సేవ్ చేసిన గదులను అది తొలగించదు.";

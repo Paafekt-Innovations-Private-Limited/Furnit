@@ -1,15 +1,32 @@
 package com.furnit.android.roomreconstruction
 
 import kotlin.math.sqrt
+import kotlin.math.roundToInt
 
 object RoomMath {
     fun median(values: List<Float>): Float {
         if (values.isEmpty()) return 0f
         val sorted = values.sorted()
-        return sorted[sorted.size / 2]
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 0) {
+            (sorted[middle - 1] + sorted[middle]) * 0.5f
+        } else {
+            sorted[middle]
+        }
     }
 
     fun median(values: FloatArray): Float {
+        if (values.isEmpty()) return 0f
+        val sorted = values.sorted()
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 0) {
+            (sorted[middle - 1] + sorted[middle]) * 0.5f
+        } else {
+            sorted[middle]
+        }
+    }
+
+    fun upperMedian(values: List<Float>): Float {
         if (values.isEmpty()) return 0f
         val sorted = values.sorted()
         return sorted[sorted.size / 2]
@@ -24,14 +41,14 @@ object RoomMath {
 
     fun percentile(sorted: List<Float>, fraction: Double): Float? {
         if (sorted.isEmpty()) return null
-        val index = ((sorted.size - 1) * fraction).toInt().coerceIn(0, sorted.lastIndex)
+        val index = ((sorted.size - 1) * fraction).roundToInt().coerceIn(0, sorted.lastIndex)
         return sorted[index]
     }
 
     fun percentile(sorted: FloatArray, fraction: Double): Float? {
         if (sorted.isEmpty()) return null
         val copy = sorted.sorted()
-        val index = ((copy.size - 1) * fraction).toInt().coerceIn(0, copy.lastIndex)
+        val index = ((copy.size - 1) * fraction).roundToInt().coerceIn(0, copy.lastIndex)
         return copy[index]
     }
 

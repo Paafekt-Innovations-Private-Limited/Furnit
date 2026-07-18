@@ -55,9 +55,9 @@ object GeoCalibLMSolver {
         var previous = evaluate(state, samples, fields.width, fields.height)
         var completedIterations = 0
 
-        repeat(20) { iteration ->
+        for (iteration in 0 until 20) {
             val system = linearizedSystem(state, previous.residuals, samples, fields.width, fields.height)
-            val delta = solveDamped(system, lambda) ?: return@repeat
+            val delta = solveDamped(system, lambda) ?: break
             val candidate = State(
                 roll = (state.roll + delta.first).coerceIn(-1.3f, 1.3f),
                 pitch = (state.pitch + delta.second).coerceIn(-1.3f, 1.3f),
@@ -73,7 +73,7 @@ object GeoCalibLMSolver {
                 state = candidate
                 previous = next
                 lambda = maxOf(1e-6f, lambda * 0.1f)
-                if (improvement < maxOf(1e-8f, previous.cost * 1e-5f)) return@repeat
+                if (improvement < maxOf(1e-8f, previous.cost * 1e-5f)) break
             } else {
                 lambda = minOf(100f, lambda * 10f)
             }

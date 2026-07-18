@@ -10,6 +10,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import com.furnit.android.utils.CrashReporter
@@ -608,10 +609,15 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun warmRoomMeasurementInBackgroundIfNeeded() {
         if (isPreviewMode || hasCalculatedRoomMeasurements || isMeasuringRoomDimensions) return
         val sourcePhoto = resolveSourcePhotoFile() ?: return
+        val sourcePhotoUri = resolveSourcePhotoUri()
         lifecycleScope.launch {
             isMeasuringRoomDimensions = true
             val measured = withContext(Dispatchers.Default) {
-                DepthAnythingRoomMeasurer.measureFromFile(this@GLBRoomActivity, sourcePhoto)
+                DepthAnythingRoomMeasurer.measureFromFile(
+                    this@GLBRoomActivity,
+                    sourcePhoto,
+                    sourcePhotoUri,
+                )
             }
             isMeasuringRoomDimensions = false
             if (measured.measured) {
@@ -627,6 +633,14 @@ class GLBRoomActivity : AppCompatActivity() {
             if (candidate.exists() && candidate.length() > 0L) return candidate
         }
         return null
+    }
+
+    private fun resolveSourcePhotoUri(): Uri? {
+        val folder = glbPath?.let { File(it).parentFile } ?: return null
+        val uriText = runCatching {
+            File(folder, "source_photo_uri.txt").takeIf(File::isFile)?.readText()?.trim()
+        }.getOrNull()
+        return uriText?.takeIf(String::isNotBlank)?.let(Uri::parse)
     }
 
     private fun applyMeasuredDimensions(measured: DepthAnythingRoomMeasurer.Result, persist: Boolean) {

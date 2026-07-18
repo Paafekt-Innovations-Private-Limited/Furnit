@@ -31,7 +31,7 @@ Each model has **three separate licenses that can differ** — check all three; 
 | Shipped | Artifact | iOS | Android |
 |---------|----------|-----|---------|
 | Yes | Depth Anything V2 Metric Indoor Small | `DepthAnythingV2MetricIndoorSmall.mlpackage` | `depth_anything_v2_metric_indoor_small.onnx` |
-| Yes | GeoCalib Pinhole CNN | `GeoCalibPinholeCNN.mlpackage` | ONNX **not** in assets (`.gitkeep`) |
+| Yes | GeoCalib Pinhole CNN | `GeoCalibPinholeCNN.mlpackage` | `geocalib_pinhole_cnn.onnx` |
 | Yes | RTMDet-Ins-m | `rtmdet-ins-m.mlpackage` (ODR) | `rtmdet-ins-m-raw.onnx` |
 | Yes | MetalSplatter 1.0.1 | SPM | — |
 | Yes | spz-swift 2.1.0 | SPM (transitive) | — |
@@ -82,7 +82,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 **App claim cross-check:** `licenses.geoCalib` = Apache-2.0, Copyright 2024 ETH Zurich — **Matches code LICENSE**. Does not disclose OpenPano training mix.
 
-**Action:** Lawyer on weights + HDRMAPS/Laval. Confirm Android ONNX export uses same weights.
+**Action:** Lawyer on weights + HDRMAPS/Laval. Android ONNX and iOS Core ML exports use the same pretrained pinhole checkpoint.
 
 ---
 

@@ -17,7 +17,14 @@ extension String {
 
     /// Returns the localized version with format arguments
     func localized(_ args: CVarArg...) -> String {
-        String(format: NSLocalizedString(self, comment: ""), arguments: args)
+        var format = NSLocalizedString(self, comment: "")
+        if format == self,
+           let englishBundlePath = Bundle.main.path(forResource: "en", ofType: "lproj"),
+           let englishBundle = Bundle(path: englishBundlePath) {
+            let english = englishBundle.localizedString(forKey: self, value: "", table: nil)
+            if !english.isEmpty { format = english }
+        }
+        return String(format: format, locale: .current, arguments: args)
     }
 }
 
@@ -29,7 +36,6 @@ enum L10n {
         static let name = "app.name".localized
         static let tagline = "app.tagline".localized
         static let version = "app.version".localized
-        static let developer = "app.developer".localized
     }
 
     // MARK: Common Actions
@@ -42,10 +48,8 @@ enum L10n {
         static let delete = "common.delete".localized
         static let error = "common.error".localized
         static let save = "common.save".localized
-        static let close = "common.close".localized
         static let apply = "common.apply".localized
         static let or = "common.or".localized
-        static let retry = "common.retry".localized
     }
 
     // MARK: Login
@@ -84,15 +88,16 @@ enum L10n {
     // MARK: Home
     enum Home {
         static let libraryTitle = "home.libraryTitle".localized
+        static let librarySubtitle = "home.librarySubtitle".localized
         static let storageTitle = "home.storageTitle".localized
         static let storagePath = "home.storagePath".localized
+        static let storageWarning = "home.storageWarning".localized
         static let noModels = "home.noModels".localized
         static let noModelsDescription = "home.noModelsDescription".localized
         static let createRoom = "home.createRoom".localized
         static let createRoomToolbarLabel = "home.createRoomToolbarLabel".localized
-        static let createRoomHint = "home.createRoomHint".localized
-        static func roomsRemaining(_ remaining: Int, _ total: Int) -> String {
-            "home.roomsRemaining".localized(remaining, total)
+        static func roomCount(_ count: Int) -> String {
+            "home.roomCount".localized(count)
         }
         static let deleteHint = "home.deleteHint".localized
         static let swipeHint = "home.swipeHint".localized
@@ -102,8 +107,6 @@ enum L10n {
         /// Saved manual mesh / GLB room (home list subtitle under room name).
         static let manualBased3DRoom = "home.manualBased3DRoom".localized
         static let renameRoom = "home.renameRoom".localized
-        static let renameRoomMessage = "home.renameRoomMessage".localized
-        static let roomNamePlaceholder = "home.roomNamePlaceholder".localized
     }
 
     // MARK: Room Limit
@@ -531,15 +534,6 @@ enum L10n {
         static let best = "quality.best".localized
     }
 
-    // MARK: Movement Speed Options
-    enum Speed {
-        static let slow = "speed.slow".localized
-        static let slowDescription = "speed.slow.description".localized
-        static let normal = "speed.normal".localized
-        static let normalDescription = "speed.normal.description".localized
-        static let fast = "speed.fast".localized
-        static let fastDescription = "speed.fast.description".localized
-    }
 }
 
 // MARK: - Placement intelligence / aesthetic (HarmonyType lives in AestheticAdvisor)

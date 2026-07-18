@@ -9,7 +9,6 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D ಕೊಠಡಿ ಎಕ್ಸ್‌ಪ್ಲೋರರ್";
 "app.version" = "ಆವೃತ್ತಿ";
-"app.developer" = "Paafekt ತಂಡ";
 
 // MARK: - Common Actions
 "common.done" = "ಮುಗಿಯಿತು";
@@ -20,7 +19,6 @@
 "common.delete" = "ಅಳಿಸು";
 "common.error" = "ದೋಷ";
 "common.save" = "ಉಳಿಸು";
-"common.close" = "ಮುಚ್ಚು";
 "common.apply" = "ಅನ್ವಯಿಸು";
 
 // MARK: - Login View
@@ -49,18 +47,9 @@
 "otp.resendFailed" = "ಕೋಡ್ ಮರುಕಳುಹಿಸಲು ವಿಫಲವಾಗಿದೆ.";
 
 // MARK: - Home View
-"home.title" = "3D ಕೊಠಡಿ ಮಾದರಿಗಳು";
-"home.noModels" = "3D ಮಾದರಿಗಳು ಕಂಡುಬಂದಿಲ್ಲ";
-"home.noModelsDescription" = "ಫೋಟೋದಿಂದ ನಿಮ್ಮ ಮೊದಲ ಕೊಠಡಿಯನ್ನು ರಚಿಸಿ!";
-"home.createRoom" = "ಫೋಟೋದಿಂದ ಕೊಠಡಿ ರಚಿಸು";
-"home.createRoomToolbarLabel" = "ಫೋಟೋ → 3D";
-"home.createRoomHint" = "ಕೋಣೆಯನ್ನು ರಚಿಸಲು ಇಲ್ಲಿ ಟ್ಯಾಪ್ ಮಾಡಿ";
-"home.roomsRemaining" = "%d/%d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ";
 "home.deleteHint" = "ಹೊಸದನ್ನು ರಚಿಸಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ";
 "home.swipeHint" = "ಅಳಿಸಲು ಎಡಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ";
 "home.renameRoom" = "ಮರುಹೆಸರಿಸಿ";
-"home.renameRoomMessage" = "ಈ ಹೆಸರು ನಿಮ್ಮ ಕೋಣೆಗಳ ಪಟ್ಟಿಯಲ್ಲಿ ಕಾಣಿಸುತ್ತದೆ. ಉಳಿಸಿದ ಫೈಲ್‌ ಹೆಸರು ಹಾಗೆಯೇ ಇರುತ್ತದೆ.";
-"home.roomNamePlaceholder" = "ಕೋಣೆಯ ಹೆಸರು";
 "home.roomModel" = "3D ಕೊಠಡಿ ಮಾದರಿ";
 "home.aiBased3DRoom" = "AI ಆಧಾರಿತ 3D ಕೊಠಡಿ";
 "home.manualBased3DRoom" = "ಮ್ಯಾನುವಲ್ ಆಧಾರಿತ 3D ಕೊಠಡಿ";
@@ -70,8 +59,6 @@
 "roomLimit.message" = "ನೀವು %d ಕೊಠಡಿಗಳ ಮಿತಿಯನ್ನು ತಲುಪಿದ್ದೀರಿ. ಹೊಸದನ್ನು ರಚಿಸಲು ಕೆಲವನ್ನು ಅಳಿಸಿ.";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "ಕೊಠಡಿ ಅಳಿಸುವುದೇ?";
-"deleteRoom.message" = "'%@' ಅನ್ನು ಅಳಿಸಲು ಖಚಿತವಾಗಿದ್ದೀರಾ? ಇದನ್ನು ಹಿಂತಿರುಗಿಸಲಾಗುವುದಿಲ್ಲ.";
 
 // MARK: - Explore View
 "explore.title" = "ಅನ್ವೇಷಿಸು";
@@ -141,7 +128,6 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "ಲೈಸೆನ್ಸ್‌ಗಳು ಮತ್ತು ಆಕೃತಿಗಳು";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ";
@@ -167,12 +153,6 @@
 
 
 // MARK: - Movement Speed Options
-"speed.slow" = "ನಿಧಾನ";
-"speed.slow.description" = "ವಿವರವಾದ ಅನ್ವೇಷಣೆಗೆ ನಿಖರ ನಿಯಂತ್ರಣ";
-"speed.normal" = "ಸಾಮಾನ್ಯ";
-"speed.normal.description" = "ಆರಾಮದಾಯಕ ನ್ಯಾವಿಗೇಶನ್‌ಗೆ ಸಮತೋಲಿತ ವೇಗ";
-"speed.fast" = "ವೇಗ";
-"speed.fast.description" = "ಚುರುಕಾದ ಅನ್ವೇಷಣೆಗೆ ತ್ವರಿತ ಚಲನೆ";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "ಸಹಾಯ & ಬೆಂಬಲ";
@@ -187,53 +167,34 @@
 "help.emailBody" = "Hi Paafekt Support Team,\n\nI need help with:\n\n";
 
 // FAQ - Room Creation
-"faq.roomCreation" = "ಕೊಠಡಿ ರಚನೆ";
-"faq.howToCreate" = "3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸುವುದು?";
-"faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್ ಟೂಲ್‌ಬಾರ್‌ನಲ್ಲಿ Photo → 3D (ಅಥವಾ ಖಾಲಿ ಸ್ಥಿತಿಯಲ್ಲಿ Create Room from Photo) ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೋಡುತ್ತೀರಿ.";
 "faq.howToTakePhoto" = "ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?";
 "faq.howToTakePhotoAnswer" = "ಕೊಠಡಿ ರಚಿಸುವಾಗ Take a Photo ಆಯ್ಕೆಮಾಡಿ. Standard (1x) ಅಥವಾ Wide Angle (0.5×) ಆಯ್ಕೆಮಾಡಬಹುದು. ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಮಾಡಿ. ಫೋಟೋ ನಿಮ್ಮ 3D ಕೊಠಡಿ ನಿರ್ಮಾಣಕ್ಕೆ ಬಳಸಲಾಗುತ್ತದೆ.";
 "faq.depthAwareRoomPhoto" = "ಅಪ್ಲಿಕೇಶನ್‌ನಲ್ಲಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳುವುದು ಕೊಠಡಿಯ ಗುಣಮಟ್ಟವನ್ನು ಉತ್ತಮಗೊಳಿಸುತ್ತದೆಯೇ?";
 "faq.depthAwareRoomPhotoAnswer" = "ಹೌದು. ಬೆಂಬಲಿತ ಸಾಧನಗಳಲ್ಲಿ, ಗ್ಯಾಲರಿಯಿಂದ ಆಯ್ಕೆಮಾಡುವ ಬದಲು «ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ» ಆಯ್ಕೆಮಾಡುವುದು ಲಭ್ಯವಿರುವಲ್ಲಿ ಆಳ-ಮಾಹಿತಿಯೊಂದಿಗೆ ಇನ್-ಅಪ್ ಕ್ಯಾಮರಾವನ್ನು ಬಳಸುತ್ತದೆ; ಇದು ನಿಮ್ಮ 3D ಕೊಠಡಿಯ ನಿರ್ಮಾಣ ಮತ್ತು ಪ್ರಮಾಣಕ್ಕೆ ಸುಧಾರಣೆ ತರುಬಹುದು.";
-"faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
-"faq.twoMethodsAnswer" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.";
 "faq.whatIsAIRoom" = "AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ ಎಂದರೇನು?";
-"faq.whatIsManualRoomAnswer" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್‌ನೊಂದಿಗೆ, ಫೋಟೋದಲ್ಲಿ ನಿಮ್ಮ ಕೊಠಡಿಯ ಗೋಡೆಗಳ ರೂಪರೇಖೆಯನ್ನು ನೀವು ಬರೆಯಿರಿ. 3D ಕೊಠಡಿ ನಿಖರವಾಗಿ ಹೇಗೆ ಕಾಣುತ್ತದೆ ಎಂಬುದರ ಮೇಲೆ ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣ ನೀಡುತ್ತದೆ. ಕೊಠಡಿ ಆಕಾರವನ್ನು ನೀವೇ ಸೂಕ್ಷ್ಮವಾಗಿ ಹೊಂದಿಸಲು ಬಯಸಿದಾಗ ಉತ್ತಮ.";
 "faq.whichMethodBetter" = "ನಾನು ಯಾವ ವಿಧಾನವನ್ನು ಆಯ್ಕೆಮಾಡಬೇಕು?";
-"faq.whichMethodBetterAnswer" = "ಮೊದಲು AI-ಚಾಲಿತ ಪ್ರಯತ್ನಿಸಿ - ಅದು ವೇಗವಾಗಿದೆ ಮತ್ತು ಬಹುತೇಕ ಕೊಠಡಿಗಳಿಗೆ ಉತ್ತಮವಾಗಿ ಕೆಲಸ ಮಾಡುತ್ತದೆ. ಫಲಿತಾಂಶ ಸರಿಯಾಗಿ ಕಾಣದಿದ್ದರೆ, ಗೋಡೆಗಳನ್ನು ನಿಮಗೆ ಬೇಕಾದ ನಿಖರ ಸ್ಥಳದಲ್ಲಿ ಬರೆಯಲು ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ ಬಳಸಿ. ನೀವು ಎರಡನ್ನೂ ಪ್ರಯತ್ನಿಸಿ ಯಾವುದನ್ನು ಆದ್ಯತೆ ನೀಡುತ್ತೀರಿ ನೋಡಬಹುದು!";
 "faq.bestPhotos" = "ಯಾವ ರೀತಿಯ ಫೋಟೋಗಳು ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ?";
 "faq.bestPhotosAnswer" = "ಉತ್ತಮ ಫಲಿತಾಂಶಗಳಿಗಾಗಿ, ಉತ್ತಮ ಬೆಳಕಿನಲ್ಲಿ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಫೋಟೋಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಿ. ನೆಲ, ಗೋಡೆಗಳು ಮತ್ತು ಸೀಲಿಂಗ್ ಅಂಚುಗಳನ್ನು ಒಳಗೊಂಡಂತೆ ಸಂಪೂರ್ಣ ಕೊಠಡಿಯನ್ನು ಸೆರೆಹಿಡಿಯಲು ಪ್ರಯತ್ನಿಸಿ. ಮಸುಕಾದ ಅಥವಾ ಕತ್ತಲೆಯ ಫೋಟೋಗಳನ್ನು ತಪ್ಪಿಸಿ.";
 "faq.generationFailing" = "ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?";
 "faq.generationFailingAnswer" = "ಫೋಟೋ ತುಂಬಾ ಕತ್ತಲೆಯಾಗಿದ್ದರೆ, ಮಸುಕಾಗಿದ್ದರೆ, ಅಥವಾ ಸಾಕಷ್ಟು ಕೊಠಡಿ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ತೋರಿಸದಿದ್ದರೆ ಕೊಠಡಿ ರಚನೆ ವಿಫಲವಾಗಬಹುದು. ಉತ್ತಮ ಬೆಳಕು ಮತ್ತು ಅಗಲ ಕೋನದೊಂದಿಗೆ ಹೊಸ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಪ್ರಯತ್ನಿಸಿ.";
 "faq.howManyRooms" = "ನಾನು ಎಷ್ಟು ಕೊಠಡಿಗಳನ್ನು ರಚಿಸಬಹುದು?";
-"faq.howManyRoomsAnswer" = "ನೀವು 20 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.";
 
 // FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
 "faq.whatIsSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಎಂದರೇನು?";
-"faq.whatIsSegmentationAnswer" = "Room viewer ನಲ್ಲಿ Fit ಬಟನ್ ಮೂಲಕ furniture segmentation ಚಲಿಸುತ್ತದೆ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಒಂದು primary item auto-segment. full-video mode ನಲ್ಲಿ ಮೊದಲು items ಆಯ್ಕೆ; Segment ಆಯ್ಕೆ ಮಾಡಿದ pieces ಗಾಗಿ ಮಾತ್ರ cutouts.";
 "faq.howToSegment" = "Room viewer ನಲ್ಲಿ furniture ಹೇಗೆ segment ಮಾಡುವುದು?";
 "faq.howToSegmentAnswer" = "Room viewer ನಲ್ಲಿ Fit ಟ್ಯಾಪ್ ಮಾಡಿ. quick check ಗಾಗಿ main item auto-segment. ನಿರ್ದಿಷ್ಟ pieces: ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ, full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ, camera furniture ಕಡೆ ಹಿಡಿದು boxes ಟ್ಯಾಪ್ ಮಾಡಿ, Segment. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "faq.notDetected" = "ನನ್ನ ಪೀಠೋಪಕರಣ ಏಕೆ ಪತ್ತೆಯಾಗುತ್ತಿಲ್ಲ?";
 "faq.notDetectedAnswer" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯು ಸ್ಪಷ್ಟ, ಉತ್ತಮ ಬೆಳಕಿನ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣ ಸ್ಪಷ್ಟವಾಗಿ ಗೋಚರಿಸಿದಾಗ ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ. ಪೀಠೋಪಕರಣ ಭಾಗಶಃ ಮುಚ್ಚಲಾಗಿಲ್ಲ ಅಥವಾ ಹಿನ್ನೆಲೆಯೊಂದಿಗೆ ಮಿಶ್ರಣವಾಗಿಲ್ಲ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.";
 "faq.multiplePieces" = "ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ವಿಭಜಿಸಬಹುದೇ?";
-"faq.multiplePiecesAnswer" = "ಹೌದು! full-video mode ನಲ್ಲಿ ಹಲವು boxes ಟ್ಯಾಪ್ ಮಾಡಿ ಒಮ್ಮೆ Segment—ಎಲ್ಲ selected pieces ಒಟ್ಟಿಗೆ 3D room ಮೇಲೆ. default Fit flow ನಲ್ಲಿ ಒಂದೊಂದಾಗಿ segment ಮಾಡಬಹುದು.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "ನನ್ನ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ವೀಕ್ಷಿಸುವುದು?";
 "faq.howToViewAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿ ಟ್ಯಾಪ್ ಮಾಡಿ 3D viewer ತೆರೆಯಿರಿ. ನೋಡಲು ಎಳೆಯಿರಿ, ಜೂಮ್ ಮಾಡಲು ಚಿಮುಡಿಸಿ. ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಗಳಿಗಾಗಿ (recenter, ruler, Capture) ಕೊಠಡಿ ಟ್ಯಾಪ್ ಮಾಡಿ. ಕೆಳಗೆ-ಬಲದ ಚಿನ್ನದ Fit ಬಟನ್ ಯಾವಾಗಲೂ ಕಾಣಿಸುತ್ತದೆ.";
 "faq.howToPlace" = "ನನ್ನ ಕೊಠಡಿಯಲ್ಲಿ ಪೀಠೋಪಕರಣ ಹೇಗೆ ಇಡುವುದು?";
 "faq.howToPlaceAnswer" = "Segment ಟ್ಯಾಪ್ ಮಾಡಿದ ನಂತರ ಆಯ್ದ furniture room ನಲ್ಲಿ overlay ಆಗಿ ಕಾಣುತ್ತದೆ. Position ಮಾಡಲು drag ಮಾಡಿ, resize ಮಾಡಲು pinch ಮಾಡಿ, orientation ಸರಿಪಡಿಸಲು rotate ಮಾಡಿ.";
-"faq.sampleRoom" = "ನನ್ನದರ ಬದಲು ಮಾದರಿ ಕೊಠಡಿ ಬಳಸಬಹುದೇ?";
-"faq.sampleRoomAnswer" = "ಹೌದು! ಅಪ್ಲಿಕೇಶನ್ ಪ್ರಯೋಗಿಸಲು ಮಾದರಿ ಕೊಠಡಿಗಳನ್ನು ಒದಗಿಸುತ್ತದೆ. ಮೊದಲು ನಿಮ್ಮ ಸ್ವಂತ ಕೊಠಡಿ ರಚಿಸದೆ ಪೀಠೋಪಕರಣ ಇರಿಸುವಿಕೆ ಪ್ರಯತ್ನಿಸಲು ಎಕ್ಸ್‌ಪ್ಲೋರ್ ವಿಭಾಗದಿಂದ ಅವುಗಳನ್ನು ಪ್ರವೇಶಿಸಿ.";
-"faq.accuracy" = "3D ಮಾದರಿ ಎಷ್ಟು ನಿಖರ?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಬಹುದೇ?";
 "faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ಮಾಡಲಾಗುವುದಿಲ್ಲ. ಉಳಿಸಿದ ನಂತರ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ruler ಟ್ಯಾಪ್ ಮಾಡಿ estimated width, height, depth ನೋಡಿ. pre-save preview ನಲ್ಲಿ dimension chips ಮರೆಮಾಡಲಾಗುತ್ತವೆ—ಮೊದಲು ಉಳಿಸಿ, ನಂತರ ಮತ್ತೆ ತೆರೆದು ಅಳತೆಗಳನ್ನು ನೋಡಿ. manual rooms ನಿಮ್ಮ boundaries ಅನುಸರಿಸುತ್ತವೆ.";
-"faq.furnitureMeasurements" = "ಪೀಠೋಪಕರಣ ಮತ್ತು ಅಳತೆಗಳು";
-"faq.arAssistedSizing" = "ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?";
-"faq.arAssistedSizingAnswer" = "ಮೊದಲು Fit ಟ್ಯಾಪ್ ಮಾಡಿ furniture segment ಮಾಡಿ. room-relative scale ಗಾಗಿ summoned toolbar ನಲ್ಲಿ sizing control ಬಳಸಿ. AR/depth phones live camera depth; ಇಲ್ಲದಿದ್ದರೆ approximate.";
 "faq.measurementPill" = "ಚಿಕ್ಕ ಅಳತೆ ಓದುವಿಕೆ (ಪಿಲ್) ಏನು?";
 "faq.measurementPillAnswer" = "SmartyPants ಸಕ್ರಿಯವಾಗಿದ್ದಾಗ, ಪೀಠೋಪಕರಣದ ಮತ್ತು ಕೊಠಡಿಯ ಅಂದಾಜು ಎತ್ತರಗಳನ್ನು ತೋರಿಸುವ ಪಿಲ್ ಕಾಣಬಹುದು. ಉತ್ತಮ ನಿಖರತೆಗಾಗಿ ನಿಜವಾದ ಅಳತೆಗಳನ್ನು ನಮೂದಿಸಲು ಅದನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ನಿಮ್ಮ ಕೊಠಡಿ ಫೋಟೋ ವೈಡ್-ಆಂಗಲ್ (0.5×) ಲೆನ್ಸ್‌ನಲ್ಲಿ ತೆಗೆದಿದ್ದರೆ, ಆಯ್ಕೆಯನ್ನು ಗುರುತಿಸಿ — ಚೌಕಟ್ಟು ಸ್ಥಿರವಾಗಿ ಉಳಿಯುತ್ತದೆ.";
 "faq.resetOverlayScale" = "ಪೀಠೋಪಕರಣ ಮಾಸ್ಕ್ ತಪ್ಪಾಗಿ ಜೂಮ್ ಆಗಿದೆ ಎನಿಸುತ್ತದೆ — ಏನು ಮಾಡಲಿ?";
@@ -242,9 +203,7 @@
 "faq.roomFitmentAnswer" = "segmentation ನಂತರ 3D room ನಲ್ಲಿ cutouts resize/reposition. full-video ನಲ್ಲಿ Segment selected pieces room ಮೇಲೆ composite ಮಾಡಿ ಹಲವು items ಹೋಲಿಸಲು ಸಹಾಯ.";
 
 // FAQ - Placement intelligence & aesthetic
-"faq.placementIntelligence" = "ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಬುದ್ಧಿಮತ್ತೆ ಮತ್ತು ಸೌಂದರ್ಯ";
 "faq.whatIsPlacementIntelligence" = "ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಇಂಟೆಲಿಜೆನ್ಸ್ ಎಂದರೇನು?";
-"faq.whatIsPlacementIntelligenceAnswer" = "ಬೆಂಬಲಿತ 3D room viewers ನಲ್ಲಿ Fit ಸಕ್ರಿಯವಾಗಿರುವಾಗ Placement Intelligence card ಪತ್ತೆಯಾದ furniture room dimensions ಒಳಗೆ ಸರಿಹೊಂದುತ್ತದೆಯೇ ಎಂದು ತೋರಿಸುತ್ತದೆ. ವಿವರಗಳಿಗಾಗಿ header ಟ್ಯಾಪ್ ಮಾಡಿ, ಸ್ಥಳ ಉಳಿಸಲು collapsed ಬಿಡಿ.";
 "faq.furnitureColorAesthetic" = "ಸೌಂದರ್ಯ ಅಂಕಕ್ಕೆ ಬಣ್ಣವನ್ನು ಅಪ್ಲಿಕೇಶನ್ ಹೇಗೆ ಆಯ್ಕೆ ಮಾಡುತ್ತದೆ?";
 "faq.furnitureColorAestheticAnswer" = "ಅಪ್ಲಿಕೇಶನ್ ನೀವು ನೋಡುವ AI ಪೀಠೋಪಕರಣ ಕಟ್‌ಔಟ್ (ಅದೇ ವಿಭಜಿತ ಓವರ್‌ಲೇ) ಒಳಗಿನ ಗೋಚರ ಪಿಕ್ಸೆಲ್‌ಗಳ RGB ಸರಾಸರಿ ಲೆಕ್ಕಿಸುತ್ತದೆ ಮತ್ತು ಅದನ್ನು ನೆಲ, ಗೋಡೆಗಳು ಮತ್ತು ಛತದಿಂದ ಮಾದರಿ ಮಾಡಿದ ಬಣ್ಣಗಳೊಂದಿಗೆ ಹೋಲಿಸುತ್ತದೆ. ಕಟ್‌ಔಟ್ ಸಿದ್ಧವಾಗದಿದ್ದರೆ ವಿಭಜನೆ ನಿಜವಾದ ಮಾದರಿ ನೀಡುವವರೆಗೆ ಕೊಠಡಿ ಪ್ಯಾಲೆಟ್‌ನಿಂದ ಬದಲಿ ಬಣ್ಣ ಬಳಸಲಾಗುತ್ತದೆ.";
 "faq.whatDoHarmonyContrastMean" = "ಸಾಮರಸ್ಯ, ಕಾಂಟ್ರಾಸ್ಟ್ ಮತ್ತು ಶೈಲಿ ಹೊಂದಾಣಿಕೆ ಎಂದರೇನು?";
@@ -261,8 +220,6 @@
 "boundary.vanish" = "ಮಾಯವಾಗುವ ಬಿಂದು";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "ಪೀಠೋಪಕರಣ ಸೇರಿಸು";
-"viewer.capture" = "ಸೆರೆಹಿಡಿ";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "ಕ್ಯಾಮೆರಾ ಪ್ರಾರಂಭಿಸುತ್ತಿದೆ...";
@@ -337,7 +294,6 @@
 "roomViewer.roomDimensionsDefaultValues" = "ಡಿಫಾಲ್ಟ್ ಮೌಲ್ಯಗಳು";
 "roomViewer.roomDimensionsWHDWithDefault" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "ಅಗಲ × ಎತ್ತರ\n%.2f × %.2f ಮೀ (%@)";
-"roomViewer.roomDimensionsNearAccurateValues" = "ಸಮೀಪದ ನಿಖರವಾದ ಮೌಲ್ಯಗಳು";
 "roomViewer.roomDimensionsWHDWithNearAccurate" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";
 "roomViewer.measuringRoom" = "ಕೊಠಡಿಯನ್ನು ಅಳತೆಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
@@ -406,9 +362,7 @@
 "accessibility.createRoom" = "ಫೋಟೋದಿಂದ ಕೊಠಡಿ ರಚಿಸು";
 
 // FAQ - AI Features (added)
-"faq.aiFeatures" = "AI ವೈಶಿಷ್ಟ್ಯಗಳು";
 "faq.whatIsBrainIcon" = "Fit ಬಟನ್ ಏನು ಮಾಡುತ್ತದೆ?";
-"faq.whatIsBrainIconAnswer" = "Room viewer ನಲ್ಲಿ ಕೆಳಗೆ-ಬಲದ ಚಿನ್ನದ Fit ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ SmartyPants ಪೀಠೋಪಕರಣ segmentation ಪ್ರಾರಂಭಿಸಿ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಅತ್ಯಧಿಕ-confidence ವಸ್ತುವನ್ನು 3D ಕೊಠಡಿಯ ಮೇಲೆ ಪಾರದರ್ಶಕ cutout ಆಗಿ auto-segment ಮಾಡುತ್ತದೆ. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ. ನಿರ್ದಿಷ್ಟ pieces ಆಯ್ಕೆಗಾಗಿ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ಮೊದಲು full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ.";
 "faq.whatIsViewfinderButton" = "Room viewer ನಲ್ಲಿ full-video mode ಏನು ಮಾಡುತ್ತದೆ?";
 "faq.whatIsViewfinderButtonAnswer" = "Fit ಸಕ್ರಿಯವಾಗಿರುವಾಗ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ viewfinder ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ full-video mode ಟಾಗಲ್ ಮಾಡಿ. live camera + detection boxes—ಒಂದು ಅಥವಾ ಹೆಚ್ಚು items ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ Segment. camera ಮರೆಮಾಡಿ cutouts 3D room ಮೇಲೆ composite. segment mode ಬಿಡಲು ಅಥವಾ Fit ಬಿಡಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "faq.howToScreenshot" = "ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಹೇಗೆ ತೆಗೆಯುವುದು?";
@@ -417,7 +371,6 @@
 "faq.howToSaveRoomAnswer" = "3D ಕೊಠಡಿ ರಚಿಸಿದ ನಂತರ, ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ನಿಯಂತ್ರಣಗಳನ್ನು ತೋರಿಸಿ, ನಂತರ ಉಳಿಸು ಐಕಾನ್ (ಡೌನ್‌ಲೋಡ್ ಬಾಣ) ಟ್ಯಾಪ್ ಮಾಡಿ ಹೆಸರು ನಮೂದಿಸಿ. ಉಳಿಸದೆ ಪ್ರಿವ್ಯೂ ಬಿಟ್ಟರೆ ಆ ಕೊಠಡಿ ತ್ಯಜಿಸಲಾಗುತ್ತದೆ.";
 
 // FAQ - 3D Room Controls (added)
-"faq.roomControls" = "3D ಕೊಠಡಿ ನಿಯಂತ್ರಣಗಳು";
 "faq.howToNavigate" = "ಕೊಠಡಿಯೊಳಗೆ ಹೇಗೆ ನ್ಯಾವಿಗೇಟ್ ಮಾಡುವುದು?";
 "faq.howToNavigateAnswer" = "ಕೊಠಡಿಯ ಮೇಲೆ ಎಳೆದು camera orbit ಮಾಡಿ, ಚಿಮುಡಿಸಿ ಜೂಮ್ ಮಾಡಿ. ಪರದೆ ಟ್ಯಾಪ್ ಮಾಡಿ toolbar summon ಮಾಡಿ, recenter ಗಾಗಿ viewfinder ಐಕಾನ್ ಬಳಸಿ. ಕೆಳಗೆ-ಎಡದ quiet summon disk ಮರೆಮಾಡಿದ ನಿಯಂತ್ರಣಗಳನ್ನು ಮರಳಿ ತರುತ್ತದೆ.";
 "faq.whatDoArrowsDo" = "Viewer ನಿಯಂತ್ರಣಗಳನ್ನು ಹೇಗೆ ತೋರಿಸುವುದು ಅಥವಾ ಮರೆಮಾಡುವುದು?";
@@ -465,7 +418,6 @@
 
 // MARK: - i18n sync (Kannada)
 "common.or" = "ಅಥವಾ";
-"common.retry" = "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ";
 "settings.fullVideoWithIdentifications" = "ಗುರುತಿಸುವಿಕೆಗಳೊಂದಿಗೆ ಪೂರ್ಣ ವೀಡಿಯೊ";
 "settings.fullVideoWithIdentificationsDescription" = "ವಿಭಜಿತ ಫರ್ಣಿಚರ್ ಓವರ್‌ಲೇಯನ್ನು ಸ್ವಯಂ ಕೇಂದ್ರೀಕರಿಸುವ ಬದಲು ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು ಮತ್ತು ಲೇಬಲ್‌ಗಳೊಂದಿಗೆ ಲೈವ್ ಕ್ಯಾಮರಾ ಫೀಡ್ ತೋರಿಸಿ.";
 
@@ -509,13 +461,6 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "ಅಳತೆ ಸೂಚನೆ";
 "help.measurementAccuracyBody" = "AR depth ಬೆಂಬಲವಿಲ್ಲದ ಫೋನ್‌ಗಳಲ್ಲಿಯೂ ಕೊಠಡಿ ಮತ್ತು ಫರ್ನಿಚರ್ ಪ್ರಿವ್ಯೂ ಕಾಣಿಸುತ್ತದೆ, ಆದರೆ ಕೊಠಡಿ ಅಳತೆಗಳು ಮತ್ತು ವಿಶೇಷವಾಗಿ ಫರ್ನಿಚರ್ ಅಳತೆಗಳು ಕೇವಲ ಅಂದಾಜು ಮಾತ್ರ.";
-"faq.whatIsBrainIconAnswer" = "Room viewer ನಲ್ಲಿ ಕೆಳಗೆ-ಬಲದ ಚಿನ್ನದ Fit ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ SmartyPants ಪೀಠೋಪಕರಣ segmentation ಪ್ರಾರಂಭಿಸಿ. ಡಿಫಾಲ್ಟ್ ಆಗಿ ಅತ್ಯಧಿಕ-confidence ವಸ್ತುವನ್ನು 3D ಕೊಠಡಿಯ ಮೇಲೆ ಪಾರದರ್ಶಕ cutout ಆಗಿ auto-segment ಮಾಡುತ್ತದೆ. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ. ನಿರ್ದಿಷ್ಟ pieces ಆಯ್ಕೆಗಾಗಿ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ಮೊದಲು full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ.";
-"faq.howToSegmentAnswer" = "Room viewer ನಲ್ಲಿ Fit ಟ್ಯಾಪ್ ಮಾಡಿ. quick check ಗಾಗಿ main item auto-segment. ನಿರ್ದಿಷ್ಟ pieces: ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ, full-video mode ಸಕ್ರಿಯಗೊಳಿಸಿ, camera furniture ಕಡೆ ಹಿಡಿದು boxes ಟ್ಯಾಪ್ ಮಾಡಿ, Segment. ನಿರ್ಗಮಿಸಲು ಮೇಲೆ-ಬಲ Done ಟ್ಯಾಪ್ ಮಾಡಿ.";
-"faq.accuracyAnswer" = "3D ಕೊಠಡಿ ಒಂದು ಫೋಟೋದಿಂದ ಮಾಡಿದ ಅಂದಾಜು. ಕೊಠಡಿಯ ಅಳತೆಗಳು ಮಾರ್ಗದರ್ಶನಕ್ಕೆ ಸಹಾಯ ಮಾಡಬಹುದು, ಆದರೆ ಅವು ಸಮೀಕ್ಷಾ-ಮಟ್ಟದಷ್ಟು ಖಚಿತವಾಗಿರುವುದಿಲ್ಲ. ಫರ್ನಿಚರ್ ಅಳತೆಗಳು AR ಅಥವಾ depth ಬೆಂಬಲ ಇರುವ ಫೋನ್‌ಗಳಲ್ಲಿ ಹೆಚ್ಚು ವಿಶ್ವಾಸಾರ್ಹವಾಗಿರುತ್ತವೆ.";
-"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit ಮಾಡಲಾಗುವುದಿಲ್ಲ. ಉಳಿಸಿದ ನಂತರ ನಿಯಂತ್ರಣಗಳನ್ನು summon ಮಾಡಿ ruler ಟ್ಯಾಪ್ ಮಾಡಿ estimated width, height, depth ನೋಡಿ. pre-save preview ನಲ್ಲಿ dimension chips ಮರೆಮಾಡಲಾಗುತ್ತವೆ—ಮೊದಲು ಉಳಿಸಿ, ನಂತರ ಮತ್ತೆ ತೆರೆದು ಅಳತೆಗಳನ್ನು ನೋಡಿ. manual rooms ನಿಮ್ಮ boundaries ಅನುಸರಿಸುತ್ತವೆ.";
-"faq.arAssistedSizingAnswer" = "ಮೊದಲು Fit ಟ್ಯಾಪ್ ಮಾಡಿ furniture segment ಮಾಡಿ. room-relative scale ಗಾಗಿ summoned toolbar ನಲ್ಲಿ sizing control ಬಳಸಿ. AR/depth phones live camera depth; ಇಲ್ಲದಿದ್ದರೆ approximate.";
-"faq.measurementPillAnswer" = "ಫರ್ನಿಚರ್ ಗಾತ್ರ ಪಿಲ್ sizing mode ಆನ್ ಆಗಿ, ಆಪ್‌ಗೆ ಬಳಸಬಹುದಾದ live height estimate ಸಿಕ್ಕಾಗ ಮಾತ್ರ ಕಾಣಿಸುತ್ತದೆ. ruler ಬಟನ್ ಕೊಠಡಿಯ ಪ್ರಸ್ತುತ ಅಗಲ, ಎತ್ತರ ಮತ್ತು ಆಳವನ್ನು ಸಣ್ಣ ಕಾರ್ಡ್‌ನಲ್ಲಿ ತೋರಿಸುತ್ತದೆ. non-AR ಫೋನ್‌ಗಳಲ್ಲಿ ಈ ಅಳತೆಗಳು, ವಿಶೇಷವಾಗಿ ಫರ್ನಿಚರ್‌ಗೆ, ಕಡಿಮೆ ವಿಶ್ವಾಸಾರ್ಹವಾಗಿರುತ್ತವೆ.";
-"faq.resetOverlayScaleAnswer" = "ಈಗ overflow menu ಇಲ್ಲ. overlay ತಪ್ಪಾಗಿ ಕಾಣಿಸಿದರೆ Done ಟ್ಯಾಪ್ ಮಾಡಿ Fit ಬಿಡಿ ಮತ್ತು ಮತ್ತೆ Fit ಟ್ಯಾಪ್ ಮಾಡಿ, ಅಥವಾ pinch ಬಳಸಿ ಗಾತ್ರ ಸರಿಪಡಿಸಿ.";
 
 "faq.pinchOverlaySize" = "ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿದ ಫರ್ನಿಚರ್ ಅನ್ನು pinch ಮಾಡಿದರೆ ಏನಾಗುತ್ತದೆ?";
 "faq.pinchOverlaySizeAnswer" = "pinch ಮಾಡಿದರೆ ಫರ್ನಿಚರ್ ಓವರ್‌ಲೆ ದೊಡ್ಡದಾಗಬಹುದು ಅಥವಾ ಚಿಕ್ಕದಾಗಬಹುದು. sizing mode ಆನ್ ಆಗಿ Furni pill ಕಾಣುತ್ತಿದ್ದರೆ, ಆ pill ಕೊಠಡಿಗೆ ಹೊಂದುವಂತೆ ಈಗಿನ resized ಫರ್ನಿಚರ್ ಅಂದಾಜಿಗೆ ಅಪ್‌ಡೇಟ್ ಆಗುತ್ತದೆ. sizing mode ಆಫ್ ಆಗಿದ್ದರೆ, pinch ಸ್ಕ್ರೀನ್ ಮೇಲಿನ ಓವರ್‌ಲೆ ಗಾತ್ರವನ್ನೇ ಮಾತ್ರ ಬದಲಾಯಿಸುತ್ತದೆ.";
@@ -551,5 +496,99 @@
 "credits.openAIBody" = "ChatGPT ಸೇರಿದಂತೆ OpenAI ಸಾಧನಗಳನ್ನು ಉತ್ಪನ್ನ ಕಲ್ಪನೆ, ಅನುಷ್ಠಾನ ಸಹಾಯ, ಕರಡು ರೂಪಿಕೆ ಮತ್ತು ತಾಂತ್ರಿಕ ಅನ್ವೇಷಣೆಗೆ ಬಳಸಲಾಗಿದೆ.";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Anthropic ಸಾಧನಗಳನ್ನು ಸಂಶೋಧನೆ, ಕೋಡ್ ಸಹಾಯ, ಅನುಷ್ಠಾನ ವಿವರಗಳ ಕುರಿತು ಚಿಂತನೆ ಮತ್ತು ಅಭಿವೃದ್ಧಿ ಪುನರಾವರ್ತನೆಗೆ ಬಳಸಲಾಗಿದೆ.";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Luma AI ಸಾಧನಗಳು ಮತ್ತು ಉತ್ಪನ್ನ ಉಲ್ಲೇಖಗಳು ನಮ್ಮ ದೃಶ್ಯ AI ಮತ್ತು 3D ವರ್ಕ್‌ಫ್ಲೋ ಅನ್ವೇಷಣೆಯ ಕೆಲವು ಭಾಗಗಳಿಗೆ ದಿಕ್ಕುನಿರ್ದೇಶನ ನೀಡಿವೆ.";
+
+// MARK: - Room Library, account, legal, and FAQ refresh
+"home.libraryTitle" = "ಕೊಠಡಿ ಲೈಬ್ರರಿ";
+"home.librarySubtitle" = "ಈ ಸಾಧನದಲ್ಲಿ ಸಂಗ್ರಹಿಸಿರುವ ನಿಮ್ಮ 3D ಕೊಠಡಿಗಳು.";
+"home.storageTitle" = "ಈ ಸಾಧನದಲ್ಲಿ ಸಂಗ್ರಹಿಸಲಾಗಿದೆ";
+"home.storagePath" = "ಕೊಠಡಿಗಳು Paafekt ನ ಖಾಸಗಿ ಆಪ್ ಸಂಗ್ರಹಣೆಯಲ್ಲೇ ಇರುತ್ತವೆ ಮತ್ತು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಅಪ್‌ಲೋಡ್ ಆಗುವುದಿಲ್ಲ. ಆಂತರಿಕ ಸ್ಥಳ: Documents/SavedRooms.";
+"home.storageWarning" = "Paafekt ಅನ್ನು ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿದರೆ ಉಳಿಸಿದ ಕೊಠಡಿಗಳು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಲ್ಪಡುತ್ತವೆ. ಉಳಿಸಿಕೊಳ್ಳಬೇಕಾದವುಗಳನ್ನು ಮೊದಲು ಹಂಚಿಕೊಳ್ಳಿ.";
+"home.noModels" = "ಇನ್ನೂ ಕೊಠಡಿಗಳಿಲ್ಲ";
+"home.noModelsDescription" = "ಫೋಟೋದಿಂದ ನಿಮ್ಮ ಮೊದಲ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸಿ ಅಥವಾ Manual Setup ಬಳಸಿ ನಿರ್ಮಿಸಿ. ಕೊಠಡಿಗಳು ಈ ಸಾಧನದಲ್ಲೇ ಉಳಿಯುತ್ತವೆ.";
+"home.createRoom" = "ಕೊಠಡಿ ರಚಿಸಿ";
+"home.createRoomToolbarLabel" = "ಕೊಠಡಿ ರಚಿಸಿ";
+"deleteRoom.title" = "ಈ ಕೊಠಡಿಯನ್ನು ಅಳಿಸುವುದೇ?";
+"deleteRoom.message" = "ಈ ಕೊಠಡಿಯನ್ನು ಈ ಸಾಧನದಿಂದ ಶಾಶ್ವತವಾಗಿ ತೆಗೆದುಹಾಕಲಾಗುತ್ತದೆ. ಈ ಕ್ರಿಯೆಯನ್ನು ಹಿಂತಿರುಗಿಸಲಾಗುವುದಿಲ್ಲ.";
+"profile.deleteAccount" = "ಖಾತೆ ಅಳಿಸಿ";
+"profile.deleteAccountConfirmTitle" = "ಖಾತೆ ಅಳಿಸಿ";
+"profile.deleteAccountConfirmMessage" = "ನಿಮ್ಮ ಖಾತೆ ಮತ್ತು ಸೈನ್-ಇನ್ ಡೇಟಾವನ್ನು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸುವುದೇ? ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ ಕೊಠಡಿಗಳನ್ನು ನೀವು ಅಳಿಸುವವರೆಗೆ ಅಥವಾ Paafekt ಅನ್ನು ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡುವವರೆಗೆ ಅವು ಉಳಿಯುತ್ತವೆ.";
+"profile.deleteAccountSuccessTitle" = "ಖಾತೆ ಅಳಿಸಲಾಗಿದೆ";
+"profile.deleteAccountSuccessMessage" = "ನಿಮ್ಮ ಖಾತೆಯನ್ನು ಅಳಿಸಲಾಗಿದೆ ಮತ್ತು ನಿಮ್ಮನ್ನು ಸೈನ್ ಔಟ್ ಮಾಡಲಾಗಿದೆ.";
+"settings.legalSummary" = "ಕೊಠಡಿ ಸಂಸ್ಕರಣೆ ಮತ್ತು ಪೀಠೋಪಕರಣ ವಿಶ್ಲೇಷಣೆ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತವೆ. ನೀವು ಸ್ಪಷ್ಟವಾಗಿ ಹಂಚಿಕೊಳ್ಳದ ಹೊರತು ಉಳಿಸಿದ ಕೊಠಡಿಗಳು ಖಾಸಗಿ ಆಪ್ ಸಂಗ್ರಹಣೆಯಲ್ಲೇ ಇರುತ್ತವೆ. Firebase ಫೋನ್-ಸಂಖ್ಯೆ ದೃಢೀಕರಣ ಮತ್ತು ದುರುಪಯೋಗ ತಡೆ ಡೇಟಾವನ್ನು ಸಂಸ್ಕರಿಸುತ್ತದೆ.";
+"faq.roomCreation" = "ಪ್ರಾರಂಭಿಸುವುದು";
+"faq.howToCreate" = "ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸುವುದು?";
+"faq.howToCreateAnswer" = "ಕೊಠಡಿ ರಚಿಸಿ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ಸ್ವಯಂಚಾಲಿತ ಅಂದಾಜಿಗಾಗಿ AI Room ಅಥವಾ ಕೊಠಡಿಯನ್ನು ನೀವೇ ನಿರ್ಧರಿಸಲು Manual Setup ಆಯ್ಕೆಮಾಡಿ. ಪೂರ್ಣಗೊಂಡ ಕೊಠಡಿಯನ್ನು ನಿಮ್ಮ ಕೊಠಡಿ ಲೈಬ್ರರಿಗೆ ಸೇರಿಸಲು ಉಳಿಸಿ.";
+"faq.twoMethods" = "AI Room ಮತ್ತು Manual Setup ನಡುವಿನ ವ್ಯತ್ಯಾಸವೇನು?";
+"faq.twoMethodsAnswer" = "AI Room ಒಂದು ಫೋಟೋದಿಂದ ಕೊಠಡಿಯ ಆಯಾಮಗಳನ್ನು ಅಂದಾಜಿಸಿ, ಅಳತೆ ಹೊಂದಿದ ಟೆಕ್ಸ್ಚರ್ ಪ್ರತಿನಿಧಿಯನ್ನು ಸೃಷ್ಟಿಸುತ್ತದೆ. ಇದು ಸಂಪೂರ್ಣ ವಾಲ್ಯೂಮೆಟ್ರಿಕ್ ಪುನರ್‌ನಿರ್ಮಾಣವಲ್ಲ. Manual Setup ನಲ್ಲಿ ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿಯ ಗಡಿಗಳನ್ನು ನೀವೇ ನಿರ್ಧರಿಸಬಹುದು.";
+"faq.whatIsAIRoomAnswer" = "AI Room ಸಾಧನದಲ್ಲೇ ನಡೆಯುವ ಆಳ ಅಂದಾಜು, ಪೀಠೋಪಕರಣ ಆಂಕರ್‌ಗಳು ಮತ್ತು ಕ್ಯಾಮೆರಾ ಕ್ಯಾಲಿಬ್ರೇಶನ್ ಬಳಸಿ ಒಂದು ಫೋಟೋದಿಂದ ಅಳತೆ ಹೊಂದಿದ ಟೆಕ್ಸ್ಚರ್ ಕೊಠಡಿಯನ್ನು ಅಂದಾಜಿಸುತ್ತದೆ. ಇದು ಸಂಪೂರ್ಣ ವಾಲ್ಯೂಮೆಟ್ರಿಕ್ ಪುನರ್‌ನಿರ್ಮಾಣವಲ್ಲ.";
+"faq.whatIsManualRoomAnswer" = "Manual Setup ಫಲಿತಾಂಶದ ಪ್ರತಿನಿಧಿಯ ಮೇಲೆ ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಫೋಟೋದಲ್ಲೇ ಕೊಠಡಿಯ ಗಡಿಗಳನ್ನು ನೇರವಾಗಿ ನಿರ್ಧರಿಸಲು ಅನುಮತಿಸುತ್ತದೆ.";
+"faq.whichMethodBetterAnswer" = "ವೇಗವಾದ ಸ್ವಯಂಚಾಲಿತ ಅಂದಾಜಿಗಾಗಿ AI Room ಆಯ್ಕೆಮಾಡಿ. ಕೊಠಡಿಯ ಗಡಿಗಳ ಮೇಲೆ ನೇರ ನಿಯಂತ್ರಣ ಬೇಕಾದರೆ Manual Setup ಆಯ್ಕೆಮಾಡಿ. ಒಂದು ಫಲಿತಾಂಶ ಸೂಕ್ತವಾಗದಿದ್ದರೆ ಮತ್ತೊಂದು ವಿಧಾನ ಪ್ರಯತ್ನಿಸಿ.";
+"faq.howManyRoomsAnswer" = "ನೀವು 20 ಕೊಠಡಿಗಳವರೆಗೆ ಉಳಿಸಬಹುದು. ಸ್ಥಳಾವಕಾಶಕ್ಕಾಗಿ ಅಗತ್ಯವಿಲ್ಲದ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಲೈಬ್ರರಿ ಪ್ರಸ್ತುತ ಕೊಠಡಿಗಳ ಸಂಖ್ಯೆ ಮತ್ತು ಬಳಸಿದ ಒಟ್ಟು ಸಂಗ್ರಹಣೆಯನ್ನು ತೋರಿಸುತ್ತದೆ.";
+"faq.whereRoomsSaved" = "ನನ್ನ ಕೊಠಡಿಗಳು ಎಲ್ಲಿ ಉಳಿಯುತ್ತವೆ?";
+"faq.whereRoomsSavedAnswer" = "ಕೊಠಡಿಗಳು ಈ ಸಾಧನದಲ್ಲಿರುವ Paafekt ನ ಖಾಸಗಿ ಆಪ್ ಸಂಗ್ರಹಣೆಯಲ್ಲಿ ಉಳಿಯುತ್ತವೆ ಮತ್ತು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಅಪ್‌ಲೋಡ್ ಆಗುವುದಿಲ್ಲ. ಆಂತರಿಕ ಸ್ಥಳ: Documents/SavedRooms.";
+"faq.arePhotosUploaded" = "ನನ್ನ ಕೊಠಡಿಯ ಫೋಟೋಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಲಾಗುತ್ತದೆಯೇ?";
+"faq.arePhotosUploadedAnswer" = "ಇಲ್ಲ. ಕೊಠಡಿ ರಚನೆ, ಪೀಠೋಪಕರಣ ಪತ್ತೆ ಮತ್ತು Placement Intelligence ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತವೆ. Firebase ಪ್ರತ್ಯೇಕವಾಗಿ ಫೋನ್-ಸಂಖ್ಯೆ ದೃಢೀಕರಣ ಮತ್ತು ದುರುಪಯೋಗ ತಡೆ ಡೇಟಾವನ್ನು ಸಂಸ್ಕರಿಸುತ್ತದೆ. ನೀವು ಸ್ಪಷ್ಟವಾಗಿ ಹಂಚಿಕೊಂಡಾಗ ಮಾತ್ರ ವಿಷಯ Paafekt ನಿಂದ ಹೊರಹೋಗುತ್ತದೆ.";
+"faq.aiFeatures" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆ ಮತ್ತು ಗಾತ್ರ ನಿರ್ಧಾರ";
+"faq.whatIsBrainIconAnswer" = "ಪೀಠೋಪಕರಣವನ್ನು ಪತ್ತೆಮಾಡಿ ನಿಮ್ಮ 3D ಕೊಠಡಿಯ ಮೇಲೆ ಪಾರದರ್ಶಕ ಕಟ್‌ಔಟ್ ರಚಿಸಲು Fit ಟ್ಯಾಪ್ ಮಾಡಿ. ಕಟ್‌ಔಟ್‌ನ ಸ್ಥಾನ ಬದಲಿಸಲು ಎಳೆಯಿರಿ ಮತ್ತು ಗಾತ್ರ ಬದಲಿಸಲು ಪಿಂಚ್ ಮಾಡಿ. Fit ದೃಶ್ಯ ಪೂರ್ವವೀಕ್ಷಣೆ ಮಾತ್ರ; ಅಳತೆಯ ಮಾರ್ಗದರ್ಶನಕ್ಕೆ AR-ಸಹಾಯಿತ ಗಾತ್ರ ನಿರ್ಧಾರ ಬೇಕಾಗುತ್ತದೆ.";
+"faq.whatIsSegmentationAnswer" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಕ್ಯಾಮೆರಾ ದೃಶ್ಯದಲ್ಲಿನ ವಸ್ತುವನ್ನು ಪತ್ತೆಮಾಡಿ, ಅದರ ಗೋಚರ ಪಿಕ್ಸೆಲ್‌ಗಳನ್ನು ಹಿನ್ನೆಲೆಯಿಂದ ಬೇರ್ಪಡಿಸುತ್ತದೆ; ಹೀಗಾಗಿ ಅದು ಚಲಿಸಬಹುದಾದ ಕಟ್‌ಔಟ್ ಆಗಿ ಕಾಣುತ್ತದೆ. ಸಂಸ್ಕರಣೆ ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತದೆ.";
+"faq.accuracy" = "ಕೊಠಡಿ ಮತ್ತು ಪೀಠೋಪಕರಣ ಅಳತೆಗಳು ಎಷ್ಟು ನಿಖರ?";
+"faq.accuracyAnswer" = "ಅಳತೆಗಳು ಸಾಧನದಲ್ಲೇ ಮಾಡುವ ಅಂದಾಜುಗಳು; ಫೋಟೋದ ಗುಣಮಟ್ಟ, ಬೆಳಕು, ಕ್ಯಾಮೆರಾ ಕೋನ ಮತ್ತು AR ಟ್ರ್ಯಾಕಿಂಗ್‌ಗೆ ಅನುಗುಣವಾಗಿ ಬದಲಾಗಬಹುದು. ಅವುಗಳನ್ನು ಮಾರ್ಗದರ್ಶನವಾಗಿ ಬಳಸಿ ಮತ್ತು ಮುಖ್ಯ ಆಯಾಮಗಳನ್ನು ನಿರ್ಧಾರ ಮಾಡುವ ಮೊದಲು ನೀವೇ ದೃಢಪಡಿಸಿ.";
+"faq.arAssistedSizing" = "AR-ಸಹಾಯಿತ ಗಾತ್ರ ನಿರ್ಧಾರ ಎಂದರೇನು?";
+"faq.arAssistedSizingAnswer" = "AR-ಸಹಾಯಿತ ಗಾತ್ರ ನಿರ್ಧಾರವು ಬೆಂಬಲಿತ ಕ್ಯಾಮೆರಾ ಮತ್ತು ಆಳ ಸಾಮರ್ಥ್ಯಗಳನ್ನು ಬಳಸಿ ಪೀಠೋಪಕರಣದ ಆಯಾಮಗಳನ್ನು ಅಂದಾಜಿಸುತ್ತದೆ. ಫಲಿತಾಂಶಗಳು ಸೆರೆಹಿಡಿಯುವ ಗುಣಮಟ್ಟ ಮತ್ತು ಟ್ರ್ಯಾಕಿಂಗ್ ಪರಿಸ್ಥಿತಿಗಳ ಮೇಲೆ ಅವಲಂಬಿತವಾಗಿದ್ದು ಅಂದಾಜುಗಳಾಗಿಯೇ ಇರುತ್ತವೆ.";
+"faq.multiplePiecesAnswer" = "ಪೂರ್ಣ-ವೀಡಿಯೊ ಮೋಡ್‌ನಲ್ಲಿ ಹಲವು ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳನ್ನು ಆಯ್ಕೆಮಾಡಿ Segment ಟ್ಯಾಪ್ ಮಾಡಿದರೆ ಅವುಗಳ ಕಟ್‌ಔಟ್‌ಗಳು ಒಟ್ಟಿಗೆ ಸೃಷ್ಟಿಯಾಗುತ್ತವೆ. ಡೀಫಾಲ್ಟ್ Fit ಪ್ರಕ್ರಿಯೆಯಲ್ಲಿ ಒಂದೊಂದೇ ವಸ್ತುವನ್ನೂ ವಿಭಜಿಸಬಹುದು.";
+"faq.placementIntelligence" = "Placement Intelligence";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence ವಸ್ತುವಿನ ಅಂದಾಜು ಅಗಲ, ಎತ್ತರ ಮತ್ತು ಲೆಕ್ಕಿಸಿದ ಆಳವನ್ನು ಕೊಠಡಿಯ ಮಿತಿಗಳೊಂದಿಗೆ ಹೋಲಿಸುತ್ತದೆ. ಇದು ಆಯಾಮಗಳ ಹೊಂದಾಣಿಕೆಯನ್ನು ಮಾತ್ರ ತಿಳಿಸುತ್ತದೆ; ನೆಲದ ಖಾಲಿ ಸ್ಥಳವನ್ನು ಗುರುತಿಸುವುದಿಲ್ಲ.";
+"faq.aiRoomManualSetup" = "AI Room ಮತ್ತು Manual Setup";
+"faq.aestheticGuidance" = "ಸೌಂದರ್ಯ ಮಾರ್ಗದರ್ಶನ";
+"faq.measurementsAccuracy" = "ಅಳತೆಗಳು ಮತ್ತು ನಿಖರತೆ";
+"faq.savedRoomsStorage" = "ಉಳಿಸಿದ ಕೊಠಡಿಗಳು ಮತ್ತು ಸಂಗ್ರಹಣೆ";
+"faq.sharingExporting" = "ಹಂಚಿಕೆ ಮತ್ತು ರಫ್ತು";
+"faq.privacyAccount" = "ಗೌಪ್ಯತೆ ಮತ್ತು ಖಾತೆ";
+"faq.troubleshootingSupport" = "ದೋಷನಿವಾರಣೆ ಮತ್ತು ಬೆಂಬಲ";
+"faq.uninstallRooms" = "Paafekt ಅನ್ನು ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿದರೆ ನನ್ನ ಕೊಠಡಿಗಳಿಗೆ ಏನಾಗುತ್ತದೆ?";
+"faq.uninstallRoomsAnswer" = "Paafekt ಅನ್ನು ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿದರೆ ಅದರ ಖಾಸಗಿ ಆಪ್ ಸಂಗ್ರಹಣೆಯಲ್ಲಿರುವ ಕೊಠಡಿಗಳು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಲ್ಪಡುತ್ತವೆ. ಉಳಿಸಿಕೊಳ್ಳಬೇಕಾದವುಗಳನ್ನು ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡುವ ಮೊದಲು ಹಂಚಿಕೊಳ್ಳಿ.";
+"faq.exportRoom" = "ಕೊಠಡಿಯನ್ನು ಬ್ಯಾಕಪ್ ಅಥವಾ ರಫ್ತು ಮಾಡುವುದು ಹೇಗೆ?";
+"faq.exportRoomAnswer" = "ಆ ಕೊಠಡಿ ಪ್ರಕಾರಕ್ಕೆ Share ಲಭ್ಯವಿದ್ದಾಗ ಅದನ್ನು ಬಳಸಿ. Capture ಪ್ರಸ್ತುತ ದೃಶ್ಯದ ಚಿತ್ರವನ್ನು ಹಂಚುತ್ತದೆ; ಮರುಸ್ಥಾಪಿಸಬಹುದಾದ ಕೊಠಡಿ ಬ್ಯಾಕಪ್ ಅಲ್ಲ. Paafekt ಈಗ ಕ್ಲೌಡ್ ಸಿಂಕ್ ಅಥವಾ ಸಂಪೂರ್ಣ ಲೈಬ್ರರಿಯ ಖಚಿತ ಬ್ಯಾಕಪ್ ಒದಗಿಸುವುದಿಲ್ಲ.";
+"faq.freeFloorLocation" = "Placement Intelligence ನೆಲದ ಖಾಲಿ ಸ್ಥಳವನ್ನು ಕಂಡುಹಿಡಿಯುತ್ತದೆಯೇ?";
+"faq.freeFloorLocationAnswer" = "ಇಲ್ಲ. ಅಂದಾಜು ಪೀಠೋಪಕರಣ ಆಯಾಮಗಳು ಕೊಠಡಿಯ ಮಿತಿಗೆ ಹೊಂದಿಕೆಯಾಗುತ್ತವೆಯೇ ಎಂದು ಮಾತ್ರ ಪರಿಶೀಲಿಸುತ್ತದೆ. ಇದು ಖಾಲಿ ನೆಲದ ಸ್ಥಳವನ್ನಾಗಲಿ ನಿರ್ದಿಷ್ಟ ತೆರವಾದ ಜಾಗವನ್ನಾಗಲಿ ಗುರುತಿಸುವುದಿಲ್ಲ.";
+"faq.dimensionalFit" = "ಆಯಾಮಗಳ ಹೊಂದಾಣಿಕೆಯನ್ನು ಹೇಗೆ ಲೆಕ್ಕಿಸಲಾಗುತ್ತದೆ?";
+"faq.dimensionalFitAnswer" = "ವಸ್ತುವಿನ ಅಂದಾಜು ಅಗಲ, ಎತ್ತರ ಮತ್ತು ಲೆಕ್ಕಿಸಿದ ಆಳವನ್ನು ಕೊಠಡಿಯ ಅಂದಾಜು ಆಯಾಮಗಳೊಂದಿಗೆ ಹೋಲಿಸಲಾಗುತ್ತದೆ; ಅಗತ್ಯವಿದ್ದಾಗ ತಿರುಗಿಸಿದ ನೆಲಹಾಸು ವ್ಯಾಪ್ತಿಯನ್ನೂ ಪರಿಗಣಿಸಲಾಗುತ್ತದೆ. ಎರಡೂ ಅಂದಾಜುಗಳಾದ್ದರಿಂದ ಫಲಿತಾಂಶವನ್ನು ಮಾರ್ಗದರ್ಶನವಾಗಿ ಬಳಸಿ.";
+"faq.aestheticScore" = "ಸೌಂದರ್ಯ ಅಂಕವನ್ನು ಹೇಗೆ ಲೆಕ್ಕಿಸಲಾಗುತ್ತದೆ?";
+"faq.aestheticScoreAnswer" = "ವಿಭಜಿಸಿದ ಪೀಠೋಪಕರಣದ ಗೋಚರ ಸರಾಸರಿ ಬಣ್ಣವನ್ನು ಕೊಠಡಿಯಿಂದ ಮಾದರಿ ಪಡೆದ ಬಣ್ಣಗಳೊಂದಿಗೆ ಆಪ್ ಹೋಲಿಸುತ್ತದೆ. ಬಣ್ಣ ಸಾಮರಸ್ಯ, ಪ್ರಕಾಶ ವ್ಯತ್ಯಾಸ ಮತ್ತು ಸಾಮಾನ್ಯ ಶೈಲಿ ಹೊಂದಾಣಿಕೆ ಅಂಕಕ್ಕೆ ಕೊಡುಗೆ ನೀಡುತ್ತವೆ. ಇವು ಅಂದಾಜು ವಿನ್ಯಾಸ ಮಾರ್ಗಸೂಚಿಗಳು; ಅಭಿರುಚಿಯ ನಿಯಮಗಳಲ್ಲ.";
+"faq.aestheticUnavailable" = "ಸೌಂದರ್ಯ ಮಾರ್ಗದರ್ಶನ ಏಕೆ ಲಭ್ಯವಿಲ್ಲ?";
+"faq.aestheticUnavailableAnswer" = "ಸೌಂದರ್ಯ ಮಾರ್ಗದರ್ಶನಕ್ಕೆ ಕೊಠಡಿ ಮತ್ತು ವಿಭಜಿಸಿದ ಪೀಠೋಪಕರಣ ಎರಡರಿಂದಲೂ ಬಳಸಬಹುದಾದ ಬಣ್ಣ ಮಾದರಿಗಳು ಬೇಕು. ಯಾವುದಾದರೂ ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ Paafekt ಕಲ್ಪಿತ ಅಂಕ ತೋರಿಸುವುದಿಲ್ಲ.";
+"faq.purchaseReliance" = "ಪೀಠೋಪಕರಣ ಖರೀದಿಸುವಾಗ Paafekt ಮೇಲೆ ಅವಲಂಬಿಸಬಹುದೇ?";
+"faq.purchaseRelianceAnswer" = "Paafekt ಅನ್ನು ಮಾರ್ಗದರ್ಶಿಯಾಗಿ ಬಳಸಿ, ಖಾತರಿಯಾಗಿ ಅಲ್ಲ. ಖರೀದಿಸುವ ಮೊದಲು ಆಯಾಮಗಳು, ತೆರವುಗಳು ಮತ್ತು ಸೂಕ್ತತೆಯನ್ನು ಮಾರಾಟಗಾರರೊಂದಿಗೆ ಯಾವಾಗಲೂ ದೃಢಪಡಿಸಿ.";
+"faq.deleteAccountEffect" = "ನನ್ನ ಖಾತೆಯನ್ನು ಅಳಿಸಿದರೆ ಏನಾಗುತ್ತದೆ?";
+"faq.deleteAccountEffectAnswer" = "ಖಾತೆಯನ್ನು ಅಳಿಸಿದರೆ Firebase ದೃಢೀಕರಣ ಖಾತೆ ತೆಗೆದುಹಾಕಲ್ಪಟ್ಟು ನೀವು ಸೈನ್ ಔಟ್ ಆಗುತ್ತೀರಿ. ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ ಕೊಠಡಿಗಳು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಅಳುವುದಿಲ್ಲ; ಅವನ್ನು ತೆಗೆದುಹಾಕಲು Paafekt ನಲ್ಲಿ ಅಳಿಸಿ ಅಥವಾ ಆಪ್ ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿ.";
+"faq.firebaseData" = "Firebase ಯಾವ ಡೇಟಾವನ್ನು ಸಂಸ್ಕರಿಸುತ್ತದೆ?";
+"faq.firebaseDataAnswer" = "Firebase ನಿಮ್ಮ ಫೋನ್ ಸಂಖ್ಯೆ, ದೃಢೀಕರಣ ದಾಖಲೆಗಳು ಮತ್ತು ಪರಿಶೀಲನೆ ಹಾಗೂ ದುರುಪಯೋಗ ತಡೆಗೆ ಬಳಸುವ ಸಾಧನ ಇನ್‌ಸ್ಟಾಲೇಶನ್ ಗುರುತನ್ನು ಸಂಸ್ಕರಿಸುತ್ತದೆ. ಕೊಠಡಿ ರಚನೆ ಮತ್ತು ಪೀಠೋಪಕರಣ ಸಂಸ್ಕರಣೆ ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತವೆ.";
+"faq.contactSupport" = "ಬೆಂಬಲವನ್ನು ಹೇಗೆ ಸಂಪರ್ಕಿಸುವುದು?";
+"faq.contactSupportAnswer" = "ಸೆಟ್ಟಿಂಗ್‌ಗಳು → ಸಹಾಯ & ಬೆಂಬಲ ತೆರೆಯಿರಿ, ನಂತರ support@paafekt.com ಗೆ ಇಮೇಲ್ ಮಾಡಿ.";
+"roomViewer.roomDimensionsNearAccurateValues" = "ಅಂದಾಜು ಆಯಾಮಗಳು";
+"camera.title" = "ಕ್ಯಾಮೆರಾ";
+"camera.chooseMode" = "ಕ್ಯಾಮೆರಾ ಮೋಡ್ ಆಯ್ಕೆಮಾಡಿ";
+"camera.chooseModeHint" = "ನಿಮ್ಮ ಕೊಠಡಿಗೆ ಕ್ಯಾಮೆರಾ ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಿ";
+"camera.ar.hint" = "ಕ್ಯಾಮೆರಾವನ್ನು ಕೊಠಡಿಯತ್ತ ತೋರಿಸಿ, ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಸೆರೆಹಿಡಿಯಿರಿ. ನಿಖರ ಕ್ಯಾಮೆರಾ ಆಂತರಿಕ ಮೌಲ್ಯಗಳಿಗೆ AR ಅನ್ನು ಬಳಸುತ್ತೇವೆ (LiDAR ನಲ್ಲಿ ದೃಶ್ಯ ಆಳವೂ ಸೇರಿ).";
+"camera.standard" = "ಪ್ರಮಾಣಿತ";
+"camera.wideAngle" = "ವಿಶಾಲ ಕೋನ";
+"camera.standard.desc" = "ಪ್ರಮಾಣಿತ 1x ಲೆನ್ಸ್ • ಯಾವುದೇ ದಿಕ್ಕಿನಲ್ಲಿ ಹಿಡಿಯಿರಿ";
+"camera.wideAngle.desc" = "ಅಲ್ಟ್ರಾ-ವೈಡ್ 0.5x ಲೆನ್ಸ್ • ಹೆಚ್ಚು ಪ್ರದೇಶವನ್ನು ಸೆರೆಹಿಡಿಯುತ್ತದೆ";
+"camera.wideAngle.info" = "ವಿಶಾಲ ದೃಶ್ಯವಲಯಕ್ಕಾಗಿ ಅಲ್ಟ್ರಾ-ವೈಡ್ 0.5x ಲೆನ್ಸ್ ಬಳಸುತ್ತದೆ";
+"camera.selectWideAngle" = "ವಿಶಾಲ ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ";
+"camera.captureWideAngle" = "ವಿಶಾಲ ಫೋಟೋ ಸೆರೆಹಿಡಿಯಿರಿ";
+"camera.wideAngle.holdSteady" = "ಸ್ಥಿರವಾಗಿ ಹಿಡಿಯಿರಿ • ಅಲ್ಟ್ರಾ-ವೈಡ್ ಲೆನ್ಸ್ ಹೆಚ್ಚು ಸೆರೆಹಿಡಿಯುತ್ತದೆ";
+"licenses.hypersimTitle" = "Hypersim ಡೇಟಾಸೆಟ್";
+"licenses.hypersim" = "ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಮಾದರಿಯನ್ನು Apple ನ Hypersim ಕೃತಕ ಒಳಾಂಗಣ ಡೇಟಾಸೆಟ್ ಬಳಸಿ ಸೂಕ್ಷ್ಮವಾಗಿ ತರಬೇತುಗೊಳಿಸಲಾಗಿದೆ. Hypersim CC BY-SA 3.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿದೆ.";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "iOS Gaussian-splat ಪೈಪ್‌ಲೈನ್ ಬಳಸುವ SPZ ಡಿಕೋಡಿಂಗ್. ಕೃತಿಸ್ವಾಮ್ಯ Niantic, Inc., Sean Cier ಮತ್ತು ಕೊಡುಗೆದಾರರು. MIT ಪರವಾನಗಿ.";
+"licenses.cocoTitle" = "COCO ಡೇಟಾಸೆಟ್";
+"licenses.coco" = "RTMDet ಅನ್ನು COCO ಬಳಸಿ ತರಬೇತುಗೊಳಿಸಲಾಗಿದೆ. COCO ಟಿಪ್ಪಣಿಗಳು CC BY 4.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿವೆ; ಪ್ರತ್ಯೇಕ ಚಿತ್ರಗಳು ಅವುಗಳ ಮಾಲೀಕರ ನಿಯಮಗಳಿಗೆ ಒಳಪಟ್ಟಿವೆ.";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android, ARCore, Filament ಮತ್ತು Firebase Android ಆಪ್ ಬಳಸುವ ಪ್ಲಾಟ್‌ಫಾರ್ಮ್, AR, 3D ರೆಂಡರಿಂಗ್ ಮತ್ತು ದೃಢೀಕರಣ ಸಾಮರ್ಥ್ಯಗಳನ್ನು ಒದಗಿಸುತ್ತವೆ.";
+"photoRoom.backAlertTitle" = "AI ಅಥವಾ Manual ಮೂಲಕ ಮುಂದುವರಿಸುವುದೇ?";
+"photoRoom.backAlertMessage" = "ನಿಮ್ಮ ಕೊಠಡಿ ರಚಿಸಲು AI ಅಥವಾ Manual ಟ್ಯಾಪ್ ಮಾಡಿ, ಅಥವಾ ಹಿಂದಿರುಗಲು ಸರಿ ಟ್ಯಾಪ್ ಮಾಡಿ.";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
+"roomViewer.furnitureHeightEstimate" = "ಪೀಠೋಪಕರಣ ಎತ್ತರ ~ %.2f ಮೀ";
+"settings.accountDeleteFooter" = "ಖಾತೆ ಅಳಿಸುವುದು ನಿಮ್ಮ ಸೈನ್-ಇನ್ ಖಾತೆಯನ್ನು ತೆಗೆದುಹಾಕುತ್ತದೆ. ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ ಕೊಠಡಿಗಳನ್ನು ಅದು ಅಳಿಸುವುದಿಲ್ಲ.";

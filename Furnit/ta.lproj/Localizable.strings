@@ -9,7 +9,6 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D அறை ஆய்வாளர்";
 "app.version" = "பதிப்பு";
-"app.developer" = "Paafekt குழு";
 
 // MARK: - Common Actions
 "common.done" = "முடிந்தது";
@@ -20,7 +19,6 @@
 "common.delete" = "நீக்கு";
 "common.error" = "பிழை";
 "common.save" = "சேமி";
-"common.close" = "மூடு";
 "common.apply" = "பயன்படுத்து";
 
 // MARK: - Login View
@@ -49,18 +47,9 @@
 "otp.resendFailed" = "குறியீட்டை மீண்டும் அனுப்புவதில் தோல்வி.";
 
 // MARK: - Home View
-"home.title" = "3D அறை மாதிரிகள்";
-"home.noModels" = "3D மாதிரிகள் இல்லை";
-"home.noModelsDescription" = "புகைப்படத்திலிருந்து உங்கள் முதல் அறையை உருவாக்குங்கள்!";
-"home.createRoom" = "புகைப்படத்திலிருந்து அறை உருவாக்கு";
-"home.createRoomToolbarLabel" = "புகைப்படம் → 3D";
-"home.createRoomHint" = "அறையை உருவாக்க இங்கே தட்டவும்";
-"home.roomsRemaining" = "%d/%d அறைகள் மீதம்";
 "home.deleteHint" = "புதியவற்றை உருவாக்க பழைய அறைகளை நீக்கவும்";
 "home.swipeHint" = "நீக்க இடது பக்கம் ஸ்வைப் செய்யவும்";
 "home.renameRoom" = "மறுபெயரிடு";
-"home.renameRoomMessage" = "இந்தப் பெயர் உங்கள் அறைகள் பட்டியலில் தோன்றும். சேமித்த கோப்பின் பெயர் மாறாது.";
-"home.roomNamePlaceholder" = "அறையின் பெயர்";
 "home.roomModel" = "3D அறை மாதிரி";
 "home.aiBased3DRoom" = "AI அடிப்படையிலான 3D அறை";
 "home.manualBased3DRoom" = "கைமுறை அடிப்படையிலான 3D அறை";
@@ -70,8 +59,6 @@
 "roomLimit.message" = "%d அறைகள் வரம்பை எட்டிவிட்டீர்கள். புதியவற்றை உருவாக்க சிலவற்றை நீக்கவும்.";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "அறையை நீக்கவா?";
-"deleteRoom.message" = "'%@' ஐ நீக்க விரும்புகிறீர்களா? இதை மாற்ற முடியாது.";
 
 // MARK: - Explore View
 "explore.title" = "ஆராய்";
@@ -141,7 +128,6 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "உரிமங்கள் மற்றும் அடிப்படைகள்";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "திறந்த மூல உரிமங்கள்";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "முழு உரிமத்தைக் காண்க";
@@ -167,12 +153,6 @@
 
 
 // MARK: - Movement Speed Options
-"speed.slow" = "மெதுவான";
-"speed.slow.description" = "விரிவான ஆய்வுக்கான துல்லியமான கட்டுப்பாடு";
-"speed.normal" = "சாதாரண";
-"speed.normal.description" = "வசதியான வழிசெலுத்தலுக்கான சமநிலை வேகம்";
-"speed.fast" = "வேகமான";
-"speed.fast.description" = "சுறுசுறுப்பான ஆய்வுக்கான விரைவான நகர்வு";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "உதவி & ஆதரவு";
@@ -187,53 +167,34 @@
 "help.emailBody" = "Hi Paafekt Support Team,\n\nI need help with:\n\n";
 
 // FAQ - Room Creation
-"faq.roomCreation" = "அறை உருவாக்கம்";
-"faq.howToCreate" = "3D அறையை எப்படி உருவாக்குவது?";
-"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
 "faq.howToTakePhoto" = "அறை உருவாக்க புகைப்படம் எப்படி எடுப்பது?";
 "faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
 "faq.depthAwareRoomPhoto" = "பயன்பாட்டில் புகைப்படம் எடுப்பது உதவுமா?";
 "faq.depthAwareRoomPhotoAnswer" = "ஆம். ஆதரவுள்ள சாதனங்களில், கேலரிக்கு பதிலாக Take a photo ஆழம்-விழிப்புணர்வு கேமராவைப் பயன்படுத்துகிறது (கிடைத்தால்), இது 3D அறையை மேம்படுத்த உதவும்.";
-"faq.twoMethods" = "அறை உருவாக்கத்திற்கான இரண்டு விருப்பங்கள் என்ன?";
-"faq.twoMethodsAnswer" = "புகைப்படம் தேர்ந்தெடுக்கும்போது நீங்கள் தேர்வு செய்யலாம்: 1) AI இயக்கப்பட்ட 3D அறை - செயற்கை நுண்ணறிவைப் பயன்படுத்தி யதார்த்த 3D அறையை தானாக உருவாக்குகிறது, அல்லது 2) கைமுறை அமைப்பு - அதிக கட்டுப்பாட்டிற்காக அறை எல்லைகளை நீங்களே வரையலாம்.";
 "faq.whatIsAIRoom" = "AI இயக்கப்பட்ட 3D அறை என்றால் என்ன?";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "கைமுறை அமைப்பு என்றால் என்ன?";
-"faq.whatIsManualRoomAnswer" = "கைமுறை அமைப்பில், புகைப்படத்தில் உங்கள் அறை சுவர்களின் கோடுகளை வரையவும். 3D அறை சரியாக எப்படி இருக்கும் என்பதில் அதிக கட்டுப்பாடு தரும். அறை வடிவத்தை நீங்களே சரிசெய்ய விரும்பும்போது சிறந்தது.";
 "faq.whichMethodBetter" = "நான் எந்த முறையை தேர்வு செய்ய வேண்டும்?";
-"faq.whichMethodBetterAnswer" = "முதலில் AI இயக்கப்பட்டதை முயற்சிக்கவும் - வேகமானது, பெரும்பாலான அறைகளுக்கு நன்றாக வேலை செய்கிறது. முடிவு சரியாக இல்லை என்றால், சுவர்களை நீங்கள் விரும்பும் இடத்தில் வரைய கைமுறை அமைப்பைப் பயன்படுத்தவும். இரண்டையும் முயற்சித்து ஏது பிடிக்கும் என்று பாருங்கள்!";
 "faq.bestPhotos" = "எந்த வகையான புகைப்படங்கள் சிறப்பாக செயல்படும்?";
 "faq.bestPhotosAnswer" = "சிறந்த முடிவுகளுக்கு, நல்ல வெளிச்சத்தில் சாதனத்தை நிலையாக வைத்து புகைப்படங்கள் எடுக்கவும். தரைகள், சுவர்கள் மற்றும் கூரை விளிம்புகள் உட்பட முழு அறையையும் படம்பிடிக்க முயற்சிக்கவும். மங்கலான அல்லது இருண்ட புகைப்படங்களைத் தவிர்க்கவும்.";
 "faq.generationFailing" = "என் அறை உருவாக்கம் ஏன் தோல்வியடைகிறது?";
 "faq.generationFailingAnswer" = "புகைப்படம் மிகவும் இருட்டாகவோ, மங்கலாகவோ, அல்லது போதுமான அறை அம்சங்களைக் காட்டவில்லை என்றால் அறை உருவாக்கம் தோல்வியடையலாம். சிறந்த வெளிச்சம் மற்றும் அகலமான கோணத்துடன் புதிய புகைப்படம் எடுக்க முயற்சிக்கவும்.";
 "faq.howManyRooms" = "எத்தனை அறைகளை உருவாக்க முடியும்?";
-"faq.howManyRoomsAnswer" = "நீங்கள் 20 அறைகள் வரை உருவாக்கலாம். புதியவற்றுக்கு இடம் உருவாக்க பழைய அறைகளை நீக்கவும். அறை எண்ணிக்கை மற்றும் பயன்படுத்திய சேமிப்பு முகப்புத் திரையின் மேலே காட்டப்படும்.";
 
 // FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "தளபாட பிரிப்பு";
 "faq.whatIsSegmentation" = "தளபாட பிரிப்பு என்றால் என்ன?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
 "faq.howToSegment" = "Room viewer-ல் furniture எப்படி segment செய்வது?";
 "faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
 "faq.notDetected" = "என் தளபாடங்கள் ஏன் கண்டறியப்படவில்லை?";
 "faq.notDetectedAnswer" = "தளபாட கண்டறிதல் தெளிவான, நல்ல வெளிச்சமுள்ள புகைப்படங்களில் தளபாடங்கள் தெளிவாகத் தெரியும்போது சிறப்பாக செயல்படுகிறது. தளபாடங்கள் பகுதியளவு மறைக்கப்படவில்லை அல்லது பின்னணியுடன் கலக்கவில்லை என்பதை உறுதிப்படுத்தவும்.";
 "faq.multiplePieces" = "பல தளபாடங்களை பிரிக்க முடியுமா?";
-"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "என் 3D அறையை எப்படி பார்ப்பது?";
 "faq.howToViewAnswer" = "Tap any room on the home screen to open the 3D viewer. Drag to look around and pinch to zoom. Tap the room to summon extra controls (recenter, ruler, Capture). The gold Fit button stays visible at bottom-right.";
 "faq.howToPlace" = "என் அறையில் தளபாடங்களை எப்படி வைப்பது?";
 "faq.howToPlaceAnswer" = "Segment தட்டிய பிறகு தேர்ந்தெடுத்த furniture அறையில் overlay ஆகத் தெரியும். இடமாற்ற drag செய்யவும், அளவை மாற்ற pinch செய்யவும், திசை மாற்ற rotate செய்யவும்.";
-"faq.sampleRoom" = "என்னுடையதற்கு பதிலாக மாதிரி அறையைப் பயன்படுத்த முடியுமா?";
-"faq.sampleRoomAnswer" = "ஆம்! பயன்பாடு பரிசோதிக்க மாதிரி அறைகளை வழங்குகிறது. முதலில் உங்கள் சொந்த அறையை உருவாக்காமல் தளபாட வைப்பை முயற்சிக்க ஆராய் பிரிவிலிருந்து அவற்றை அணுகவும்.";
-"faq.accuracy" = "3D மாதிரி எவ்வளவு துல்லியமானது?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "அறை பரிமாணங்களை சரிசெய்ய முடியுமா?";
 "faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.furnitureMeasurements" = "தளபாடம் & அளவீடுகள்";
-"faq.arAssistedSizing" = "AR உதவியுடன் தளபாட அளவீடு என்றால் என்ன?";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
 "faq.measurementPill" = "சிறிய அளவீட்டுக் குறிப்பு என்ன?";
 "faq.measurementPillAnswer" = "SmartyPants செயலில் இருக்கும்போது, மதிப்பிடப்பட்ட தளபாடம் மற்றும் அறை உயரம் காட்டப்படலாம். துல்லியத்திற்கு உண்மையான அளவுகளை உள்ளிட தட்டவும். அறைப் படம் வைட்-ஆங்கிள் (0.5×) என்றால் அதைக் குறிக்கவும்.";
 "faq.resetOverlayScale" = "முகமூடி தவறாக பெரிதாக்கப்பட்டது போல் தெரிகிறது — என்ன செய்வது?";
@@ -242,9 +203,7 @@
 "faq.roomFitmentAnswer" = "segmentation-க்குப் பிறகு 3D room-ல் cutouts resize/reposition. full-video-ல் Segment selected pieces room மேல் composite செய்து several items compare.";
 
 // FAQ - Placement intelligence & aesthetic
-"faq.placementIntelligence" = "இடமமைவு நுண்ணறிவும் அழகியலும்";
 "faq.whatIsPlacementIntelligence" = "இடமமைவு நுண்ணறிவு (Placement Intelligence) என்றால் என்ன?";
-"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "அழகியல் மதிப்பெண்ணுக்கு நிறத்தைப் பயன்பாடு எப்படி தேர்ந்தெடுக்கிறது?";
 "faq.furnitureColorAestheticAnswer" = "பயன்பாடு AI தளபாட வெட்டுப்படம் (அதே பிரிப்பு மேலடுக்கு) உள்ளே காணக்கூடிய பிக்சல்களின் RGB சராசரியைக் கணக்கிட்டு தரை, சுவர்கள், மேற்கூரையில் இருந்து மாதிரியெடுக்கப்பட்ட நிறங்களுடன் ஒப்பிடுகிறது. வெட்டுப்படம் தயாராக இல்லையெனில் பிரிப்பு உண்மையான மாதிரி தரும் வரை அறை வண்ணத் தொகுப்பிலிருந்து மாற்று நிறம் பயன்படுத்தப்படும்.";
 "faq.whatDoHarmonyContrastMean" = "இசைவு, வேறுபாடு, பாணி பொருத்தம் என்றால் என்ன?";
@@ -261,8 +220,6 @@
 "boundary.vanish" = "மறையும் புள்ளி";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "தளபாடங்கள் சேர்";
-"viewer.capture" = "படம்பிடி";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "கேமரா தொடங்குகிறது...";
@@ -337,7 +294,6 @@
 "roomViewer.roomDimensionsDefaultValues" = "இயல்புநிலை மதிப்புகள்";
 "roomViewer.roomDimensionsWHDWithDefault" = "அகலம் × உயரம் × ஆழம்\n%.2f × %.2f × %.2f மீ (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "அகலம் × உயரம்\n%.2f × %.2f மீ (%@)";
-"roomViewer.roomDimensionsNearAccurateValues" = "அருகிலுள்ள துல்லிய மதிப்புகள்";
 "roomViewer.roomDimensionsWHDWithNearAccurate" = "அகலம் × உயரம் × ஆழம்\n%.2f × %.2f × %.2f மீ (%@)";
 "roomViewer.measuringRoom" = "அறை அளவிடப்படுகிறது...";
 "roomViewer.goingBack" = "பின்செல்கிறது...";
@@ -406,9 +362,7 @@
 "accessibility.createRoom" = "புகைப்படத்திலிருந்து அறை உருவாக்கு";
 
 // FAQ - AI Features (added)
-"faq.aiFeatures" = "AI அம்சங்கள்";
 "faq.whatIsBrainIcon" = "What does the Fit button do?";
-"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
 "faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
 "faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
 "faq.howToScreenshot" = "ஸ்கிரீன்ஷாட் எப்படி எடுப்பது?";
@@ -417,7 +371,6 @@
 "faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - 3D Room Controls (added)
-"faq.roomControls" = "3D அறை கட்டுப்பாடுகள்";
 "faq.howToNavigate" = "அறைக்குள் எப்படி செல்வது?";
 "faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
 "faq.whatDoArrowsDo" = "How do I show or hide viewer controls?";
@@ -465,7 +418,6 @@
 
 // MARK: - i18n sync (Tamil)
 "common.or" = "அல்லது";
-"common.retry" = "மீண்டும் முயல்க";
 "settings.fullVideoWithIdentifications" = "அடையாளங்களுடன் முழு வீடியோ";
 "settings.fullVideoWithIdentificationsDescription" = "பிரிக்கப்பட்ட தளபாட மேலடுக்கை தானாக மையப்படுத்துவதற்குப் பதிலாக, கண்டறிதல் பெட்டிகள் மற்றும் லேபிள்களுடன் நேரடி கேமரா ஊட்டத்தைக் காட்டு.";
 
@@ -509,13 +461,6 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "அளவீட்டு குறிப்பு";
 "help.measurementAccuracyBody" = "AR depth ஆதரவு இல்லாத போன்களிலும் அறை மற்றும் பொருட்களின் முன்னோட்டம் காணலாம், ஆனால் அறை அளவுகளும் குறிப்பாக பொருட்களின் அளவுகளும் சுமார் கணிப்பாக மட்டுமே இருக்கும்.";
-"faq.whatIsBrainIconAnswer" = "Tap the gold Fit button (bottom-right) in the room viewer to start SmartyPants furniture segmentation. By default it auto-segments the highest-confidence item as a transparent cutout over your 3D room. Tap Done (top-right) to exit. For tap-to-select specific pieces, summon controls and enable full-video mode first.";
-"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
-"faq.accuracyAnswer" = "3D அறை ஒரு புகைப்படத்தை அடிப்படையாகக் கொண்ட கணிப்பு. அறை அளவுகள் வழிகாட்டுதலுக்கு உதவலாம், ஆனால் அவை survey அளவிலான துல்லியம் அல்ல. மரச்சாமான் அளவீடு AR அல்லது depth ஆதரவு உள்ள போன்களில் அதிகம் நம்பகமானது.";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
-"faq.measurementPillAnswer" = "furniture size pill என்பது sizing mode ஆன் ஆகி app-க்கு பயன்படுத்தக்கூடிய live height estimate கிடைக்கும் போது மட்டுமே தோன்றும். ruler button தற்போதைய அறையின் அகலம், உயரம், ஆழத்தை ஒரு சிறிய card-ல் காட்டும். non-AR போன்களில் இந்த மதிப்புகள், குறிப்பாக மரச்சாமான்களுக்கு, குறைவாக நம்பகமானவை.";
-"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 "faq.pinchOverlaySize" = "பிரிக்கப்பட்ட furniture-ஐ pinch செய்தால் என்ன ஆகும்?";
 "faq.pinchOverlaySizeAnswer" = "pinch செய்தால் furniture overlay பெரியதாகவும் சிறியதாகவும் மாறும். sizing mode on ஆகி Furni pill தெரிந்தால், அந்த pill அறைக்கு பொருந்தும் தற்போதைய resized furniture மதிப்பீட்டுக்கு புதுப்பிக்கும். sizing mode off ஆக இருந்தால், pinch திரையில் overlay-யின் தோற்ற அளவை மட்டும் மாற்றும்.";
@@ -551,5 +496,99 @@
 "credits.openAIBody" = "ChatGPT உட்பட OpenAI கருவிகள் தயாரிப்பு யோசனை, செயலாக்க உதவி, வரைவு தயாரித்தல் மற்றும் தொழில்நுட்ப ஆய்வுக்காக பயன்படுத்தப்பட்டன.";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Anthropic கருவிகள் ஆய்வு, code assistance, செயலாக்க விவரங்களை ஆராய்தல் மற்றும் மேம்பாட்டு iteration க்கு ஆதரவாக பயன்படுத்தப்பட்டன.";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Luma AI கருவிகள் மற்றும் product references எங்கள் visual AI மற்றும் 3D workflow exploration இன் சில பகுதிகளை வழிநடத்தியது.";
+
+// MARK: - Room Library, account, legal, and FAQ refresh
+"home.libraryTitle" = "அறை நூலகம்";
+"home.librarySubtitle" = "இந்தச் சாதனத்தில் சேமிக்கப்பட்ட உங்கள் 3D அறைகள்.";
+"home.storageTitle" = "இந்தச் சாதனத்தில் சேமிக்கப்பட்டது";
+"home.storagePath" = "அறைகள் Paafekt-இன் தனிப்பட்ட பயன்பாட்டுச் சேமிப்பகத்தில் இருக்கும்; தானாகப் பதிவேற்றப்படாது. உள் இருப்பிடம்: Documents/SavedRooms.";
+"home.storageWarning" = "Paafekt-ஐ நிறுவல் நீக்கினால் சேமித்த அறைகள் நிரந்தரமாக அழியும். வைத்திருக்க வேண்டியவற்றை முதலில் பகிரவும்.";
+"home.noModels" = "இன்னும் அறைகள் இல்லை";
+"home.noModelsDescription" = "புகைப்படத்திலிருந்து முதல் 3D அறையை உருவாக்குங்கள் அல்லது Manual Setup மூலம் அமைக்குங்கள். அறைகள் இந்தச் சாதனத்தில் சேமிக்கப்படும்.";
+"home.createRoom" = "அறை உருவாக்கு";
+"home.createRoomToolbarLabel" = "அறை உருவாக்கு";
+"deleteRoom.title" = "இந்த அறையை நீக்கவா?";
+"deleteRoom.message" = "இந்த அறை இந்தச் சாதனத்திலிருந்து நிரந்தரமாக நீக்கப்படும். இந்தச் செயலை மீட்டெடுக்க முடியாது.";
+"profile.deleteAccount" = "கணக்கை நீக்கு";
+"profile.deleteAccountConfirmTitle" = "கணக்கை நீக்கு";
+"profile.deleteAccountConfirmMessage" = "உங்கள் கணக்கையும் உள்நுழைவுத் தரவையும் நிரந்தரமாக நீக்கவா? இந்தச் சாதனத்தில் சேமித்த அறைகள் நீங்கள் நீக்கும் வரை அல்லது Paafekt-ஐ நிறுவல் நீக்கும் வரை இருக்கும்.";
+"profile.deleteAccountSuccessTitle" = "கணக்கு நீக்கப்பட்டது";
+"profile.deleteAccountSuccessMessage" = "உங்கள் கணக்கு நீக்கப்பட்டு நீங்கள் வெளியேற்றப்பட்டுள்ளீர்கள்.";
+"settings.legalSummary" = "அறை செயலாக்கமும் மரச்சாமான் பகுப்பாய்வும் சாதனத்திலேயே நடக்கின்றன. நீங்கள் வெளிப்படையாகப் பகிராத வரை அறைகள் தனிப்பட்ட பயன்பாட்டுச் சேமிப்பகத்தில் இருக்கும். Firebase தொலைபேசி-எண் அங்கீகாரம் மற்றும் முறைகேடு-தடுப்புத் தரவைச் செயலாக்குகிறது.";
+"faq.roomCreation" = "தொடங்குதல்";
+"faq.howToCreate" = "அறையை எப்படி உருவாக்குவது?";
+"faq.howToCreateAnswer" = "அறை உருவாக்கு என்பதைத் தட்டி, புகைப்படம் எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். தானியங்கி மதிப்பீட்டுக்கு AI Room அல்லது அறையை நீங்களே வரையறுக்க Manual Setup தேர்ந்தெடுக்கவும். முடித்த அறையை அறை நூலகத்தில் சேர்க்கச் சேமிக்கவும்.";
+"faq.twoMethods" = "AI Room மற்றும் Manual Setup இடையிலான வேறுபாடு என்ன?";
+"faq.twoMethodsAnswer" = "AI Room ஒரு புகைப்படத்திலிருந்து அறை அளவுகளை மதிப்பிட்டு, அளவிடப்பட்ட நயமுள்ள பிரதிநிதித்துவத்தை உருவாக்குகிறது. இது முழுமையான கனஅளவு மறுகட்டமைப்பு அல்ல. Manual Setup அறை எல்லைகளை நீங்களே வரையறுக்க உதவுகிறது.";
+"faq.whatIsAIRoomAnswer" = "AI Room சாதனத்திலேயே ஆழ மதிப்பீடு, மரச்சாமான் நங்கூரங்கள், கேமரா அளவுத்திருத்தம் ஆகியவற்றைப் பயன்படுத்தி ஒரு புகைப்படத்திலிருந்து அளவிடப்பட்ட நயமுள்ள அறையை மதிப்பிடுகிறது. இது முழுமையான கனஅளவு மறுகட்டமைப்பு அல்ல.";
+"faq.whatIsManualRoomAnswer" = "முடிவுப் பிரதிநிதித்துவத்தை அதிகம் கட்டுப்படுத்த, புகைப்படத்திலேயே அறை எல்லைகளை நேரடியாக வரையறுக்க Manual Setup உதவுகிறது.";
+"faq.whichMethodBetterAnswer" = "வேகமான தானியங்கி மதிப்பீட்டுக்கு AI Room தேர்ந்தெடுக்கவும். அறை எல்லைகளில் நேரடி கட்டுப்பாடு வேண்டுமெனில் Manual Setup தேர்ந்தெடுக்கவும். ஒரு முடிவு பொருந்தவில்லை என்றால் மற்ற முறையை முயலவும்.";
+"faq.howManyRoomsAnswer" = "20 அறைகள் வரை சேமிக்கலாம். இடம் பெற தேவையற்ற அறைகளை நீக்கவும். அறை நூலகம் தற்போதைய அறை எண்ணிக்கையையும் பயன்படுத்திய மொத்த சேமிப்பையும் காட்டுகிறது.";
+"faq.whereRoomsSaved" = "என் அறைகள் எங்கே சேமிக்கப்படுகின்றன?";
+"faq.whereRoomsSavedAnswer" = "அறைகள் இந்தச் சாதனத்தில் Paafekt-இன் தனிப்பட்ட பயன்பாட்டுச் சேமிப்பகத்தில் இருக்கும்; தானாகப் பதிவேற்றப்படாது. உள் இருப்பிடம்: Documents/SavedRooms.";
+"faq.arePhotosUploaded" = "என் அறைப் புகைப்படங்கள் பதிவேற்றப்படுமா?";
+"faq.arePhotosUploadedAnswer" = "இல்லை. அறை உருவாக்கம், மரச்சாமான் கண்டறிதல், Placement Intelligence ஆகியவை இந்தச் சாதனத்தில் நடக்கின்றன. Firebase தொலைபேசி-எண் அங்கீகாரம் மற்றும் முறைகேடு-தடுப்புத் தரவை தனியாகச் செயலாக்குகிறது. நீங்கள் வெளிப்படையாகப் பகிரும்போது மட்டுமே உள்ளடக்கம் Paafekt-இலிருந்து வெளியேறும்.";
+"faq.aiFeatures" = "மரச்சாமான் கண்டறிதல் மற்றும் அளவிடுதல்";
+"faq.whatIsBrainIconAnswer" = "மரச்சாமானைக் கண்டறிந்து 3D அறையின் மேல் வெளிப்படையான வெட்டுருவை உருவாக்க Fit-ஐத் தட்டவும். நகர்த்த இழுக்கவும்; அளவு மாற்ற பிஞ்ச் செய்யவும். Fit ஒரு காட்சி முன்னோட்டம்; அளவியல் வழிகாட்டலுக்கு AR-உதவி அளவிடுதல் தேவை.";
+"faq.whatIsSegmentationAnswer" = "கேமரா காட்சியில் மரச்சாமானைக் கண்டறிந்து, அதன் தெரியும் பிக்சல்களைப் பின்னணியிலிருந்து பிரித்து நகர்த்தக்கூடிய வெட்டுருவாகக் காட்டுவதே மரச்சாமான் பிரிப்பு. செயலாக்கம் இந்தச் சாதனத்தில் நடக்கிறது.";
+"faq.accuracy" = "அறை மற்றும் மரச்சாமான் அளவீடுகள் எவ்வளவு துல்லியமானவை?";
+"faq.accuracyAnswer" = "அளவீடுகள் சாதனத்திலேயே கணிக்கப்படும் மதிப்புகள்; புகைப்படத் தரம், வெளிச்சம், கேமரா கோணம், AR கண்காணிப்பு ஆகியவற்றால் மாறலாம். வழிகாட்டலாக மட்டும் பயன்படுத்தி முக்கிய அளவுகளை முடிவெடுக்கும் முன் நீங்களே உறுதிப்படுத்தவும்.";
+"faq.arAssistedSizing" = "AR-உதவி அளவிடுதல் என்றால் என்ன?";
+"faq.arAssistedSizingAnswer" = "ஆதரிக்கப்படும் கேமரா மற்றும் ஆழத் திறன்களைப் பயன்படுத்தி மரச்சாமான் அளவுகளை மதிப்பிடுவதே AR-உதவி அளவிடுதல். முடிவுகள் படம்பிடிப்புத் தரம் மற்றும் கண்காணிப்புச் சூழலைப் பொறுத்த கணிப்புகளே.";
+"faq.multiplePiecesAnswer" = "முழு-வீடியோ முறையில் பல கண்டறிதல் பெட்டிகளைத் தேர்ந்தெடுத்து Segment-ஐத் தட்டினால் அவற்றின் வெட்டுருக்கள் ஒன்றாக உருவாகும். இயல்புநிலை Fit முறையில் ஒவ்வொன்றாகவும் பிரிக்கலாம்.";
+"faq.placementIntelligence" = "Placement Intelligence";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence ஒரு பொருளின் மதிப்பிட்ட அகலம், உயரம், கணிக்கப்பட்ட ஆழத்தை அறையின் எல்லையுடன் ஒப்பிடுகிறது. இது அளவியல் பொருத்தத்தை மட்டும் தெரிவிக்கும்; காலியான தரை இடத்தைக் கண்டறியாது.";
+"faq.aiRoomManualSetup" = "AI Room & Manual Setup";
+"faq.aestheticGuidance" = "அழகியல் வழிகாட்டல்";
+"faq.measurementsAccuracy" = "அளவீடுகள் மற்றும் துல்லியம்";
+"faq.savedRoomsStorage" = "சேமித்த அறைகள் மற்றும் சேமிப்பகம்";
+"faq.sharingExporting" = "பகிர்தல் மற்றும் ஏற்றுமதி";
+"faq.privacyAccount" = "தனியுரிமை மற்றும் கணக்கு";
+"faq.troubleshootingSupport" = "சிக்கல் தீர்வு மற்றும் ஆதரவு";
+"faq.uninstallRooms" = "Paafekt-ஐ நிறுவல் நீக்கினால் என் அறைகளுக்கு என்ன ஆகும்?";
+"faq.uninstallRoomsAnswer" = "Paafekt-ஐ நிறுவல் நீக்கினால் அதன் தனிப்பட்ட பயன்பாட்டுச் சேமிப்பக அறைகள் நிரந்தரமாக அழியும். வைத்திருக்க வேண்டியவற்றை முன்பே பகிரவும்.";
+"faq.exportRoom" = "அறையை காப்புப்பிரதி எடுப்பது அல்லது ஏற்றுமதி செய்வது எப்படி?";
+"faq.exportRoomAnswer" = "அந்த அறை வகைக்கு Share கிடைக்கும்போது பயன்படுத்தவும். Capture தற்போதைய காட்சிப் படத்தைப் பகிரும்; மீட்டெடுக்கக்கூடிய அறைக் காப்புப்பிரதி அல்ல. Paafekt தற்போது மேக ஒத்திசைவு அல்லது முழு நூலகக் காப்புப்பிரதி உறுதி வழங்காது.";
+"faq.freeFloorLocation" = "Placement Intelligence தரையில் காலியிடத்தைக் கண்டுபிடிக்குமா?";
+"faq.freeFloorLocationAnswer" = "இல்லை. மதிப்பிட்ட மரச்சாமான் அளவுகள் அறை எல்லைக்குப் பொருந்துமா என்பதை மட்டும் பார்க்கும். காலியான தரையையோ குறிப்பிட்ட திறந்த இடத்தையோ கண்டறியாது.";
+"faq.dimensionalFit" = "அளவியல் பொருத்தம் எப்படிக் கணக்கிடப்படுகிறது?";
+"faq.dimensionalFitAnswer" = "பொருளின் மதிப்பிட்ட அகலம், உயரம், கணிக்கப்பட்ட ஆழம் அறையின் மதிப்பிட்ட அளவுகளுடன் ஒப்பிடப்படும்; உதவுமானால் சுழற்றிய அடித்தளமும் கணக்கில் கொள்ளப்படும். இரண்டும் கணிப்புகள் என்பதால் வழிகாட்டலாக மட்டும் கொள்ளவும்.";
+"faq.aestheticScore" = "அழகியல் மதிப்பெண் எப்படிக் கணக்கிடப்படுகிறது?";
+"faq.aestheticScoreAnswer" = "பிரித்த மரச்சாமானின் சராசரி தெரியும் நிறத்தை அறையிலிருந்து எடுத்த நிறங்களுடன் பயன்பாடு ஒப்பிடுகிறது. நிற இசைவு, ஒளிர்வு வேறுபாடு, பொதுப் பாணிப் பொருத்தம் ஆகியவை மதிப்பெண்ணில் பங்களிக்கின்றன. இவை தோராயமான வடிவமைப்பு வழிகாட்டல்கள்.";
+"faq.aestheticUnavailable" = "அழகியல் வழிகாட்டல் ஏன் கிடைக்கவில்லை?";
+"faq.aestheticUnavailableAnswer" = "அறையிலும் பிரித்த மரச்சாமானிலும் பயன்படுத்தக்கூடிய நிற மாதிரிகள் தேவை. ஒன்று கிடைக்காவிட்டால் Paafekt கற்பனை மதிப்பெண்ணைக் காட்டாது.";
+"faq.purchaseReliance" = "மரச்சாமான் வாங்கும்போது Paafekt-ஐ நம்பலாமா?";
+"faq.purchaseRelianceAnswer" = "Paafekt-ஐ வழிகாட்டலாகப் பயன்படுத்துங்கள்; உத்தரவாதமாக அல்ல. வாங்குமுன் அளவுகள், இடைவெளி, பொருத்தம் ஆகியவற்றை விற்பனையாளரிடம் உறுதிப்படுத்தவும்.";
+"faq.deleteAccountEffect" = "என் கணக்கை நீக்கினால் என்ன ஆகும்?";
+"faq.deleteAccountEffectAnswer" = "கணக்கை நீக்குவது Firebase அங்கீகாரக் கணக்கை அகற்றி உங்களை வெளியேற்றும். இந்தச் சாதனத்தில் சேமித்த அறைகள் தானாக நீங்காது; Paafekt-இல் நீக்கவும் அல்லது பயன்பாட்டை நிறுவல் நீக்கவும்.";
+"faq.firebaseData" = "Firebase எந்தத் தரவைச் செயலாக்குகிறது?";
+"faq.firebaseDataAnswer" = "Firebase உங்கள் தொலைபேசி எண், அங்கீகாரப் பதிவுகள், சரிபார்ப்பு மற்றும் முறைகேடு தடுப்புக்கான சாதன நிறுவல் அடையாளம் ஆகியவற்றைச் செயலாக்குகிறது. அறை உருவாக்கமும் மரச்சாமான் செயலாக்கமும் இந்தச் சாதனத்தில் நடக்கும்.";
+"faq.contactSupport" = "ஆதரவை எப்படித் தொடர்புகொள்வது?";
+"faq.contactSupportAnswer" = "அமைப்புகள் → உதவி & ஆதரவு திறந்து support@paafekt.com-க்கு மின்னஞ்சல் அனுப்பவும்.";
+"roomViewer.roomDimensionsNearAccurateValues" = "மதிப்பிட்ட அளவுகள்";
+"camera.title" = "கேமரா";
+"camera.chooseMode" = "கேமரா முறையைத் தேர்ந்தெடுக்கவும்";
+"camera.chooseModeHint" = "உங்கள் அறைக்கான கேமரா லென்ஸைத் தேர்ந்தெடுக்கவும்";
+"camera.ar.hint" = "கேமராவை அறையை நோக்கி நிலையாகப் பிடித்து படம்பிடிக்கவும். துல்லியமான கேமரா உள்ளமைவுகளுக்கு AR பயன்படுத்தப்படுகிறது (LiDAR-இல் காட்சி ஆழமும்).";
+"camera.standard" = "நிலையான";
+"camera.wideAngle" = "அகலக் கோணம்";
+"camera.standard.desc" = "நிலையான 1x லென்ஸ் • எந்தத் திசையிலும் பிடிக்கலாம்";
+"camera.wideAngle.desc" = "அல்ட்ரா-வைட் 0.5x லென்ஸ் • அதிகப் பகுதியைப் பிடிக்கும்";
+"camera.wideAngle.info" = "அகலமான காட்சிக்காக அல்ட்ரா-வைட் 0.5x லென்ஸைப் பயன்படுத்துகிறது";
+"camera.selectWideAngle" = "அகலப் புகைப்படத்தைத் தேர்ந்தெடுக்கவும்";
+"camera.captureWideAngle" = "அகலப் புகைப்படம் எடுக்கவும்";
+"camera.wideAngle.holdSteady" = "நிலையாகப் பிடிக்கவும் • அல்ட்ரா-வைட் லென்ஸ் அதிகம் பிடிக்கும்";
+"licenses.hypersimTitle" = "Hypersim தரவுத்தொகுப்பு";
+"licenses.hypersim" = "மெட்ரிக் உட்புற மாதிரி Apple-இன் Hypersim செயற்கை உட்புற தரவுத்தொகுப்பால் நுண்பயிற்சி செய்யப்பட்டது. Hypersim CC BY-SA 3.0 உரிமம் பெற்றது.";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "iOS Gaussian-splat செயல்தொடர் பயன்படுத்தும் SPZ குறிநீக்கம். பதிப்புரிமை Niantic, Inc., Sean Cier மற்றும் பங்களிப்பாளர்கள். MIT உரிமம்.";
+"licenses.cocoTitle" = "COCO தரவுத்தொகுப்பு";
+"licenses.coco" = "RTMDet COCO மூலம் பயிற்றுவிக்கப்பட்டது. COCO குறிப்புரைகள் CC BY 4.0 உரிமம் பெற்றவை; தனிப்பட்ட படங்கள் அவற்றின் உரிமையாளர்களின் விதிகளுக்கு உட்பட்டவை.";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android, ARCore, Filament, Firebase ஆகியவை Android பயன்பாடு பயன்படுத்தும் தளம், AR, 3D வரைதல் மற்றும் அங்கீகாரத் திறன்களை வழங்குகின்றன.";
+"photoRoom.backAlertTitle" = "AI அல்லது Manual மூலம் தொடரவா?";
+"photoRoom.backAlertMessage" = "அறையை உருவாக்க AI அல்லது Manual என்பதைத் தட்டவும்; பின்செல்ல சரி என்பதைத் தட்டவும்.";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
+"roomViewer.furnitureHeightEstimate" = "மரச்சாமான் உயரம் ~ %.2f மீ";
+"settings.accountDeleteFooter" = "கணக்கு நீக்கம் உங்கள் உள்நுழைவுக் கணக்கை அகற்றும். இந்தச் சாதனத்தில் சேமித்த அறைகளை அது நீக்காது.";

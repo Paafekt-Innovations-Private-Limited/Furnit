@@ -1,5 +1,7 @@
 package com.furnit.android.roomreconstruction
 
+import kotlin.math.roundToInt
+
 data class Point3(val x: Float, val y: Float, val z: Float)
 
 data class RoomExtentResult(
@@ -208,7 +210,7 @@ object RoomExtentMeasure {
 
     private fun percentile(sorted: List<Float>, fraction: Double): Float {
         if (sorted.isEmpty()) return 0f
-        val index = ((sorted.size - 1) * fraction).toInt().coerceIn(0, sorted.lastIndex)
+        val index = ((sorted.size - 1) * fraction).roundToInt().coerceIn(0, sorted.lastIndex)
         return sorted[index]
     }
 }

@@ -112,18 +112,7 @@ class ContentActivity : AppCompatActivity() {
         val createRoomEntry = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setOnClickListener {
-                modelManager.refresh()
-                if (modelManager.listModels().size >= MAX_SAVED_ROOMS) {
-                    AlertDialog.Builder(this@ContentActivity)
-                        .setTitle(R.string.room_limit_title)
-                        .setMessage(getString(R.string.room_limit_message, MAX_SAVED_ROOMS))
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show()
-                    return@setOnClickListener
-                }
-                startActivity(Intent(this@ContentActivity, SinglePhotoRoomActivity::class.java))
-            }
+            setOnClickListener { launchRoomCreatorIfAllowed() }
         }
         val createRoomIcon = createIconButton("\uD83D\uDDBC") // Image icon
         createRoomEntry.addView(createRoomIcon)
@@ -170,6 +159,14 @@ class ContentActivity : AppCompatActivity() {
             setPadding(0, 0, 0, dpToPx(16))
         }
         layout.addView(screenTitle)
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.home_rooms_subtitle)
+                textSize = 14f
+                setTextColor(secondaryTextColor)
+                setPadding(0, 0, 0, dpToPx(16))
+            },
+        )
 
         // Stats row
         val statsRow = LinearLayout(this).apply {
@@ -179,7 +176,7 @@ class ContentActivity : AppCompatActivity() {
         }
 
         statsText = TextView(this).apply {
-            text = getString(R.string.home_rooms_remaining_short, MAX_SAVED_ROOMS, MAX_SAVED_ROOMS)
+            text = resources.getQuantityString(R.plurals.home_room_count, 0, 0)
             textSize = 14f
             setTextColor(primaryTextColor)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -230,6 +227,14 @@ class ContentActivity : AppCompatActivity() {
                 textSize = 12f
                 setTextColor(secondaryTextColor)
                 setPadding(0, dpToPx(4), 0, 0)
+            },
+        )
+        storageLocation.addView(
+            TextView(this).apply {
+                text = getString(R.string.home_rooms_storage_warning)
+                textSize = 12f
+                setTextColor(secondaryTextColor)
+                setPadding(0, dpToPx(6), 0, 0)
             },
         )
         layout.addView(storageLocation)
@@ -301,6 +306,19 @@ class ContentActivity : AppCompatActivity() {
     }
 
 
+    private fun launchRoomCreatorIfAllowed() {
+        modelManager.refresh()
+        if (modelManager.listModels().size >= MAX_SAVED_ROOMS) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.room_limit_title)
+                .setMessage(getString(R.string.room_limit_message, MAX_SAVED_ROOMS))
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+            return
+        }
+        startActivity(Intent(this, SinglePhotoRoomActivity::class.java))
+    }
+
     private fun refreshRoomsList() {
         roomsContainer.removeAllViews()
 
@@ -312,8 +330,7 @@ class ContentActivity : AppCompatActivity() {
 
         // Update stats
         val roomCount = models.size
-        val remaining = (MAX_SAVED_ROOMS - roomCount).coerceAtLeast(0)
-        statsText.text = getString(R.string.home_rooms_remaining_short, remaining, MAX_SAVED_ROOMS)
+        statsText.text = resources.getQuantityString(R.plurals.home_room_count, roomCount, roomCount)
 
         // Calculate total size
         var totalBytes = 0L
@@ -340,14 +357,44 @@ class ContentActivity : AppCompatActivity() {
 
         if (models.isEmpty()) {
             // Empty state
-            val emptyText = TextView(this).apply {
-                text = getString(R.string.home_no_rooms_yet)
-                textSize = 16f
-                setTextColor(secondaryTextColor)
+            val emptyState = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(0, dpToPx(60), 0, dpToPx(60))
+                setPadding(0, dpToPx(48), 0, dpToPx(48))
             }
-            roomsContainer.addView(emptyText)
+            emptyState.addView(
+                TextView(this).apply {
+                    text = getString(R.string.home_no_rooms_yet)
+                    textSize = 20f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(primaryTextColor)
+                    gravity = Gravity.CENTER
+                },
+            )
+            emptyState.addView(
+                TextView(this).apply {
+                    text = getString(R.string.home_no_rooms_description)
+                    textSize = 14f
+                    setTextColor(secondaryTextColor)
+                    gravity = Gravity.CENTER
+                    setPadding(dpToPx(24), dpToPx(8), dpToPx(24), dpToPx(20))
+                },
+            )
+            emptyState.addView(
+                TextView(this).apply {
+                    text = getString(R.string.home_create_room)
+                    textSize = 15f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(PaafektColors.accentText)
+                    gravity = Gravity.CENTER
+                    background = PaafektDrawables.heroButton()
+                    setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { launchRoomCreatorIfAllowed() }
+                },
+            )
+            roomsContainer.addView(emptyState)
         } else {
             // Room cards
             for (model in models) {

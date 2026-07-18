@@ -2,7 +2,9 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -89,14 +91,33 @@ object DepthAnythingRoomMeasurer {
         }
     }
 
-    fun measureFromFile(context: Context, imageFile: File): Result {
-        val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
+    fun measureFromFile(
+        context: Context,
+        imageFile: File,
+        imageUri: Uri? = null,
+        cameraMetadata: Map<String, Double>? = null,
+    ): Result {
+        val decodedBitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
             ?: return fallback("decode_failed")
+        val bitmap = applyExifOrientation(decodedBitmap, imageFile)
         return try {
-            measure(context, bitmap)
+            measure(context, bitmap, imageUri, cameraMetadata)
         } finally {
-            bitmap.recycle()
+            if (bitmap !== decodedBitmap) bitmap.recycle()
+            decodedBitmap.recycle()
         }
+    }
+
+    private fun applyExifOrientation(bitmap: Bitmap, imageFile: File): Bitmap {
+        val exif = runCatching { ExifInterface(imageFile) }.getOrNull() ?: return bitmap
+        val rotationDegrees = exif.rotationDegrees
+        val isFlipped = exif.isFlipped
+        if (rotationDegrees == 0 && !isFlipped) return bitmap
+        val transform = Matrix().apply {
+            if (isFlipped) postScale(-1f, 1f)
+            if (rotationDegrees != 0) postRotate(rotationDegrees.toFloat())
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, transform, true)
     }
 
     private fun fallback(reason: String): Result {
@@ -237,13 +258,17 @@ object DepthAnythingRoomMeasurer {
         }
         val output = FloatArray(targetWidth * targetHeight)
         for (y in 0 until targetHeight) {
-            val srcY = y.toFloat() / max(targetHeight - 1, 1) * max(sourceHeight - 1, 1)
-            val y0 = srcY.toInt().coerceIn(0, sourceHeight - 1)
+            val srcY = (
+                (y.toFloat() + 0.5f) * sourceHeight.toFloat() / targetHeight.toFloat() - 0.5f
+                ).coerceIn(0f, (sourceHeight - 1).toFloat())
+            val y0 = srcY.toInt()
             val y1 = min(y0 + 1, sourceHeight - 1)
             val yFrac = srcY - y0
             for (x in 0 until targetWidth) {
-                val srcX = x.toFloat() / max(targetWidth - 1, 1) * max(sourceWidth - 1, 1)
-                val x0 = srcX.toInt().coerceIn(0, sourceWidth - 1)
+                val srcX = (
+                    (x.toFloat() + 0.5f) * sourceWidth.toFloat() / targetWidth.toFloat() - 0.5f
+                    ).coerceIn(0f, (sourceWidth - 1).toFloat())
+                val x0 = srcX.toInt()
                 val x1 = min(x0 + 1, sourceWidth - 1)
                 val xFrac = srcX - x0
                 val v00 = source[y0 * sourceWidth + x0]

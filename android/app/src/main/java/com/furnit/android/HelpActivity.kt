@@ -45,17 +45,21 @@ class HelpActivity : AppCompatActivity() {
                 items = listOf(
                     FAQItem(R.string.faq_how_to_create, R.string.faq_how_to_create_answer),
                     FAQItem(R.string.faq_how_to_take_photo, R.string.faq_how_to_take_photo_answer),
-                    FAQItem(R.string.faq_depth_aware_room_photo, R.string.faq_depth_aware_room_photo_answer),
+                    FAQItem(R.string.faq_best_photos, R.string.faq_best_photos_answer),
+                    FAQItem(R.string.faq_how_many_rooms, R.string.faq_how_many_rooms_answer),
+                    FAQItem(R.string.faq_how_to_view, R.string.faq_how_to_view_answer),
+                    FAQItem(R.string.faq_how_to_navigate, R.string.faq_how_to_navigate_answer),
+                ),
+            ),
+            FAQSection(
+                titleResId = R.string.faq_ai_room_manual_setup,
+                iconResId = R.drawable.ic_house,
+                items = listOf(
                     FAQItem(R.string.faq_two_methods, R.string.faq_two_methods_answer),
                     FAQItem(R.string.faq_what_is_ai_room, R.string.faq_what_is_ai_room_answer),
                     FAQItem(R.string.faq_what_is_manual_room, R.string.faq_what_is_manual_room_answer),
                     FAQItem(R.string.faq_which_method_better, R.string.faq_which_method_better_answer),
-                    FAQItem(R.string.faq_best_photos, R.string.faq_best_photos_answer),
-                    FAQItem(R.string.faq_generation_failing, R.string.faq_generation_failing_answer),
-                    FAQItem(R.string.faq_how_many_rooms, R.string.faq_how_many_rooms_answer),
-                    FAQItem(R.string.faq_how_to_save_room, R.string.faq_how_to_save_room_answer),
-                    FAQItem(R.string.faq_where_rooms_saved, R.string.faq_where_rooms_saved_answer),
-                    FAQItem(R.string.faq_are_photos_uploaded, R.string.faq_are_photos_uploaded_answer),
+                    FAQItem(R.string.faq_depth_aware_room_photo, R.string.faq_depth_aware_room_photo_answer),
                 ),
             ),
             FAQSection(
@@ -64,23 +68,14 @@ class HelpActivity : AppCompatActivity() {
                 items = listOf(
                     FAQItem(R.string.faq_what_is_brain_icon, R.string.faq_what_is_brain_icon_answer),
                     FAQItem(R.string.faq_what_is_viewfinder_button, R.string.faq_what_is_viewfinder_button_answer),
-                    FAQItem(R.string.faq_how_to_screenshot, R.string.faq_how_to_screenshot_answer),
                     FAQItem(R.string.faq_what_is_segmentation, R.string.faq_what_is_segmentation_answer),
                     FAQItem(R.string.faq_how_to_segment, R.string.faq_how_to_segment_answer),
-                    FAQItem(R.string.faq_not_detected, R.string.faq_not_detected_answer),
-                ),
-            ),
-            FAQSection(
-                titleResId = R.string.faq_furniture_measurements,
-                iconResId = R.drawable.ic_ruler,
-                items = listOf(
                     FAQItem(R.string.faq_ar_assisted_sizing, R.string.faq_ar_assisted_sizing_answer),
                     FAQItem(R.string.faq_measurement_pill, R.string.faq_measurement_pill_answer),
                     FAQItem(R.string.faq_reset_overlay_scale, R.string.faq_reset_overlay_scale_answer),
                     FAQItem(R.string.faq_pinch_overlay_size, R.string.faq_pinch_overlay_size_answer),
                     FAQItem(R.string.faq_how_to_place, R.string.faq_how_to_place_answer),
                     FAQItem(R.string.faq_multiple_pieces, R.string.faq_multiple_pieces_answer),
-                    FAQItem(R.string.faq_room_fitment, R.string.faq_room_fitment_answer),
                 ),
             ),
             FAQSection(
@@ -91,6 +86,16 @@ class HelpActivity : AppCompatActivity() {
                         R.string.faq_what_is_placement_intelligence,
                         R.string.faq_what_is_placement_intelligence_answer,
                     ),
+                    FAQItem(R.string.faq_free_floor_location, R.string.faq_free_floor_location_answer),
+                    FAQItem(R.string.faq_dimensional_fit, R.string.faq_dimensional_fit_answer),
+                    FAQItem(R.string.faq_room_fitment, R.string.faq_room_fitment_answer),
+                ),
+            ),
+            FAQSection(
+                titleResId = R.string.faq_aesthetic_guidance,
+                iconResId = R.drawable.ic_ai,
+                items = listOf(
+                    FAQItem(R.string.faq_aesthetic_score, R.string.faq_aesthetic_score_answer),
                     FAQItem(
                         R.string.faq_furniture_color_aesthetic,
                         R.string.faq_furniture_color_aesthetic_answer,
@@ -100,21 +105,59 @@ class HelpActivity : AppCompatActivity() {
                         R.string.faq_what_do_harmony_contrast_mean_answer,
                     ),
                     FAQItem(
+                        R.string.faq_aesthetic_unavailable_question,
+                        R.string.faq_aesthetic_unavailable_answer,
+                    ),
+                    FAQItem(
                         R.string.faq_when_does_aesthetic_score_low,
                         R.string.faq_when_does_aesthetic_score_low_answer,
                     ),
                 ),
             ),
             FAQSection(
-                titleResId = R.string.faq_room_controls,
-                iconResId = R.drawable.ic_grid_3x3,
+                titleResId = R.string.faq_measurements_accuracy,
+                iconResId = R.drawable.ic_ruler,
                 items = listOf(
-                    FAQItem(R.string.faq_how_to_view, R.string.faq_how_to_view_answer),
-                    FAQItem(R.string.faq_how_to_navigate, R.string.faq_how_to_navigate_answer),
-                    FAQItem(R.string.faq_what_do_arrows_do, R.string.faq_what_do_arrows_do_answer),
-                    FAQItem(R.string.faq_what_is_memory_display, R.string.faq_what_is_memory_display_answer),
                     FAQItem(R.string.faq_accuracy, R.string.faq_accuracy_answer),
                     FAQItem(R.string.faq_adjust_dimensions, R.string.faq_adjust_dimensions_answer),
+                    FAQItem(R.string.faq_purchase_reliance, R.string.faq_purchase_reliance_answer),
+                ),
+            ),
+            FAQSection(
+                titleResId = R.string.faq_saved_rooms_storage,
+                iconResId = R.drawable.ic_house,
+                items = listOf(
+                    FAQItem(R.string.faq_how_to_save_room, R.string.faq_how_to_save_room_answer),
+                    FAQItem(R.string.faq_where_rooms_saved, R.string.faq_where_rooms_saved_answer),
+                    FAQItem(R.string.faq_uninstall_rooms, R.string.faq_uninstall_rooms_answer),
+                    FAQItem(R.string.faq_what_is_memory_display, R.string.faq_what_is_memory_display_answer),
+                ),
+            ),
+            FAQSection(
+                titleResId = R.string.faq_sharing_exporting,
+                iconResId = R.drawable.ic_share,
+                items = listOf(
+                    FAQItem(R.string.faq_export_room, R.string.faq_export_room_answer),
+                    FAQItem(R.string.faq_how_to_screenshot, R.string.faq_how_to_screenshot_answer),
+                ),
+            ),
+            FAQSection(
+                titleResId = R.string.faq_privacy_account,
+                iconResId = R.drawable.ic_lock_shield,
+                items = listOf(
+                    FAQItem(R.string.faq_are_photos_uploaded, R.string.faq_are_photos_uploaded_answer),
+                    FAQItem(R.string.faq_firebase_data, R.string.faq_firebase_data_answer),
+                    FAQItem(R.string.faq_delete_account_effect, R.string.faq_delete_account_effect_answer),
+                ),
+            ),
+            FAQSection(
+                titleResId = R.string.faq_troubleshooting_support,
+                iconResId = R.drawable.ic_help,
+                items = listOf(
+                    FAQItem(R.string.faq_generation_failing, R.string.faq_generation_failing_answer),
+                    FAQItem(R.string.faq_not_detected, R.string.faq_not_detected_answer),
+                    FAQItem(R.string.faq_what_do_arrows_do, R.string.faq_what_do_arrows_do_answer),
+                    FAQItem(R.string.faq_contact_support, R.string.faq_contact_support_answer),
                 ),
             ),
         )

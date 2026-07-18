@@ -9,7 +9,6 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D房间探索器";
 "app.version" = "版本";
-"app.developer" = "Paafekt团队";
 
 // MARK: - Common Actions
 "common.done" = "完成";
@@ -20,7 +19,6 @@
 "common.delete" = "删除";
 "common.error" = "错误";
 "common.save" = "保存";
-"common.close" = "关闭";
 "common.apply" = "应用";
 
 // MARK: - Login View
@@ -49,18 +47,18 @@
 "otp.resendFailed" = "重新发送验证码失败。";
 
 // MARK: - Home View
-"home.title" = "3D房间模型";
-"home.noModels" = "未找到3D模型";
-"home.noModelsDescription" = "从照片建立你的第一个房间！";
-"home.createRoom" = "从照片建立房间";
-"home.createRoomToolbarLabel" = "照片 → 3D";
-"home.createRoomHint" = "点这里创建房间";
-"home.roomsRemaining" = "剩餘%d/%d个房间";
-"home.deleteHint" = "删除舊房间以建立新房间";
-"home.swipeHint" = "向左滑动删除";
+"home.libraryTitle" = "房间库";
+"home.librarySubtitle" = "您保存在此设备上的 3D 房间。";
+"home.storageTitle" = "存储在此设备上";
+"home.storagePath" = "房间保存在 Paafekt 的私有应用存储空间中，不会自动上传。内部位置：Documents/SavedRooms。";
+"home.storageWarning" = "卸载 Paafekt 会永久移除已保存的房间。请先分享您想保留的内容。";
+"home.noModels" = "暂无房间";
+"home.noModelsDescription" = "从照片创建您的第一个 3D 房间，或使用 Manual Setup 构建房间。房间将保存在此设备上。";
+"home.createRoom" = "创建房间";
+"home.createRoomToolbarLabel" = "创建房间";
+"home.deleteHint" = "删除旧房间以创建新房间";
+"home.swipeHint" = "向右轻扫可重命名，向左轻扫可删除";
 "home.renameRoom" = "重命名";
-"home.renameRoomMessage" = "此名称显示在你的房间列表中。已保存的文件名保持不变。";
-"home.roomNamePlaceholder" = "房间名称";
 "home.roomModel" = "3D房间模型";
 "home.aiBased3DRoom" = "基于 AI 的 3D 房间";
 "home.manualBased3DRoom" = "基于手动的 3D 房间";
@@ -70,8 +68,8 @@
 "roomLimit.message" = "你已達到%d个房间的上限。请删除一些房间以建立新房间。";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "删除房间？";
-"deleteRoom.message" = "确定要删除「%@」嗎？此操作无法复原。";
+"deleteRoom.title" = "删除此房间？";
+"deleteRoom.message" = "此房间将从该设备中永久移除。此操作无法撤销。";
 
 // MARK: - Explore View
 "explore.title" = "探索";
@@ -100,6 +98,11 @@
 "profile.logout" = "登出";
 "profile.logoutConfirmTitle" = "登出";
 "profile.logoutConfirmMessage" = "确定要登出嗎？";
+"profile.deleteAccount" = "删除账户";
+"profile.deleteAccountConfirmTitle" = "删除账户";
+"profile.deleteAccountConfirmMessage" = "要永久删除您的账户和登录数据吗？保存在此设备上的房间会继续保留，直到您将其删除或卸载 Paafekt。";
+"profile.deleteAccountSuccessTitle" = "账户已删除";
+"profile.deleteAccountSuccessMessage" = "您的账户已删除，您已退出登录。";
 "profile.sectionAccount" = "账户";
 "profile.sectionSettings" = "设置";
 "profile.sectionAbout" = "关于";
@@ -131,6 +134,8 @@
 "settings.legal" = "法律";
 "settings.privacyPolicy" = "隐私政策";
 "settings.termsOfService" = "服务条款";
+"settings.legalSummary" = "房间处理和家具分析均在设备上运行。除非您明确分享，否则已保存的房间会保留在应用的私有存储空间中。Firebase 会处理手机号码身份验证和防滥用数据。";
+"settings.accountDeleteFooter" = "删除账户会移除您的登录账户。保存在此设备上的房间不会自动删除。";
 "settings.support" = "支持";
 "settings.licenses" = "许可";
 "settings.roomViewerSection" = "房间查看器";
@@ -141,22 +146,27 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "许可与归属";
-"licenses.phase1Notice" = "Current release: This app is currently offered for commercial use.";
 "licenses.openSourceSection" = "开源许可";
-"licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.openSourceIntro" = "以下列出了此平台使用的主要开源软件、模型资源、数据集及必要的署名信息。";
 "licenses.viewFullLicense" = "查看完整许可";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "用于单张照片房间重建的室内公制深度估算。依据 Apache License 2.0 授权。";
+"licenses.hypersimTitle" = "Hypersim 数据集";
+"licenses.hypersim" = "室内公制模型使用 Apple 的 Hypersim 合成室内数据集进行微调。Hypersim 依据 CC BY-SA 3.0 授权。";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "用于焦距与重力提示的单图像相机校准。版权所有 2024 ETH Zurich。依据 Apache License 2.0 授权。";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "设备端 Gaussian splat 渲染。版权所有 (c) Sean Cier。依据 MIT 许可授权。";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "版权所有 (c) Google LLC。依据 Apache License 2.0 授权。";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
-"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.rtmdet" = "家具检测与分割使用 OpenMMLab MMDetection 的 RTMDet-Ins 模型。版权所有 (c) OpenMMLab。依据 Apache License 2.0 授权。";
+"licenses.three" = "为 3D 房间查看器提供内置 WebGL 渲染支持。版权所有 (c) 2010-2024 three.js 作者。依据 MIT License 授权。";
 "licenses.threeTitle" = "Three.js";
+"licenses.spzSwiftTitle" = "spz-swift";
+"licenses.spzSwift" = "iOS Gaussian Splat 流程使用的 SPZ 解码。版权所有 Niantic, Inc.、Sean Cier 及贡献者。依据 MIT License 授权。";
+"licenses.cocoTitle" = "COCO 数据集";
+"licenses.coco" = "RTMDet 使用 COCO 进行训练。COCO 标注依据 CC BY 4.0 授权；各张图片仍受其所有者条款约束。";
 
 // MARK: - Quality Options
 "quality.standard" = "标准";
@@ -167,12 +177,6 @@
 
 
 // MARK: - Movement Speed Options
-"speed.slow" = "慢速";
-"speed.slow.description" = "精确控制，适合详细探索";
-"speed.normal" = "正常";
-"speed.normal.description" = "平衡速度，舒适导航";
-"speed.fast" = "快速";
-"speed.fast.description" = "快速移动，敏捷探索";
 
 // MARK: - Help & Support (FAQ)
 "help.title" = "帮助与支援";
@@ -187,71 +191,100 @@
 "help.emailBody" = "您好 Paafekt 支持团队，\n\n我需要帮助：\n\n";
 
 // FAQ - Room Creation
-"faq.roomCreation" = "房间建立";
-"faq.howToCreate" = "如何建立3D房间？";
-"faq.howToCreateAnswer" = "Tap Photo → 3D on the home screen toolbar (or Create Room from Photo in the empty state), then take or select a photo of your room. You'll see two options for creating your 3D room.";
+"faq.roomCreation" = "入门指南";
+"faq.howToCreate" = "如何创建房间？";
+"faq.howToCreateAnswer" = "轻点 Create Room，然后拍摄或选择一张照片。选择 AI Room 可自动估算，选择 Manual Setup 可自行定义房间。保存完成的房间后，它会添加到您的房间库中。";
 "faq.howToTakePhoto" = "如何拍照来创建房间？";
-"faq.howToTakePhotoAnswer" = "When creating a room, choose Take a Photo. You can pick Standard (1x) or Wide Angle (0.5× ultra-wide). Hold your device steady and tap capture. The photo is then used to build your 3D room.";
+"faq.howToTakePhotoAnswer" = "创建房间时，选择 Take a Photo。您可以选择 Standard（1x）或 Wide Angle（0.5× 超广角）。保持设备稳定并轻点拍摄，应用随后会使用该照片构建 3D 房间。";
 "faq.depthAwareRoomPhoto" = "用应用内相机拍照会更好吗？";
 "faq.depthAwareRoomPhotoAnswer" = "会。在支持的设备上，创建房间时选择拍照而非从相册选取，可使用内置相机与深度信息（若设备提供），有助于构建与比例。";
-"faq.twoMethods" = "两种房间创建方式是什么？";
-"faq.twoMethodsAnswer" = "选择照片后，您可以选择：1) AI 驱动的 3D 房间 - 使用人工智能自动创建逼真的 3D 房间，或 2) 手动设置 - 您自己绘制房间边界以获得更多控制。";
+"faq.twoMethods" = "AI Room 与 Manual Setup 有什么区别？";
+"faq.twoMethodsAnswer" = "AI Room 会根据一张照片估算房间尺寸，并生成带测量信息和纹理的呈现效果；它并非完整的体积式重建。Manual Setup 让您自行定义房间边界，以便更直接地控制呈现结果。";
 "faq.whatIsAIRoom" = "什么是 AI 驱动的 3D 房间？";
-"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room 使用设备端深度估算、家具锚点和相机校准，根据一张照片估算带测量信息和纹理的房间；它并非完整的体积式重建。";
 "faq.whatIsManualRoom" = "什么是手动设置？";
-"faq.whatIsManualRoomAnswer" = "手动设置时，您在照片上绘制房间墙壁的轮廓。这样您可以更精确地控制 3D 房间的外观。当您想自己微调房间形状时非常有用。";
+"faq.whatIsManualRoomAnswer" = "Manual Setup 让您直接在照片上定义房间边界，从而更灵活地控制最终呈现效果。";
 "faq.whichMethodBetter" = "我该选哪种方式？";
-"faq.whichMethodBetterAnswer" = "建议先试 AI 驱动 - 更快，对大多数房间效果很好。如果结果不太理想，用手动设置在您想要的位置绘制墙壁。两种都可以试试看您更喜欢哪种！";
+"faq.whichMethodBetterAnswer" = "若想快速获得自动估算结果，请选择 AI Room；若想直接控制房间边界，请选择 Manual Setup。如果一种方式的结果不理想，可以尝试另一种。";
 "faq.bestPhotos" = "什么样的照片效果最好？";
 "faq.bestPhotosAnswer" = "为获得最佳效果，请在光线充足的环境下拍摄，并保持相机水平。尽量拍摄整个房间，包括地板、墙壁和天花板边緣。避免模糊或昏暗的照片。";
 "faq.generationFailing" = "为什么我的房间产生失败？";
 "faq.generationFailingAnswer" = "如果照片太暗、模糊或没有显示足够的房间特征，房间产生可能会失败。请尝试在更好的光线下以更宽的角度拍摄新照片。";
 "faq.howManyRooms" = "我可以建立多少个房间？";
-"faq.howManyRoomsAnswer" = "你最多可以创建20个房间。删除旧房间以腾出空间。主屏幕顶部会显示房间数量和已用存储空间。";
+"faq.howManyRoomsAnswer" = "您最多可以保存 20 个房间。删除不再需要的房间即可腾出空间。房间库会显示当前房间数量和已用存储总量。";
+"faq.howToSaveRoom" = "如何保存房间？";
+"faq.howToSaveRoomAnswer" = "生成 3D 房间后，轻点房间以调出控件，再轻点保存图标（向下箭头）并输入名称。如果未保存就离开预览，该房间将被丢弃。";
+"faq.whereRoomsSaved" = "我的房间保存在哪里？";
+"faq.whereRoomsSavedAnswer" = "房间保存在此设备上 Paafekt 的私有应用存储空间中，不会自动上传。内部位置：Documents/SavedRooms。";
+"faq.arePhotosUploaded" = "我的房间照片会上传吗？";
+"faq.arePhotosUploadedAnswer" = "不会。房间创建、家具检测和 Placement Intelligence 均在此设备上运行。Firebase 会另外处理手机号码身份验证和防滥用数据。只有在您明确分享时，内容才会离开 Paafekt。";
 
 // FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "家具分割";
 "faq.whatIsSegmentation" = "什么是家具分割？";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation runs from the room viewer via the Fit button. By default one primary item is auto-segmented. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces.";
+"faq.whatIsSegmentationAnswer" = "家具分割会检测相机画面中的物品，并将其可见像素与背景分离，使其能以可移动抠图的形式显示。处理过程在此设备上运行。";
 "faq.howToSegment" = "如何在房间查看器中分割家具？";
-"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
+"faq.howToSegmentAnswer" = "在房间查看器中轻点 Fit。快速检查时，它会自动分割主要物品。若要选择特定家具，请调出控件、启用全视频模式、将相机对准家具、轻点检测框，然后轻点 Segment。轻点右上角的 Done 即可退出。";
 "faq.notDetected" = "为什么我的家具没有被侦测到？";
 "faq.notDetectedAnswer" = "家具侦测在清晰、光线充足且家具明显可见的照片中效果最佳。确保家具没有被部分遮挡或与背景融合。";
 "faq.multiplePieces" = "我可以分割多件家具嗎？";
-"faq.multiplePiecesAnswer" = "Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default Fit flow.";
+"faq.multiplePiecesAnswer" = "在全视频模式下，选择多个检测框并轻点 Segment，即可同时创建这些物品的抠图。您也可以通过默认的 Fit 流程逐件分割。";
 
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "如何查看家具是否合适？";
-"faq.roomFitmentAnswer" = "分割后可在 3D 房间中缩放和移动抠图。全视频模式下，分割会将所选物体叠加在房间上，便于同时对比多件家具与空间。";
+"faq.roomFitmentAnswer" = "分割后，启用 AR 尺寸测量以获取家具的宽度和高度。Placement Intelligence 会将这些值和推导深度与房间范围进行比较，但不会指出保证可用的地板位置。";
 
 // FAQ - Placement intelligence & aesthetic
-"faq.placementIntelligence" = "摆放智能与美学";
+"faq.placementIntelligence" = "Placement Intelligence";
 "faq.whatIsPlacementIntelligence" = "什么是「摆放智能」（Placement Intelligence）？";
-"faq.whatIsPlacementIntelligenceAnswer" = "While Fit is active in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
+"faq.whatIsPlacementIntelligenceAnswer" = "Placement Intelligence 会将物品的估算宽度、高度和推导深度与房间范围进行比较。它只报告尺寸兼容性，不会识别地板上的空闲位置。";
 "faq.furnitureColorAesthetic" = "美学评分用的颜色是怎么来的？";
-"faq.furnitureColorAestheticAnswer" = "应用会对你看到的 AI 家具抠图（与实时分割叠加层相同）里、不透明像素的颜色做 RGB 平均，再与从地面、墙面、天花板采样的颜色比较。若抠图尚未就绪，会暂用房间调色板的推断色，直到分割给出真实采样。";
+"faq.furnitureColorAestheticAnswer" = "应用会计算 AI 家具抠图中可见像素的直接 RGB 平均色，并与从房间中采样的颜色进行比较。如果任一颜色样本不可用，美学指导会保持不可用，而不会凭空生成评分。";
 "faq.whatDoHarmonyContrastMean" = "和谐度、对比度、风格匹配是什么意思？";
 "faq.whatDoHarmonyContrastMeanAnswer" = "它们只是简单的设计启发规则，不是品味评判。和谐度描述家具颜色与房间主色之间的关系（例如类似色或互补色）。对比度衡量与典型地面、墙面亮度的差异。风格匹配把从房间推断的宽泛风格标签与默认的「现代/简约」档案对比，因此仅供参考。";
 "faq.whenDoesAestheticScoreLow" = "什么情况下美学分数会偏低或显示「冲突（clash）」？";
 "faq.whenDoesAestheticScoreLowAnswer" = "高饱和物体若色相与应用内的和谐配色规则、以及你房间采样色不协调，分数往往更低——例如酸绿、品红、紫色、安全橙放在偏米色、暖棕调房间里，或空间采样几乎单色时仍用刺眼原色。与地板或墙面亮度非常接近（棕上棕、灰上灰）也可能拉低对比度，即便你主观上喜欢。若房间被推断为乡村风、传统风，风格匹配可能偏低，因为家具档案默认带现代/简约标签。杂乱背景下得到的灰蒙蒙平均色有时会落在「中性」区间而非冲突。分数仅供提示，实际搭配请以肉眼为准。";
+"faq.aiRoomManualSetup" = "AI Room 与 Manual Setup";
+"faq.aestheticGuidance" = "美学指导";
+"faq.measurementsAccuracy" = "测量与准确性";
+"faq.savedRoomsStorage" = "已保存的房间与存储";
+"faq.sharingExporting" = "分享与导出";
+"faq.privacyAccount" = "隐私与账户";
+"faq.troubleshootingSupport" = "故障排除与支持";
+"faq.uninstallRooms" = "卸载 Paafekt 后，我的房间会怎样？";
+"faq.uninstallRoomsAnswer" = "卸载 Paafekt 会永久移除保存在其私有应用存储空间中的房间。卸载前，请先分享您想保留的内容。";
+"faq.exportRoom" = "如何备份或导出房间？";
+"faq.exportRoomAnswer" = "当该房间类型支持 Share 时，可使用此功能。Capture 分享的是当前视图的图片，并不是可恢复的房间备份。Paafekt 目前不提供云同步，也不保证能够完整备份整个房间库。";
+"faq.freeFloorLocation" = "Placement Intelligence 会在地板上查找可用位置吗？";
+"faq.freeFloorLocationAnswer" = "不会。它只会检查家具的估算尺寸是否与房间范围兼容，不会检测空闲地面空间，也不会指出具体的空位。";
+"faq.dimensionalFit" = "尺寸适配是如何计算的？";
+"faq.dimensionalFitAnswer" = "应用会将物品的估算宽度、高度和推导深度与房间的估算尺寸进行比较，并在有帮助时考虑旋转后的占地范围。由于两组尺寸都是估算值，请仅将结果作为参考。";
+"faq.aestheticScore" = "美学评分是如何计算的？";
+"faq.aestheticScoreAnswer" = "应用会将已分割家具的平均可见颜色与从房间中采样的颜色进行比较。色彩和谐度、亮度对比度和整体风格兼容性都会影响评分。这些只是近似的设计启发规则，并非审美准则。";
+"faq.aestheticUnavailable" = "为什么无法提供美学指导？";
+"faq.aestheticUnavailableAnswer" = "美学指导需要房间和已分割家具双方都有可用的颜色样本。如果任一方的样本不可用，Paafekt 不会凭空生成评分。";
+"faq.purchaseReliance" = "购买家具时可以依赖 Paafekt 吗？";
+"faq.purchaseRelianceAnswer" = "请将 Paafekt 作为参考，而非保证。购买前务必向卖家确认尺寸、预留空间和适用性。";
+"faq.deleteAccountEffect" = "删除账户后会怎样？";
+"faq.deleteAccountEffectAnswer" = "删除账户会移除 Firebase 身份验证账户并退出登录。保存在此设备上的房间不会自动删除；请在 Paafekt 中删除，或卸载应用以将其移除。";
+"faq.firebaseData" = "Firebase 会处理哪些数据？";
+"faq.firebaseDataAnswer" = "Firebase 会处理您的手机号码、身份验证记录，以及用于验证和防止滥用的设备安装标识符。房间创建和家具处理仍在此设备上进行。";
+"faq.contactSupport" = "如何联系支持团队？";
+"faq.contactSupportAnswer" = "打开设置 → 帮助与支持，然后发送电子邮件至 support@paafekt.com。";
 
 "faq.howToView" = "如何检视我的3D房间？";
 "faq.howToViewAnswer" = "在主屏幕点击任意房间打开 3D 查看器。拖动环视，捏合缩放。点击房间可唤出更多控件（重新居中、尺子、Capture）。右下角金色 Fit 按钮始终可见。";
 "faq.howToPlace" = "如何在房间中放置家具？";
 "faq.howToPlaceAnswer" = "点击分割后，选中的家具会以叠层形式出现在房间里。拖动可定位，双指缩放可调整大小，旋转可调整方向。";
-"faq.sampleRoom" = "我可以使用范例房间嗎？";
-"faq.sampleRoomAnswer" = "可以！应用程式提供范例房间供你体验。从探索部分存取它們，无需先建立自己的房间即可尝试家具布置。";
-"faq.accuracy" = "3D模型有多准确？";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracy" = "房间和家具测量有多准确？";
+"faq.accuracyAnswer" = "测量结果是在设备上生成的估算值，会受到照片质量、光线、相机角度和 AR 跟踪的影响。请将其作为参考，并在做决定前自行确认重要尺寸。";
 "faq.adjustDimensions" = "我可以调整房间尺寸嗎？";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.furnitureMeasurements" = "家具与测量";
-"faq.arAssistedSizing" = "什么是 AR 辅助家具尺寸？";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
+"faq.adjustDimensionsAnswer" = "AI Room 的尺寸无法手动编辑。保存后，调出控件并轻点尺子，即可查看估算的宽度、高度和深度。保存前的预览不会显示尺寸标签；请先保存房间，再重新打开以查看测量结果。手动房间会采用您绘制的边界。";
+"faq.arAssistedSizing" = "什么是 AR 辅助尺寸测量？";
+"faq.arAssistedSizingAnswer" = "AR 辅助尺寸测量会利用受支持的相机和深度感知能力估算家具尺寸。结果取决于拍摄质量和跟踪条件，仍属于估算值。";
 "faq.measurementPill" = "画面上小小的测量提示是什么？";
-"faq.measurementPillAnswer" = "SmartyPants 开启时，可能会显示预估的家具高度和房间高度。点击可输入实际尺寸以提高准确度。若房间照片用广角（0.5×）拍摄，请一并标记，画面构图才会一致。";
+"faq.measurementPillAnswer" = "只有在尺寸模式开启且应用获得可用的实时高度估算时，家具尺寸标签才会出现。尺子按钮会在小卡片中显示当前房间的宽度、高度和深度。在不支持 AR 的手机上，这些读数较不可靠，尤其是家具尺寸。";
 "faq.resetOverlayScale" = "检测遮罩缩放看起来不对怎么办？";
-"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
+"faq.resetOverlayScaleAnswer" = "现在没有更多选项菜单。如果叠加层显示异常，请轻点 Done 退出 Fit，再次轻点 Fit；也可以双指捏合家具，手动微调其大小。";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "房间边界";
@@ -262,8 +295,6 @@
 "boundary.vanish" = "消失点";
 
 // MARK: - Model Viewer
-"viewer.furniture" = "新增家具";
-"viewer.capture" = "截图";
 
 // MARK: - SmartyPants (Segmentation)
 "smartypants.starting" = "正在启动相机...";
@@ -355,6 +386,7 @@
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "家具高度必须小于房间高度（%.2f 米）。";
 "roomViewer.roomMetersShort" = "房间：%.2f 米";
 "roomViewer.furnitureMetersShort" = "家具：%.2f 米";
+"roomViewer.furnitureHeightEstimate" = "家具高度约为 %.2f 米";
 "roomViewer.wallWidthPlaceholder" = "宽度";
 "roomViewer.wallHeightPlaceholder" = "高度";
 "roomViewer.saveErrorUnknown" = "未知错误";
@@ -407,20 +439,17 @@
 "accessibility.createRoom" = "从照片建立房间";
 
 // FAQ - AI Features (added)
-"faq.aiFeatures" = "AI 功能";
+"faq.aiFeatures" = "家具检测与尺寸测量";
 "faq.whatIsBrainIcon" = "Fit 按钮有什么作用？";
-"faq.whatIsBrainIconAnswer" = "在房间查看器中点击右下角金色 Fit 按钮即可启动 SmartyPants 家具分割。默认会自动分割置信度最高的物品，并以透明抠图叠加在 3D 房间上。点击右上角完成退出。要选择特定物品，请先唤出控件并开启 full-video 模式。";
-"faq.whatIsViewfinderButton" = "What does full-video mode do in the room viewer?";
-"faq.whatIsViewfinderButtonAnswer" = "While Fit is active, summon controls and tap the viewfinder icon to toggle full-video mode. You get a live camera feed with detection boxes—tap one or more items, then tap Segment. The camera hides and transparent cutouts composite over your 3D room. Tap Done (top-right) to exit segment mode or leave Fit entirely.";
+"faq.whatIsBrainIconAnswer" = "轻点 Fit 可检测一件家具，并在您的 3D 房间上创建透明抠图。拖动抠图可调整位置，双指捏合可调整大小。Fit 仅提供视觉预览；如需带测量信息的尺寸指导，必须使用 AR 辅助尺寸测量。";
+"faq.whatIsViewfinderButton" = "房间查看器中的全视频模式有什么作用？";
+"faq.whatIsViewfinderButtonAnswer" = "Fit 启用时，调出控件并轻点取景器图标即可切换全视频模式。实时相机画面会显示检测框；选择一个或多个物品后轻点 Segment。随后相机会隐藏，透明抠图会合成到您的 3D 房间上。轻点右上角的 Done 可退出分割模式或完全退出 Fit。";
 "faq.howToScreenshot" = "如何截屏？";
 "faq.howToScreenshotAnswer" = "点击房间唤出控件，然后点按 Capture。可将当前视图（Fit 开启时含家具叠加层）保存到照片图库。";
-"faq.howToSaveRoom" = "如何保存房间？";
-"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the room to summon controls, then tap the save icon (download arrow) and enter a name. If you leave a preview without saving, that room is discarded.";
 
 // FAQ - 3D Room Controls (added)
-"faq.roomControls" = "3D 房间控制";
 "faq.howToNavigate" = "如何在房间内导航？";
-"faq.howToNavigateAnswer" = "Drag on the room to orbit the camera and pinch to zoom. Tap the screen to summon the toolbar, then use the viewfinder icon to recenter. A quiet summon disk at bottom-left also brings controls back when hidden.";
+"faq.howToNavigateAnswer" = "在房间上拖动可环绕相机，双指捏合可缩放。轻点屏幕调出工具栏，然后轻点 Recenter 恢复默认视图。控件隐藏时，左下角的小控件也可重新调出工具栏。";
 "faq.whatDoArrowsDo" = "如何显示或隐藏查看器控件？";
 "faq.whatDoArrowsDoAnswer" = "房间查看器为沉浸模式—控件会隐藏以保持画面简洁。点击房间唤出工具栏。右下角金色 Fit 按钮始终可见。Fit 激活时，右上角会显示完成以退出分割。";
 "faq.whatIsMemoryDisplay" = "MB 数字是什么意思？";
@@ -463,16 +492,31 @@
 
 // MARK: - Photo Selection Warning
 "photoRoom.screenshotWarning" = "请勿选择截屏 — 可能导致黑色斑块";
+"photoRoom.backAlertTitle" = "继续使用 AI 还是 Manual？";
+"photoRoom.backAlertMessage" = "轻点 AI 或 Manual 开始创建房间，或轻点“确定”返回。";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
 
 // MARK: - i18n sync (简体中文)
 "common.or" = "或";
-"common.retry" = "重试";
 "settings.fullVideoWithIdentifications" = "全屏视频与识别";
 "settings.fullVideoWithIdentificationsDescription" = "显示实时相机画面及检测框和标签，而不是自动居中分割后的家具叠加层。";
 
 
 "camera.takePhoto" = "拍照";
 "camera.chooseOrientationShort" = "竖屏或横屏";
+"camera.title" = "相机";
+"camera.chooseMode" = "选择相机模式";
+"camera.chooseModeHint" = "选择用于拍摄房间的相机镜头";
+"camera.ar.hint" = "将相机对准房间并保持稳定，然后拍摄。我们使用 AR 获取准确的相机内参（在 LiDAR 设备上还会获取场景深度）。";
+"camera.standard" = "标准";
+"camera.wideAngle" = "广角";
+"camera.standard.desc" = "标准 1x 镜头 • 支持任意方向持握";
+"camera.wideAngle.desc" = "0.5x 超广角镜头 • 拍摄范围更大";
+"camera.wideAngle.info" = "使用 0.5x 超广角镜头获得更宽的视野";
+"camera.selectWideAngle" = "选择广角照片";
+"camera.captureWideAngle" = "拍摄广角照片";
+"camera.wideAngle.holdSteady" = "保持稳定 • 超广角镜头可拍摄更多区域";
 "roomGeneration.downloadingEngine" = "正在下载3D引擎...";
 "roomGeneration.downloadingEnginePercent" = "正在下载3D引擎... %d%%";
 "roomGeneration.downloadComplete" = "下载完成";
@@ -507,16 +551,9 @@
 "generationProgress.preparing" = "准备中...";
 "generationProgress.mayTakeFewMinutes" = "这可能需要几分钟";
 
-// FAQ overrides
+// FAQ additions
 "help.measurementAccuracyTitle" = "测量提示";
 "help.measurementAccuracyBody" = "没有 AR 深度支持的手机仍然可以预览房间和家具，但房间尺寸，尤其是家具尺寸，只能作为近似参考。";
-"faq.whatIsBrainIconAnswer" = "在房间查看器中点击右下角金色 Fit 按钮即可启动 SmartyPants 家具分割。默认会自动分割置信度最高的物品，并以透明抠图叠加在 3D 房间上。点击右上角完成退出。要选择特定物品，请先唤出控件并开启 full-video 模式。";
-"faq.howToSegmentAnswer" = "Tap Fit in the room viewer. For a quick check it auto-segments the main item. To pick specific pieces: summon controls, enable full-video mode, point the camera at the furniture, tap detection boxes, then tap Segment. Tap Done (top-right) to exit.";
-"faq.accuracyAnswer" = "3D 房间是基于一张照片生成的估计结果。房间尺寸可以作为参考，但不是专业测绘级精度。家具测量在支持 AR 或深度的手机上最可靠。";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. After saving, summon controls and tap the ruler to see estimated width, height, and depth. During the pre-save preview, dimension chips are hidden—save the room first, then reopen to see measurements. Manual rooms follow the boundaries you draw.";
-"faq.arAssistedSizingAnswer" = "Tap Fit to segment furniture first. Use the sizing control in the summoned toolbar when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth; without depth, furniture measurements are approximate.";
-"faq.measurementPillAnswer" = "家具尺寸小标签只会在尺寸模式开启且应用拿到可用的实时高度估计时出现。尺子按钮会以小卡片形式显示当前房间的宽度、高度和深度。在不支持 AR 的手机上，这些读数会更不可靠，尤其是家具尺寸。";
-"faq.resetOverlayScaleAnswer" = "There is no overflow menu now. If the overlay looks off, tap Done to exit Fit and tap Fit again, or pinch the furniture manually to fine-tune its size.";
 
 "faq.pinchOverlaySize" = "双指缩放已分割的家具时会发生什么？";
 "faq.pinchOverlaySizeAnswer" = "双指缩放会让家具叠层变大或变小。如果尺寸模式已开启且 Furni 小标签可见，这个小标签会更新为当前按房间比例调整后的家具估计尺寸。如果尺寸模式未开启，双指缩放只会改变屏幕上叠层的视觉大小。";
@@ -542,15 +579,15 @@
 
 
 "settings.credits" = "鸣谢";
-"credits.title" = "鸣谢";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.title" = "技术与开发鸣谢";
+"credits.intro" = "Paafekt 基于 Apple 与 Google 平台技术构建。OpenAI 和 Anthropic 工具也在开发过程中协助了研究、文稿起草与工程工作。";
 "credits.disclaimer" = "这些鸣谢仅用于透明说明。提及第三方公司、产品或模型，并不表示存在赞助、背书或正式关联。";
 "credits.visitWebsite" = "访问网站";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.appleBody" = "Apple 框架为 iOS App 提供相机拍摄、Core ML、AR/深度处理以及设备端 3D 渲染功能。";
+"credits.googleTitle" = "Google";
+"credits.googleBody" = "Android、ARCore、Filament 和 Firebase 为 Android App 提供平台、AR、3D 渲染与身份验证功能。";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI 工具（包括 ChatGPT）被用于支持产品构思、实现辅助、文稿起草和开发过程中的技术探索。";
 "credits.anthropicTitle" = "Anthropic";
 "credits.anthropicBody" = "Anthropic 工具被用于支持研究、代码辅助、实现细节推理以及开发迭代。";
-"credits.lumaTitle" = "Luma AI";
-"credits.lumaBody" = "Luma AI 工具及其产品参考为我们在产品开发期间进行视觉 AI 与 3D 工作流探索的部分工作提供了帮助。";

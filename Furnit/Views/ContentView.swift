@@ -122,6 +122,13 @@ struct HomeTab: View {
     var body: some View {
         NavigationStack {
             VStack {
+                Text(L10n.Home.librarySubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Space.lg)
+                    .padding(.bottom, Theme.Space.sm)
+
                 if modelManager.models.isEmpty {
                     // Empty state with upload suggestion
                     VStack(spacing: 20) {
@@ -154,7 +161,7 @@ struct HomeTab: View {
                         // Room limit banner with total memory
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(L10n.Home.roomsRemaining(limitManager.remainingRooms(), limitManager.roomLimit))
+                                Text(L10n.Home.roomCount(modelManager.models.count))
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                 if limitManager.remainingRooms() <= 3 {
@@ -384,6 +391,9 @@ struct HomeTab: View {
                     .font(Theme.Typo.caption().weight(.semibold))
                     .foregroundStyle(Theme.Palette.textPrimary)
                 Text(L10n.Home.storagePath)
+                    .font(Theme.Typo.caption())
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                Text(L10n.Home.storageWarning)
                     .font(Theme.Typo.caption())
                     .foregroundStyle(Theme.Palette.textSecondary)
             }
@@ -910,17 +920,21 @@ struct SupportView: View {
                 items: [
                     FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
                     FAQItem(question: "faq.howToTakePhoto".localized, answer: "faq.howToTakePhotoAnswer".localized),
-                    FAQItem(question: "faq.depthAwareRoomPhoto".localized, answer: "faq.depthAwareRoomPhotoAnswer".localized),
+                    FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
+                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized),
+                    FAQItem(question: "faq.howToView".localized, answer: "faq.howToViewAnswer".localized),
+                    FAQItem(question: "faq.howToNavigate".localized, answer: "faq.howToNavigateAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.aiRoomManualSetup".localized,
+                icon: "cube.transparent",
+                items: [
                     FAQItem(question: "faq.twoMethods".localized, answer: "faq.twoMethodsAnswer".localized),
                     FAQItem(question: "faq.whatIsAIRoom".localized, answer: "faq.whatIsAIRoomAnswer".localized),
                     FAQItem(question: "faq.whatIsManualRoom".localized, answer: "faq.whatIsManualRoomAnswer".localized),
                     FAQItem(question: "faq.whichMethodBetter".localized, answer: "faq.whichMethodBetterAnswer".localized),
-                    FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
-                    FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
-                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized),
-                    FAQItem(question: "faq.howToSaveRoom".localized, answer: "faq.howToSaveRoomAnswer".localized),
-                    FAQItem(question: "faq.whereRoomsSaved".localized, answer: "faq.whereRoomsSavedAnswer".localized),
-                    FAQItem(question: "faq.arePhotosUploaded".localized, answer: "faq.arePhotosUploadedAnswer".localized)
+                    FAQItem(question: "faq.depthAwareRoomPhoto".localized, answer: "faq.depthAwareRoomPhotoAnswer".localized)
                 ]
             ),
             FAQSection(
@@ -929,46 +943,81 @@ struct SupportView: View {
                 items: [
                     FAQItem(question: "faq.whatIsBrainIcon".localized, answer: "faq.whatIsBrainIconAnswer".localized),
                     FAQItem(question: "faq.whatIsViewfinderButton".localized, answer: "faq.whatIsViewfinderButtonAnswer".localized),
-                    FAQItem(question: "faq.howToScreenshot".localized, answer: "faq.howToScreenshotAnswer".localized),
                     FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
                     FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),
-                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized)
-                ]
-            ),
-            FAQSection(
-                title: "faq.furnitureMeasurements".localized,
-                icon: "ruler",
-                items: [
                     FAQItem(question: "faq.arAssistedSizing".localized, answer: "faq.arAssistedSizingAnswer".localized),
                     FAQItem(question: "faq.measurementPill".localized, answer: "faq.measurementPillAnswer".localized),
                     FAQItem(question: "faq.resetOverlayScale".localized, answer: "faq.resetOverlayScaleAnswer".localized),
                     FAQItem(question: "faq.pinchOverlaySize".localized, answer: "faq.pinchOverlaySizeAnswer".localized),
                     FAQItem(question: "faq.howToPlace".localized, answer: "faq.howToPlaceAnswer".localized),
-                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized),
-                    FAQItem(question: "faq.roomFitment".localized, answer: "faq.roomFitmentAnswer".localized)
+                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized)
                 ]
             ),
             FAQSection(
                 title: "faq.placementIntelligence".localized,
-                icon: "paintpalette.fill",
+                icon: "square.split.2x2.fill",
                 items: [
                     FAQItem(question: "faq.whatIsPlacementIntelligence".localized, answer: "faq.whatIsPlacementIntelligenceAnswer".localized),
+                    FAQItem(question: "faq.freeFloorLocation".localized, answer: "faq.freeFloorLocationAnswer".localized),
+                    FAQItem(question: "faq.dimensionalFit".localized, answer: "faq.dimensionalFitAnswer".localized),
+                    FAQItem(question: "faq.roomFitment".localized, answer: "faq.roomFitmentAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.aestheticGuidance".localized,
+                icon: "paintpalette.fill",
+                items: [
+                    FAQItem(question: "faq.aestheticScore".localized, answer: "faq.aestheticScoreAnswer".localized),
                     FAQItem(question: "faq.furnitureColorAesthetic".localized, answer: "faq.furnitureColorAestheticAnswer".localized),
                     FAQItem(question: "faq.whatDoHarmonyContrastMean".localized, answer: "faq.whatDoHarmonyContrastMeanAnswer".localized),
+                    FAQItem(question: "faq.aestheticUnavailable".localized, answer: "faq.aestheticUnavailableAnswer".localized),
                     FAQItem(question: "faq.whenDoesAestheticScoreLow".localized, answer: "faq.whenDoesAestheticScoreLowAnswer".localized)
                 ]
             ),
             FAQSection(
-                title: "faq.roomControls".localized,
-                icon: "cube.fill",
+                title: "faq.measurementsAccuracy".localized,
+                icon: "ruler",
                 items: [
-                    FAQItem(question: "faq.howToView".localized, answer: "faq.howToViewAnswer".localized),
-                    FAQItem(question: "faq.howToNavigate".localized, answer: "faq.howToNavigateAnswer".localized),
-                    FAQItem(question: "faq.whatDoArrowsDo".localized, answer: "faq.whatDoArrowsDoAnswer".localized),
-                    FAQItem(question: "faq.whatIsMemoryDisplay".localized, answer: "faq.whatIsMemoryDisplayAnswer".localized),
-                    FAQItem(question: "faq.sampleRoom".localized, answer: "faq.sampleRoomAnswer".localized),
                     FAQItem(question: "faq.accuracy".localized, answer: "faq.accuracyAnswer".localized),
-                    FAQItem(question: "faq.adjustDimensions".localized, answer: "faq.adjustDimensionsAnswer".localized)
+                    FAQItem(question: "faq.adjustDimensions".localized, answer: "faq.adjustDimensionsAnswer".localized),
+                    FAQItem(question: "faq.purchaseReliance".localized, answer: "faq.purchaseRelianceAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.savedRoomsStorage".localized,
+                icon: "internaldrive.fill",
+                items: [
+                    FAQItem(question: "faq.howToSaveRoom".localized, answer: "faq.howToSaveRoomAnswer".localized),
+                    FAQItem(question: "faq.whereRoomsSaved".localized, answer: "faq.whereRoomsSavedAnswer".localized),
+                    FAQItem(question: "faq.uninstallRooms".localized, answer: "faq.uninstallRoomsAnswer".localized),
+                    FAQItem(question: "faq.whatIsMemoryDisplay".localized, answer: "faq.whatIsMemoryDisplayAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.sharingExporting".localized,
+                icon: "square.and.arrow.up",
+                items: [
+                    FAQItem(question: "faq.exportRoom".localized, answer: "faq.exportRoomAnswer".localized),
+                    FAQItem(question: "faq.howToScreenshot".localized, answer: "faq.howToScreenshotAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.privacyAccount".localized,
+                icon: "lock.shield.fill",
+                items: [
+                    FAQItem(question: "faq.arePhotosUploaded".localized, answer: "faq.arePhotosUploadedAnswer".localized),
+                    FAQItem(question: "faq.firebaseData".localized, answer: "faq.firebaseDataAnswer".localized),
+                    FAQItem(question: "faq.deleteAccountEffect".localized, answer: "faq.deleteAccountEffectAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.troubleshootingSupport".localized,
+                icon: "wrench.and.screwdriver.fill",
+                items: [
+                    FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
+                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized),
+                    FAQItem(question: "faq.whatDoArrowsDo".localized, answer: "faq.whatDoArrowsDoAnswer".localized),
+                    FAQItem(question: "faq.contactSupport".localized, answer: "faq.contactSupportAnswer".localized)
                 ]
             )
         ]

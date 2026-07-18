@@ -1,5 +1,7 @@
 package com.furnit.android.roomreconstruction
 
+import kotlin.math.roundToInt
+
 object DepthSpreadMeasure {
     data class SpreadDims(val width: Float, val height: Float, val depth: Float)
 
@@ -14,10 +16,10 @@ object DepthSpreadMeasure {
     ): SpreadDims? {
         if (imageWidth <= 1 || imageHeight <= 1) return null
         val margin = wallMargin.coerceIn(0f, 0.45f)
-        val leftX = (margin * imageWidth).toInt()
-        val rightX = ((1f - margin) * imageWidth).toInt() - 1
-        val topY = (margin * imageHeight).toInt()
-        val bottomY = ((1f - margin) * imageHeight).toInt() - 1
+        val leftX = (margin * imageWidth).roundToInt()
+        val rightX = ((1f - margin) * imageWidth).roundToInt() - 1
+        val topY = (margin * imageHeight).roundToInt()
+        val bottomY = ((1f - margin) * imageHeight).roundToInt() - 1
         if (leftX >= rightX || topY >= bottomY) return null
 
         val leveledX = ArrayList<Float>(512)
