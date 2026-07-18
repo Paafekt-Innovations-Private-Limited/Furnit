@@ -191,7 +191,7 @@ public struct RoomModel: Equatable, Sendable {
     public let freeFloorRegions: [FreeFloorRegion]
     public let surfacePalette: SurfacePalette
     public let cameraInfo: SourceCameraInfo?
-    /// Metres per one unit of scene-space AABB / splat coordinates (see ``RoomGeometryEngine``).
+    /// Metres per one unit of scene-space AABB / splat coordinates.
     public let sceneToMeters: Float
 
     public init(

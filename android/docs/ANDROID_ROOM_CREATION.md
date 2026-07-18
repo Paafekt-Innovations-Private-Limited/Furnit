@@ -42,7 +42,6 @@ Tracked Android room-generation assets:
 
 ```text
 app/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
-app/src/main/assets/room_generation/room_generation_assets.json
 app/src/main/assets/rtmdet-ins-m-raw.onnx
 ```
 

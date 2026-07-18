@@ -168,14 +168,14 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 | Commit | Date | What happened |
 |--------|------|----------------|
-| `4ef4e10` | 2026-02-26 | **Added** Phase 1 notice with YOLO-E / **SHARP** attributions and in-app Licenses screens. Message: *“Phase 1 release: … non-commercial use only.”* |
+| `4ef4e10` | 2026-02-26 | **Added** Phase 1 notice with legacy model attributions and in-app Licenses screens. Message: *“Phase 1 release: … non-commercial use only.”* |
 | `3c15aec` | 2026-06-16 | **Removed notice from UI** ahead of commercial release; kept string keys. Commit message: RTMDet attribution added; phase1 “unused”. |
 | `e2aac05` | 2026-07-08 | **Re-displayed** notice; text changed to *“Current release: … non-commercial use only.”* |
 | *(working tree)* | 2026-07-13 | **Updated** notice to *“Current release: This app is currently offered for commercial use.”* (iOS + Android string resources). |
 
 **Displayed today:** iOS `Furnit/Views/ContentView.swift` (`LicensesView`); Android `LicensesActivity.kt`.
 
-**Conclusion:** **Product / release-phase policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Originally carried from early Phase 1 (SHARP/YOLO-era legal posture). **Updated 2026-07-13** to state commercial use; aligns with intended commercial launch. Lawyer should still align full terms with model audit above.
+**Conclusion:** **Product / release-phase policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Originally carried from an early Phase 1 legacy-model legal posture. **Updated 2026-07-13** to state commercial use; aligns with intended commercial launch. Lawyer should still align full terms with model audit above.
 
 ---
 

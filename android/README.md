@@ -40,7 +40,6 @@ kernels plus `mask_feat` to build cutouts.
 Room-generation assets are tracked under `app/src/main/assets/room_generation/`:
 
 - `depth_anything/depth_anything_v2_metric_indoor_small.onnx`
-- `room_generation_assets.json`
 - `geocalib/.gitkeep`
 
 `RoomGenerationAssets` also checks for `rtmdet-ins-m-raw.onnx`, which is packaged at the root of app assets for furniture segmentation.

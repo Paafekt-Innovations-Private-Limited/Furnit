@@ -44,7 +44,7 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator?.sampleDepthGrid(rows: rows, cols: cols) ?? []
     }
 
-    /// Dense grid of world-space points from the splat depth buffer (for ``RoomGeometryEngine``).
+    /// Dense grid of world-space points from the splat depth buffer.
     func buildPointCloudForRoomGeometry(rows: Int = 48, cols: Int = 48, maxDistance: Float = 12) -> [SIMD3<Float>] {
         coordinator?.buildPointCloud(rows: rows, cols: cols, maxDistance: maxDistance) ?? []
     }

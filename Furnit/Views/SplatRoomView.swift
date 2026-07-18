@@ -2225,7 +2225,7 @@ struct SplatRoomView: View {
 
     // MARK: - Save Room Functions
 
-    /// Depth-buffer grid for ``RoomGeometryEngine``.
+    /// Depth-buffer grid retained for room-measurement sessions.
     @MainActor
     private func pointCloudForRoomGeometrySession() async -> [SIMD3<Float>] {
         splatMeasurementHost.requestRedrawForDepthMeasure()
@@ -2573,7 +2573,7 @@ struct SplatRoomView: View {
 
     private func triggerRoomGeometryExtractionIfNeeded(force: Bool = false) {
         let _ = force
-        logDebug("📐 [SplatRoomView] RoomGeometryEngine / RANSAC path disabled")
+        logDebug("📐 [SplatRoomView] Legacy room geometry extraction path disabled")
     }
 
     private func persistEnhancedRoomMetadataIfPossible(_ metadata: EnhancedRoomMetadata) {
@@ -2747,7 +2747,7 @@ struct SplatRoomView: View {
 
 // MARK: - Placement intelligence fallback room
 
-/// Minimal axis-aligned room used when ``RoomGeometryEngine`` output is unavailable but nav / Furniture Fit
+/// Minimal axis-aligned room used when extracted room geometry is unavailable but nav / Furniture Fit
 /// already have W×H×D metres (same source as ``activeRoomMetersDimensions``).
 private enum PlacementIntelligenceRoomStub {
     static func axisAlignedBoxMeters(width: Float, height: Float, depth: Float) -> RoomModel {

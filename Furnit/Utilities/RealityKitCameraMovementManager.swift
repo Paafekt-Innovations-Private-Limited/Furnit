@@ -37,11 +37,8 @@ class RealityKitCameraMovementManager: ObservableObject {
     var onCameraMove: (() -> Void)?
 
     init() {
-        // ❌ DISABLED: GlobalCameraController now handles all camera movement
-        // displayLink = CADisplayLink(target: self, selector: #selector(updateCameraPosition))
-        // displayLink?.add(to: .main, forMode: .common)
-
-        logDebug("🎮 Camera movement manager initialized (displayLink DISABLED - using GlobalCameraController)")
+        // displayLink stays off; RealityKitGestureHandlers drives camera movement.
+        logDebug("🎮 Camera movement manager initialized (displayLink DISABLED)")
     }
     
     deinit {

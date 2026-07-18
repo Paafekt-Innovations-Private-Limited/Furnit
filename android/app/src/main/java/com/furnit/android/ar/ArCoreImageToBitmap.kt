@@ -201,18 +201,3 @@ fun orientedBboxVerticalExtentInRawPixels(
     )
     return hypot((bot.first - top.first).toDouble(), (bot.second - top.second).toDouble()).toFloat()
 }
-
-/** @deprecated Use [mapOrientedImagePixelToRawCameraPixel] — matrix inverse was wrong for dimension-swapping 90° rotations. */
-fun orientedBboxHeightToRawPixels(
-    centerXOriented: Float,
-    centerYOriented: Float,
-    heightOriented: Float,
-    orientedToRawInverse: Matrix?,
-): Float {
-    if (orientedToRawInverse == null || heightOriented <= 1f) return heightOriented
-    val top = floatArrayOf(centerXOriented, centerYOriented - heightOriented * 0.5f)
-    val bot = floatArrayOf(centerXOriented, centerYOriented + heightOriented * 0.5f)
-    orientedToRawInverse.mapPoints(top)
-    orientedToRawInverse.mapPoints(bot)
-    return hypot((bot[0] - top[0]).toDouble(), (bot[1] - top[1]).toDouble()).toFloat()
-}

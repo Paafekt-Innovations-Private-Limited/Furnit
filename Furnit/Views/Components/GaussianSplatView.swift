@@ -508,8 +508,8 @@ struct GaussianSplatView: UIViewRepresentable {
         /// After loading a PLY we **subsample** splat centers with a stride so the list stays ~`/maxTrimmedSampleCount`
         /// (~60k). **Camera framing** `sceneBoundsMin` / `sceneBoundsMax` come from **per-axis P3–P97** on that
         /// subsample (≈3% / 97%: `lo` / `hi` indices on sorted X, Y, and Z marginals — not paired 3D points).
-        /// This property is the **full** strided subsample passed to ``RoomGeometryEngine/measurePLYExtents``;
-        /// percentile trimming is applied **there** (and for framing), **not** by slicing this array.
+        /// This property is the **full** strided subsample retained for room measurement;
+        /// percentile trimming for framing is applied separately, **not** by slicing this array.
         private(set) var trimmedSplatPositions: [SIMD3<Float>]?
 
         /// Screenshot requests: one frame consumes one completion (Metal readback; `drawHierarchy` cannot capture `CAMetalLayer` reliably).

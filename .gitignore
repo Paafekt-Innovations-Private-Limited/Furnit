@@ -269,7 +269,6 @@ android/executorch_models_vulkan/
 *.pt
 *.ptl
 *.onnx
-# YOLO-E ONNX in assets (~100MB+); copy locally for Android builds — do not commit
 *.tflite
 android/__pycache__/
 **/__pycache__/

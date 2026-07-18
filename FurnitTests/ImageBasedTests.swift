@@ -202,56 +202,6 @@ final class ImageBasedTests: XCTestCase {
         XCTAssertEqual(result.filter { $0.classIdx == 60 }.count, 1, "Table should be preserved")
     }
 
-    // MARK: - Room Bounds from Realistic Point Cloud
-
-    func testRoomBoundsFromRealisticPointCloud() {
-        // Simulate a realistic room point cloud (5m x 3m x 4m room)
-        var points: [SIMD3<Float>] = []
-
-        // Floor points (Y = 0)
-        for x in stride(from: Float(-2.5), to: Float(2.5), by: 0.5) {
-            for z in stride(from: Float(-2), to: Float(2), by: 0.5) {
-                points.append(SIMD3<Float>(x, 0, z))
-            }
-        }
-
-        // Ceiling points (Y = 3)
-        for x in stride(from: Float(-2.5), to: Float(2.5), by: 0.5) {
-            for z in stride(from: Float(-2), to: Float(2), by: 0.5) {
-                points.append(SIMD3<Float>(x, 3, z))
-            }
-        }
-
-        // Wall points
-        for y in stride(from: Float(0), to: Float(3), by: 0.5) {
-            // Back wall (Z = -2)
-            for x in stride(from: Float(-2.5), to: Float(2.5), by: 0.5) {
-                points.append(SIMD3<Float>(x, y, -2))
-            }
-            // Front wall (Z = 2)
-            for x in stride(from: Float(-2.5), to: Float(2.5), by: 0.5) {
-                points.append(SIMD3<Float>(x, y, 2))
-            }
-        }
-
-        // Calculate bounding box
-        let bounds = SplatRoomBoundsUtils.calculateBoundingBox(points: points)
-        XCTAssertNotNil(bounds)
-
-        if let b = bounds {
-            // Verify room dimensions
-            let width = b.max.x - b.min.x   // Should be ~5m
-            let height = b.max.y - b.min.y  // Should be ~3m
-            let depth = b.max.z - b.min.z   // Should be ~4m
-
-            XCTAssertEqual(width, 5.0, accuracy: 0.5, "Room width should be ~5m")
-            XCTAssertEqual(height, 3.0, accuracy: 0.5, "Room height should be ~3m")
-            XCTAssertEqual(depth, 4.0, accuracy: 0.5, "Room depth should be ~4m")
-
-            print("Room dimensions: \(width)m x \(height)m x \(depth)m")
-        }
-    }
-
     func testCameraPositionForRealisticRoom() {
         // Create realistic room bounds
         let bounds = RoomBounds(

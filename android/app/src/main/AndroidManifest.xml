@@ -40,13 +40,10 @@
 
         <!-- Main Activities -->
         <activity android:name=".ContentActivity" android:exported="false" />
-        <activity android:name=".ARActivity" android:exported="false" />
-        <activity android:name=".ModelViewerActivity" android:exported="false" />
         <activity
             android:name=".FurnitureFitActivity"
             android:exported="false"
             android:theme="@style/Theme.Furnit.FullScreen" />
-        <activity android:name=".MainActivity" android:exported="false" />
         <activity
             android:name=".ModelDetailActivity"
             android:exported="false"

@@ -49,9 +49,6 @@ struct RealityKitView: UIViewRepresentable {
         context.coordinator.setupGestures(for: arView, placementManager: arObjectPlacementManager)
         context.coordinator.setupCustomCamera(for: arView)
 
-        // Note: Camera will be registered with GlobalCameraController AFTER model loads
-        // (see loadModel - camera is added to scene after model for proper precedence)
-
         loadModel(into: arView, coordinator: context.coordinator)
 
         // Set up camera movement manager with the ARView (for other features)
@@ -64,9 +61,6 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
-        // ❌ DO NOT register with GlobalCameraController - RealityKitGestureHandlers handles all gestures
-        // GlobalCameraController is only for SceneKit rooms (vintage/cozy/manual)
-        // Registering here causes conflicts with RealityKitGestureHandlers' rotation
         if let cameraAnchor = context.coordinator.cameraAnchor {
             cameraMovementManager.setCameraAnchor(cameraAnchor)
         }

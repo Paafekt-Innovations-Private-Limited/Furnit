@@ -9,7 +9,6 @@ import java.io.IOException
 object RoomGenerationAssets {
     private const val TAG = "RoomGenerationAssets"
 
-    const val MANIFEST_ASSET = "room_generation/room_generation_assets.json"
     const val DEPTH_ANYTHING_METRIC_INDOOR_SMALL_ONNX =
         "room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx"
     const val GEOCALIB_PINHOLE_CNN_ONNX =

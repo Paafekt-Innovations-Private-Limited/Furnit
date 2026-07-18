@@ -6,6 +6,8 @@
 
 **Source image:** `room.jpeg` (1200×1600, indoor room with curtains, ceiling fan, office chair)
 
+> Historical note (2026-07-18): the superseded experiment scripts and generated 3D outputs described below were removed from the app repository. They are archived under `Furnit_non_app_code/obsolete_cleanup_2026-07-18/FurnitTests/` in the external backup.
+
 ---
 
 ## Approach 1: VLM Spatial JSON → Box Primitives

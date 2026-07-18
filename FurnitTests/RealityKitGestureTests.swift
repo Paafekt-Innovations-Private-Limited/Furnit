@@ -165,51 +165,6 @@ final class RealityKitGestureTests: XCTestCase {
         XCTAssertEqual(nextDelta.x, 20)
         XCTAssertEqual(nextDelta.y, 10)
     }
-
-    // MARK: - GlobalCameraController Integration Tests
-
-    func testGlobalCameraControllerRealityKitRegistration() {
-        let controller = GlobalCameraController.shared
-
-        // Create RealityKit camera setup
-        let anchor = AnchorEntity()
-        let camera = PerspectiveCamera()
-        anchor.addChild(camera)
-
-        // Register with controller
-        controller.registerRealityKitCamera(anchor, camera: camera, arView: nil)
-
-        // Verify registration by attempting drag
-        controller.updateFromDrag(CGSize(width: 50, height: 50))
-
-        // Clean up
-        controller.endDrag()
-        controller.clearCamera()
-    }
-
-    func testDisplayLinkActivation() {
-        let controller = GlobalCameraController.shared
-
-        // Clear any existing camera
-        controller.clearCamera()
-
-        // Register camera should activate display link
-        let anchor = AnchorEntity()
-        controller.registerRealityKitCamera(anchor)
-
-        // Display link should be active (we can't directly test this, but we can test drag updates work)
-        controller.updateFromDrag(CGSize(width: 100, height: 100))
-
-        // Wait for display link to process
-        let expectation = XCTestExpectation(description: "Display link processing")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-
-        controller.endDrag()
-        controller.clearCamera()
-    }
 }
 
 // MARK: - RealityKit View Coordinator Tests

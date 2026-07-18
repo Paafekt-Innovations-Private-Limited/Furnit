@@ -4,16 +4,6 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
-// Keep Android Studio Run APKs installable. These files are conversion/debug variants
-// or non-Android artifacts kept in assets for reference.
-def unusedRuntimeModelAssetExcludes = [
-        "yolo11l-seg.param",
-        "yolo11l-seg.bin",
-        "*.bak",
-        "*.bak2",
-        "*.ktx2.glb.bak",
-]
-
 android {
     namespace 'com.furnit.android'
     compileSdk 34
@@ -23,7 +13,8 @@ android {
     }
 
     androidResources {
-        ignoreAssetsPattern = unusedRuntimeModelAssetExcludes.join(':')
+        // Ignore leftover backup artifacts if any appear under assets.
+        ignoreAssetsPattern = '*.bak:*.bak2:*.ktx2.glb.bak'
     }
 
     defaultConfig {
