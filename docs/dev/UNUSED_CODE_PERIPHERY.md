@@ -3,7 +3,7 @@
 ## How to run
 
 1. Install [Periphery](https://github.com/peripheryapp/periphery): `brew install peripheryapp/periphery/periphery`
-2. From the repo root: `./scripts/periphery-scan.sh` or `periphery scan` (uses `.periphery.yml` at the repo root).
+2. From the repo root, run `./scripts/periphery-scan.sh`. The script supplies the project, scheme, and target explicitly.
 
 Build requires Xcode and may take a few minutes on first run.
 

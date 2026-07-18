@@ -102,25 +102,20 @@ Relevant code:
 
 ## Local output inspection
 
-There is also a local probe script:
+The current local mask verification script is:
 
-- `scripts/probe_rtmdet_coreml.py`
+- `scripts/verify_rtmdet_coreml_masks.py`
 
 Example:
 
 ```bash
-python3 scripts/probe_rtmdet_coreml.py \
-  --model /path/to/rtmdet-ins-m.mlpackage \
-  --image /path/to/test.jpg \
-  --preprocess stretch
+python3 scripts/verify_rtmdet_coreml_masks.py \
+  --model Furnit/Models/RTMDet/rtmdet-ins-m.mlpackage \
+  --images FurnitTests/rtmdet_repeated_chair_frame.jpg
 ```
 
-This script:
-
-- loads the model with `coremltools`
-- prints output tensor names, shapes, and ranges
-- heuristically identifies box / label / mask outputs
-- prints the top scored box rows
+This script runs the raw output contract, decodes boxes/kernels, executes the CondInst mask MLP,
+and fails when the selected chair mask is empty or collapsed.
 
 Use this for export inspection only. The Swift app/test path is the source of truth for current image-input behavior, cache behavior, and overlay compositing.
 

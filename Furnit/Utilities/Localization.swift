@@ -519,12 +519,8 @@ enum L10n {
     // MARK: Quality Options
     enum Quality {
         static let standard = "quality.standard".localized
-        static let standardDescription = "quality.standard.description".localized
         static let high = "quality.high".localized
-        static let highDescription = "quality.high.description".localized
         static let best = "quality.best".localized
-        static let bestDescription = "quality.best.description".localized
-        static let bestUnavailable = "quality.best.unavailable".localized
     }
 
     // MARK: Movement Speed Options

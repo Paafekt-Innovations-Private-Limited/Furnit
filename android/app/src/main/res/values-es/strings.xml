@@ -2,7 +2,6 @@
 <resources>
     <string name="app_name">Paafekt</string>
     <string name="app_tagline">Explorador de habitaciones 3D</string>
-    <string name="app_version">Versión</string>
     <string name="common_done">Hecho</string>
     <string name="common_cancel">Cancelar</string>
     <string name="common_back">Atrás</string>
@@ -19,7 +18,6 @@
     <string name="otp_resend">Reenviar código</string>
     <string name="otp_resend_in">Reenviar en %ds</string>
     <string name="home_create_room">Crear habitación desde foto</string>
-    <string name="home_rooms_remaining">%1$d de %2$d habitaciones disponibles</string>
     <string name="room_limit_title">Límite de habitaciones alcanzado</string>
     <string name="room_limit_message">Has alcanzado el límite de %d habitaciones. Elimina algunas para crear nuevas.</string>
     <string name="delete_room_title">¿Eliminar habitación?</string>
@@ -32,11 +30,8 @@
     <string name="settings_height_label">Alto</string>
     <string name="settings_depth_label">Profundidad</string>
     <string name="settings_dimension_value_meters">%.1f m</string>
-    <string name="settings_width">Ancho: %.1fm</string>
-    <string name="settings_depth">Profundidad: %.1fm</string>
-    <string name="settings_height">Altura: %.1fm</string>
     <string name="settings_developer">Desarrollador</string>
-    <string name="settings_developer_footer">Activa el modo de depuración para ver información detallada de detección y métricas de rendimiento. Ajusta los umbrales para controlar la sensibilidad de detección y el comportamiento de filtrado.</string>
+    <string name="settings_developer_footer">Activa el modo de depuración para ver información detallada de detección y métricas de rendimiento.</string>
     <string name="settings_debug_mode">Modo de depuración</string>
     <string name="settings_debug_mode_description">Mostrar cajas de detección e información de tiempo</string>
     <string name="settings_account">Cuenta</string>
@@ -252,9 +247,6 @@
     <string name="room_viewer_saved_toast">¡Habitación guardada!</string>
 
     <!-- Model Viewer -->
-    <string name="model_viewer_title">Modelos</string>
-    <string name="model_viewer_view_3d">Ver 3D</string>
-    <string name="model_viewer_ar">RA</string>
 
     <!-- Settings (developer) -->
 
@@ -327,25 +319,4 @@
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
     <string name="photo_room_back_stay">Quedarse</string>
     <string name="photo_room_back_leave">Go back</string>
-    <string name="ar_measure_status_init">Move the device slowly to detect floors and walls.</string>
-    <string name="ar_measure_status_tracking">Tracking OK · %1$d plane(s)</string>
-    <string name="ar_measure_status_paused">Tracking paused — move device to resume.</string>
-    <string name="ar_measure_status_not_tracking">Searching for surfaces…</string>
-    <string name="ar_measure_distance_m">Distance: %1$.3f m</string>
-    <string name="ar_measure_tap_two_points">Tap two points on a surface to measure.</string>
-    <string name="ar_measure_reset">Restablecer</string>
-    <string name="ar_measure_done">Hecho</string>
-    <string name="ar_measure_camera_required">Camera permission is required for AR measurement.</string>
-    <string name="ar_measure_camera_unavailable">Camera unavailable for AR.</string>
-    <string name="ar_measure_arcore_failed">ARCore: %1$s</string>
-    <string name="ar_measure_session_unavailable">AR session unavailable: %1$s</string>
-    <string name="ar_measure_tracking_lost">Wait until tracking is stable, then tap again.</string>
-    <string name="ar_measure_no_plane_hit">No surface hit — aim at a floor or wall.</string>
-    <string name="ar_measure_need_two_points">Place two points first (tap surface twice).</string>
-    <string name="single_photo_run_in_background">Run in background</string>
-    <string name="single_photo_progress_overlay_background_hint">You can leave this screen. When the room is ready, it will appear in your Home list.</string>
-    <string name="single_photo_ai_stop">Stop AI room generation</string>
-    <string name="single_photo_phase_finalize">Finalize</string>
-    <string name="single_photo_global_ai_ready">Ready — tap AI Room · %1$d%%</string>
-    <string name="home_room_generation_stopped">AI room generation stopped</string>
 </resources>

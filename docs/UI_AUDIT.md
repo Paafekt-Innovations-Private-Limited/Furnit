@@ -39,7 +39,7 @@ The **most unpolished areas** today are: (1) the **home room list** (dense metad
 | Splat / GLB / mesh | `Views/SplatRoomView.swift`, `GLBRoomView.swift`, `MeshRoomView.swift` |
 | Furniture Fit | `Views/FurnitureFit/FurnitureFitView.swift` (UIKit container) |
 | Settings | `Views/SettingsView.swift` |
-| Shared overlays | `Views/Components/GenerationProgressOverlay.swift`, `FileInfoSnackbar.swift` |
+| Shared overlays | `Views/Components/FileInfoSnackbar.swift` and feature-local progress overlays |
 | Localization | `Utilities/Localization.swift`, `*.lproj/Localizable.strings` |
 
 ### Design system?
@@ -47,12 +47,6 @@ The **most unpolished areas** today are: (1) the **home room list** (dense metad
 - `AccentColor` in asset catalog (single accent)
 - Repeated `.cornerRadius(12|16|20)`, `.padding()`, SF Symbol + `.headline` / `.caption`
 - `HomeViewModelRow` and `FileInfoSnackbar` are rare reusable visual components
-
-### Dead / unreachable UI (not shown to users)
-- `ExploreTab`, `ProfileTab` in `ContentView.swift` — **not wired** into `HomeViewWithBottomBar`
-- `LiDARRoomSweepCreationView.swift` — **no navigation reference** found in app shell
-
----
 
 ## 2. Color
 
@@ -147,7 +141,7 @@ No shared `PrimaryButtonStyle` / `SecondaryButtonStyle`.
 | Fills | System grouped background; opacity tints 0.1–0.15 |
 
 ### Reusable components (short list)
-- `HomeViewModelRow`, `FileInfoSnackbar`, `GenerationProgressOverlay`, `ContentUnavailableView` (empty states), `CategoryButton` (Explore only), `BoundaryLinesCanvas` / draggable handles (manual room)
+- `HomeViewModelRow`, `FileInfoSnackbar`, `ContentUnavailableView` (empty states), and `BoundaryLinesCanvas` / draggable handles (manual room)
 
 ---
 
@@ -219,15 +213,11 @@ flowchart TD
 | **Manual mesh room** | Orange manual setup | Full-screen boundary drag UI (green floor, magenta VP, orange ceiling) → progress overlay → `MeshRoomView` |
 | **Furniture Fit** | Brain / segment in viewers | UIKit camera + Metal overlay; not SwiftUI-styled |
 | **AR photo capture** | Camera in room creator | `ARRoomPhotoCaptureRepresentable` |
-| **LiDAR sweep** | *Unlinked* | `LiDARRoomSweepCreationView` exists but no menu entry found |
-
----
-
 ## 6. Navigation & motion
 
 ### Navigation structure
 - **Single stack:** `NavigationStack` on home; push to viewers; sheets for create/settings/help.
-- **No tab bar** (legacy `ExploreTab` / `ProfileTab` unused).
+- **No tab bar**; home navigation uses a single stack.
 - **Modals:** `.sheet`, `.fullScreenCover`, `.alert`, `.navigationDestination`.
 
 ### Motion & feedback
@@ -235,7 +225,7 @@ flowchart TD
 |------|--------|
 | **Auth transition** | `.animation(.easeInOut(0.3), value: isAuthenticated)` |
 | **Login button** | Scale 0.95 when invalid; easeInOut 0.2 |
-| **Progress** | `GenerationProgressOverlay` bar animation; `symbolEffect(.pulse)` on phase icons |
+| **Progress** | Feature-local room-generation progress UI and `ProgressView` loading states |
 | **Snackbar** | `.move(edge: .bottom).combined(with: .opacity)` |
 | **Haptics** | OTP verification (light/medium impact); RealityKit furniture selection (medium) |
 | **Loading** | `ProgressView` in buttons, empty preview, generation overlays |

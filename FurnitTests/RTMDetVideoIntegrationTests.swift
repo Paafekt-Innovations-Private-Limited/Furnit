@@ -72,11 +72,7 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
     }
 
     func testRTMDetSegmentsRealChairPhotoWithFurnitureFilter() throws {
-        let imagePath = "/Users/al/Downloads/WhatsApp Image 2026-06-08 at 16.08.53.jpeg"
-        guard FileManager.default.fileExists(atPath: imagePath),
-              let image = UIImage(contentsOfFile: imagePath) else {
-            throw XCTSkip("Real chair photo fixture is not available at \(imagePath)")
-        }
+        let image = try loadFixtureImage(named: "rtmdet_repeated_chair_frame", extension: "jpg")
 
         let model = try loadRTMDetModel()
         let result = try RTMDetImageInference.runInstanceSegmentation(
@@ -118,8 +114,9 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
         let model = try loadRTMDetModel()
         assertRTMDetInterface(model)
 
-        let sourceImage = try loadFixtureImage(named: "bus", extension: "jpg")
+        let sourceImage = try loadFixtureImage(named: "rtmdet_repeated_chair_frame", extension: "jpg")
         let videoURL = try makeVideoFixture(from: sourceImage, frameCount: 9, fps: 3)
+        defer { try? FileManager.default.removeItem(at: videoURL) }
         let frames = try await readBGRAVideoFrames(from: videoURL)
 
         XCTAssertEqual(frames.count, 9, "Video fixture should decode every frame")

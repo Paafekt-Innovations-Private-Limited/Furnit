@@ -97,31 +97,11 @@ Current behavior:
 Important caveats:
 
 - Single-image relief mesh, not full metric reconstruction; chair anchor + EXIF disambiguation improve scale but are not tape-measure grade.
-- Long-term fit-grade path remains **LiDAR sweep fusion** (below).
-
-### LiDAR Sweep Fusion Status
-
-LiDAR sweep fusion is the intended fit-grade commercial v1 path because it avoids monocular scale ambiguity, COLMAP/ICP complexity, and viewer downgrade.
-
-Important files:
-
-- `Furnit/Models/PosedFrameSweep.swift` — persists `frames/*.jpg`, `depth/*.bin`, `confidence/*.bin`, and `poses.json`.
-- `Furnit/Views/Components/ARRoomSweepCaptureView.swift` — LiDAR-gated AR sweep capture using `smoothedSceneDepth`, ARKit camera poses, and keyframe filtering.
-- `Furnit/Services/RoomReconstruction/PosedFrameSweepValidator.swift` — validates pose/depth/intrinsics convention, writes debug PLYs, reports NN and plane residuals.
-- `Furnit/Services/RoomReconstruction/PosedFrameSweepFusion.swift` — fuses posed depth points into a saved AR-world-meter room artifact.
-- `Furnit/Views/Components/LiDARRoomSweepCreationView.swift` — user-facing sweep capture, validation, fusion, and preview flow.
-
-Current contract:
-
-- Capture stores ARKit `camera.transform` as world-from-camera and depth in metric meters.
-- Validator unprojects with ARKit convention `(x, y, -depth)` transformed by world-from-camera, scales RGB intrinsics to the depth grid, filters confidence/tracking, and can compare selectable frame indices.
-- Nearest-neighbor residuals catch gross misregistration. Plane residuals catch normal-offset/double-wall drift. A pure in-plane tangential slide can still look numerically clean, so the overlay PLY remains the visual truth gate.
-- LiDAR fused/saved rooms must use `roomCoordinateFrame=ar_world_meters`, native meter units, and no saved-PLY Y/Z flip.
-- Next real gate is on-device LiDAR capture and validation before treating fusion as production-quality.
+- The experimental LiDAR sweep-fusion stack was removed in July 2026. Current production room creation is single-photo based.
 
 ## Current Android Architecture
 
-Android room generation uses an optimized **flat full-photo GLB** preview path (GeoCalib + Depth Anything parity path in progress).
+Android room generation uses an optimized **flat full-photo GLB** preview plus a wired Depth Anything measurement path with RTMDet and optional GeoCalib.
 iOS uses **instant preview (no ML)** then **GeoCalib + Depth Anything + RTMDet object anchor → USDZ on first save**.
 
 Current Android room-creation behavior:
@@ -198,4 +178,4 @@ When code behavior changes, update the nearest detailed doc plus any affected di
 - A screenshot of the live RTMDet overlay is not the same as the original camera frame; re-scanning a screenshot can produce different scores/detections.
 - If segmented cutout pinch does not work in the main room flow, first verify whether `FurnitureFitContainerView.handlePinch(_:)` logs appear. If not, debug hit-testing/gesture ownership before changing scale math.
 - Python RTMDet probes are useful for export inspection, but Swift/Core ML app tests are the source of truth for current image-input behavior.
-- For RTMDet class labels, `Furnit/Models/RTMDet/rtmdet-coco80-classes.json` is standard COCO-80 (`56 == chair`).
+- For RTMDet script class labels, `scripts/rtmdet-coco80-classes.json` is standard COCO-80 (`56 == chair`). The apps use their localized runtime class maps.

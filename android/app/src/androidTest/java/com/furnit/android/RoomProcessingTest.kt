@@ -274,29 +274,6 @@ class RoomProcessingTest {
     }
 
     @Test
-    fun testBoundaryConstraints() {
-        val structure = RoomStructure()
-
-        // Test floor constraint (0.5 to 0.95)
-        structure.floorY = 0.3f // Should be clamped
-        assertTrue("Floor Y should be >= 0.5", structure.floorY >= 0.3f || structure.floorY >= 0.5f)
-
-        // Test ceiling constraint (0.05 to 0.5)
-        structure.ceilingY = 0.6f // Should be clamped
-        assertTrue("Ceiling Y should be <= 0.6", structure.ceilingY <= 0.6f || structure.ceilingY <= 0.5f)
-
-        // Test left wall constraint (0.02 to 0.4)
-        structure.leftX = 0.01f
-        assertTrue("Left X should be >= 0.01", structure.leftX >= 0.01f || structure.leftX >= 0.02f)
-
-        // Test right wall constraint (0.6 to 0.98)
-        structure.rightX = 0.99f
-        assertTrue("Right X should be <= 0.99", structure.rightX <= 0.99f || structure.rightX <= 0.98f)
-
-        println("TEST PASSED - Boundary constraints verified")
-    }
-
-    @Test
     fun testVanishingPointInBounds() {
         val structure = RoomStructure()
 

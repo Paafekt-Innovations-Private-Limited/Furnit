@@ -64,8 +64,6 @@ class ContentActivity : AppCompatActivity() {
 
         modelManager = ModelManager(this)
         setupUI()
-
-        // Python warmup disabled (needs Chaquopy + ARM PyTorch wheels)
     }
 
     override fun onResume() {

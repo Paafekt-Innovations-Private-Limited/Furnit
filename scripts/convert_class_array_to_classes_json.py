@@ -5,10 +5,10 @@ Convert a JSON array of {\"id\": int, \"name\": str} into Furnit ``classes.json`
 
 Usage:
   python3 scripts/convert_class_array_to_classes_json.py my_list.json -o classes_out.json
-  pbpaste | python3 scripts/convert_class_array_to_classes_json.py -o Furnit/Views/FurnitureFit/classes.json
+  pbpaste | python3 scripts/convert_class_array_to_classes_json.py -o Furnit/en.lproj/classes.json
 
-Then copy the output to both:
-  Furnit/Views/FurnitureFit/classes.json
+Update both runtime class maps when the English labels change:
+  Furnit/en.lproj/classes.json
   android/app/src/main/assets/classes.json
 if you want iOS and Android in sync.
 """

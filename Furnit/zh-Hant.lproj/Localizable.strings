@@ -160,12 +160,11 @@
 
 // MARK: - Quality Options
 "quality.standard" = "標準";
-"quality.standard.description" = "基礎品質，效能更快";
+
 "quality.high" = "高";
-"quality.high.description" = "增強品質，更多細節";
+
 "quality.best" = "最佳";
-"quality.best.description" = "頂級品質，最大細節";
-"quality.best.unavailable" = "如需最佳品質，請造訪我們的合作商店";
+
 
 // MARK: - Movement Speed Options
 "speed.slow" = "慢速";

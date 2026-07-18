@@ -10,14 +10,6 @@ import androidx.exifinterface.media.ExifInterface
 /**
  * Photo orientation for room capture: **how the user held the phone** (portrait vs landscape).
  *
- * Uses encoded JPEG width/height plus [ExifInterface.getRotationDegrees] so portrait shots stored
- * as a landscape sensor buffer (common) still classify as portrait when EXIF is present.
- *
- * **Portrait-first bias:** If there is no EXIF rotation (0°) but pixels are stored landscape
- * (width > height), we still treat as **portrait** — typical for upright phone captures when OEM/camera
- * strips or omits orientation. Users can tap the indicator to switch (SinglePhotoRoom). True landscape
- * shots without EXIF can be corrected with the same tap.
- *
  * **Ultra-wide (0.5×) lens:** Many devices store a **landscape-wide** buffer even for upright shots.
  * When the user marks the photo as 0.5× wide-angle, we coerce [LANDSCAPE] → [PORTRAIT] unless they
  * explicitly overrode orientation (SinglePhotoRoom).
@@ -28,31 +20,10 @@ enum class PhotoOrientation(val value: String) {
     SQUARE("square");
 
     companion object {
-
-        /**
-         * Display width/height after applying EXIF rotation (90/270 swap dimensions; 0/180 keep order).
-         */
-        private fun displayDimensions(rawWidth: Int, rawHeight: Int, rotationDegrees: Int): Pair<Int, Int> {
-            val r = ((rotationDegrees % 360) + 360) % 360
-            return if (r == 90 || r == 270) {
-                rawHeight to rawWidth
-            } else {
-                rawWidth to rawHeight
-            }
-        }
-
-        /**
-         * 1) Bounds-decode width/height.
-         * 2) Read [ExifInterface.getRotationDegrees] (AndroidX; reliable on all app minSdk levels).
-         * 3) Derive display aspect; if still landscape-encoded with **no** rotation, prefer **portrait**
-         *    for this app’s primary use case (phone held straight).
-         */
         /**
          * Orientation implied by **pixel layout** of the bitmap actually passed to generated room / saved as thumbnail.
          *
          * Use this for room **metadata and generated room viewer viewer** after decode (and optional EXIF rotation).
-         * [detect] on the file URI can disagree: e.g. portrait-first bias when EXIF rotation is 0 but the
-         * buffer is still landscape-wide — that caused ~90° tilt (viewer thought portrait, generated room from landscape tensor).
          */
         fun fromBitmapDimensions(bitmap: Bitmap): PhotoOrientation {
             val w = bitmap.width
@@ -72,72 +43,6 @@ enum class PhotoOrientation(val value: String) {
         fun coercePortraitForUltraWide(orientation: PhotoOrientation, ultraWideLens: Boolean): PhotoOrientation {
             if (!ultraWideLens) return orientation
             return if (orientation == LANDSCAPE) PORTRAIT else orientation
-        }
-
-        /**
-         * Same EXIF + encoded-dimension rules as [detect], for a filesystem path (gallery export, temp camera, temp camera file).
-         */
-        fun detectFromFile(imagePath: String): PhotoOrientation {
-            val rawWidth: Int
-            val rawHeight: Int
-            val rotationDegrees: Int
-            try {
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(imagePath, options)
-                rawWidth = options.outWidth
-                rawHeight = options.outHeight
-                rotationDegrees = try {
-                    ExifInterface(imagePath).rotationDegrees
-                } catch (_: Exception) {
-                    0
-                }
-            } catch (_: Exception) {
-                return PORTRAIT
-            }
-            return orientationFromEncodedPixels(rawWidth, rawHeight, rotationDegrees)
-        }
-
-        fun detect(context: Context, uri: Uri): PhotoOrientation {
-            val rawWidth: Int
-            val rawHeight: Int
-            val rotationDegrees: Int
-            try {
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    BitmapFactory.decodeStream(inputStream, null, options)
-                }
-                rawWidth = options.outWidth
-                rawHeight = options.outHeight
-                rotationDegrees = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    ExifInterface(inputStream).rotationDegrees
-                } ?: 0
-            } catch (_: Exception) {
-                return PORTRAIT
-            }
-
-            return orientationFromEncodedPixels(rawWidth, rawHeight, rotationDegrees)
-        }
-
-        /**
-         * Classify from **stored** JPEG/WebP pixel dimensions and EXIF rotation (before decode rotates pixels).
-         * Matches iOS / Swift metadata path where gallery orientation comes from EXIF, not from decoded bitmap size alone.
-         */
-        private fun orientationFromEncodedPixels(rawWidth: Int, rawHeight: Int, rotationDegrees: Int): PhotoOrientation {
-            if (rawWidth <= 0 || rawHeight <= 0) return PORTRAIT
-
-            var (displayWidth, displayHeight) = displayDimensions(rawWidth, rawHeight, rotationDegrees)
-
-            // No EXIF rotation but file is stored as landscape buffer → assume portrait (upright phone).
-            if (rotationDegrees == 0 && rawWidth > rawHeight) {
-                displayWidth = rawHeight
-                displayHeight = rawWidth
-            }
-
-            return when {
-                displayWidth > displayHeight -> LANDSCAPE
-                displayHeight > displayWidth -> PORTRAIT
-                else -> SQUARE
-            }
         }
 
         /**
@@ -163,23 +68,6 @@ enum class PhotoOrientation(val value: String) {
                 context.contentResolver.openInputStream(uri).use { stream ->
                     if (stream == null) 0 else ExifInterface(stream).rotationDegrees
                 }
-            } catch (_: Exception) {
-                0
-            }
-            return applyExifRotation(bitmap, rotation)
-        }
-
-        /** Same as [loadBitmapApplyingExif] for a filesystem path. */
-        fun loadBitmapApplyingExifFromFile(imagePath: String, maxDimensionPx: Int = Int.MAX_VALUE): Bitmap? {
-            val options = BitmapFactory.Options().apply { inSampleSize = 1 }
-            if (maxDimensionPx != Int.MAX_VALUE) {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(imagePath, bounds)
-                options.inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimensionPx)
-            }
-            val bitmap = BitmapFactory.decodeFile(imagePath, options) ?: return null
-            val rotation = try {
-                ExifInterface(imagePath).rotationDegrees
             } catch (_: Exception) {
                 0
             }

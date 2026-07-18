@@ -2,9 +2,6 @@
 <paths>
     <!-- External files directory for camera photos and screenshots -->
     <external-files-path
-        name="room_photos"
-        path="Pictures/" />
-    <external-files-path
-        name="screenshots"
+        name="pictures"
         path="Pictures/" />
 </paths>

@@ -85,7 +85,7 @@ Categories removed (unused on Android today):
 | `lifecycle-runtime-ktx`, `kotlinx-coroutines-android` | Keep — coroutines in viewers/services. |
 | `onnxruntime-android` | Keep — on-device inference. |
 | `sceneview` | Keep — `ModelDetailActivity` GLB rendering. |
-| `com.google.ar:core` | Keep — `ArMeasureActivity`, AR sizing. |
+| `com.google.ar:core` | Keep — AR photo capture and Furniture Fit AR-assisted sizing. |
 | Firebase Auth BOM | Keep — `AuthenticationManager`. |
 | Test deps (`junit`, `androidx.test.*`) | Keep — instrumented tests. |
 
@@ -97,7 +97,7 @@ Categories removed (unused on Android today):
 |------|--------|
 | Pre-existing Lint `NewApi` errors (`Bitmap.Config.HARDWARE`, etc.) | Fix separately; blocks clean `lintDebug` gate. |
 | `fragment-ktx` without direct `viewModels` usage | Retained; low risk, required by fragment hosting pattern. |
-| ExecuTorch / multi-flavor-only symbols | Not analyzed per variant. |
+| ExecuTorch / old CPU/Vulkan variants | Removed; the app now has one flavorless runtime path. |
 | R8 usage report | Deferred until `minifyEnabled true`. |
 | detekt in CI | Recommended follow-up. |
 

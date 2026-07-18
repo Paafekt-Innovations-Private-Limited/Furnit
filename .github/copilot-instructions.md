@@ -1,55 +1,50 @@
 # Copilot / AI Agent Instructions for Furnit
 
-Purpose: Help AI coding agents make safe, focused, and correct changes in this iOS/AR codebase.
+Furnit contains native iOS and Android apps for single-photo room creation, room viewing, and on-device furniture detection/segmentation.
 
-- **Big picture:** This is a Swift iOS app that combines AR/RealityKit, CoreML models and Metal shaders. Key runtime flow: camera feed -> segmentation (CoreML / `Services/*`) -> `AR/ObjectSegmentationProcessor.swift` -> RealityKit placement (`RealityKitObjectPlacementManager.swift` / `Models/USDZModelManager.swift`). Entry points: `Furnit/FurnitApp.swift` and `Furnit.xcodeproj` / workspace.
+## Current architecture
 
-- **Key directories / files to inspect before making changes:**
-  - `AR/` — AR helpers, camera manager, segmentation processor, `Shaders.metal`.
-  - `Services/` — network clients and model wrappers (e.g., `U2NetSegmentationManager.swift`, `Stable3DAPIClient.swift`).
-  - `Models/` — app data models and managers (`USDZModel.swift`, `USDZModelManager.swift`).
-  - `Assets.xcassets/` — image/3D assets and color sets.
-  - Top-level ML assets: `DeepLabV3.mlmodel`, `u2net.mlmodelc/`, `*.mlpackage/` folders (`FastSAM*`, `MobileSAM*`, `best.mlpackage`). These are consumed by `Services/*` managers.
+- iOS entry point: `Furnit/FurnitApp.swift`; project/scheme: `Furnit.xcodeproj` / `Furnit`.
+- Android entry point: `android/app`; open the `android/` directory in Android Studio.
+- iOS room measurement uses Depth Anything, optional GeoCalib metadata, and RTMDet object anchors; saved rooms use USDZ.
+- Android room measurement uses ONNX Runtime for Depth Anything and RTMDet, with optional GeoCalib; saved rooms use GLB.
+- Furniture Fit uses RTMDet-Ins on both platforms.
+- iOS splat viewing uses MetalSplatter. GLB/mesh viewers use bundled Three.js resources where available.
 
-- **Architectural patterns to follow:**
-  - "Manager" classes handle lifecycle and resource ownership (e.g., `RealityKitCameraManager`, `USDZModelManager`). Follow existing initialization and teardown patterns in `Utilities/` and `AR/`.
-  - `Services/` wrap external APIs and CoreML invocations; keep them small and focused. Examples: `U2NetSegmentationManager.swift` performs CoreML inference; `Stable3DAPIClient.swift` performs network I/O.
-  - UI is mixed SwiftUI and UIKit-like helpers: check `Views/` and `Authentication/` (e.g., `LoginView.swift`) for conventions.
+## Important locations
 
-- **Data flow examples (search to confirm):**
-  - Camera image -> `ARKitCameraManager` -> `ObjectSegmentationProcessor` -> segmentation manager (e.g., `U2NetSegmentationManager`) -> segmentation mask -> `RealityKitObjectPlacementManager`.
+- `Furnit/Views/`, `Furnit/Services/`, `Furnit/Models/`, `Furnit/Utilities/`
+- `Furnit/Models/DepthAnything/`, `Furnit/Models/GeoCalib/`, `Furnit/Models/RTMDet/`
+- `android/app/src/main/java/com/furnit/android/`
+- `android/app/src/main/assets/`
+- `docs/` and `android/docs/`
 
-- **Build / run / debug workflows:**
-  - Preferred: open the Xcode workspace/project in Xcode (run on a physical device for AR):
-    - `open Furnit.xcodeproj` or open the workspace in Xcode UI.
-  - CLI build: use `xcodebuild -workspace Furnit.xcworkspace -scheme <scheme> -configuration Debug` (replace `<scheme>` with the app scheme from Xcode). Prefer validating in Xcode first to resolve code signing and entitlements for AR/camera.
-  - For Metal/AR debugging use Xcode's GPU Frame Capture (Product > Capture GPU Frame) and the Metal debugger.
+Model and asset paths may be loaded dynamically. Search string paths and asset manifests before moving or renaming resources.
 
-- **Project-specific conventions:**
-  - Prefer clear, descriptive identifiers (see `CLAUDE.md`: "Always use descriptive variable names").
-  - Compile locally before finalizing changes (again from `CLAUDE.md`).
-  - Use existing naming: `*Manager.swift` for lifecycle, `*Processor.swift` for data pipelines, `*View.swift` for UI components.
-  - Many ML assets live at repo root and are referenced directly — do not move or rename `.mlpackage`, `.mlmodel`, or `.mlmodelc` files without updating corresponding managers in `Services/`.
+## Verification
 
-- **Integration points & external deps:**
-  - CoreML models: `DeepLabV3.mlmodel`, `u2net.mlmodelc/`, `*.mlpackage/` — used by `Services/*` classes.
-  - RealityKit / ARKit: `AR/` folder and `RealityKit*` helpers; AR features require device testing.
-  - Metal: `AR/Shaders.metal` — shader changes require recompilation and testing on-device.
-  - External network calls: `Services/Stable3DAPIClient.swift` — check for API keys or endpoints in code or project settings before modifying.
+iOS compile check:
 
-- **Search patterns & quick examples:**
-  - Find segmentation entry points: `rg "U2NetSegmentationManager|ObjectSegmentationProcessor|ARKitCameraManager"`
-  - Find models and mlpackages: `ls -1 *.mlmodel* *.mlpackage*` at repo root.
-  - Trace 3D model handling: open `Models/USDZModelManager.swift` and `RealityKitObjectPlacementManager.swift`.
+```bash
+xcodebuild -project "Furnit.xcodeproj" -scheme "Furnit" -configuration Debug \
+  -sdk iphoneos -destination 'generic/platform=iOS' \
+  CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO ENABLE_PREVIEWS=NO \
+  -jobs 2 build
+```
 
-- **When editing:**
-  - Keep changes minimal and focused; update the nearest `*Manager` or `*Processor` for behavior changes.
-  - Run a local build in Xcode and test on-device if the change touches AR, CoreML inference, or Metal shaders.
-  - If you touch model files or add a new `.mlpackage`, document where it's referenced and ensure `Services/` loads the correct resource path.
+Android compile check:
 
-- **Oddities to note:**
-  - The repo contains some unusually named files (for example under `Services/`) that may be experimental or stray — confirm with the owner before deleting or renaming.
+```bash
+cd android
+./gradlew :app:assembleDebug --no-daemon
+```
 
-Merge notes: preserve the two bullets in `CLAUDE.md` (descriptive names, compile before concluding) — they are included above.
+Do not use an iOS Simulator for default verification. AR, camera, Core ML, Metal, and ONNX behavior still requires appropriate physical-device testing.
 
-If any of these items are unclear or you want me to add CI commands, the expected Xcode scheme name, or known device requirements (iOS version / device models), tell me and I'll iterate.
+## Conventions
+
+- Use descriptive identifiers.
+- Keep lifecycle and resource ownership explicit.
+- Preserve localization parity when adding or removing user-facing keys.
+- Update nearby documentation when runtime paths, models, or assets change.
+- Compile both affected platforms before concluding implementation work.

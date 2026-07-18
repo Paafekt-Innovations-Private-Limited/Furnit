@@ -13,7 +13,7 @@ from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL = REPO_ROOT / "Furnit/Models/RTMDet/rtmdet-ins-m.mlpackage"
-CLASSES_JSON = REPO_ROOT / "Furnit/Models/RTMDet/rtmdet-coco80-classes.json"
+CLASSES_JSON = REPO_ROOT / "scripts/rtmdet-coco80-classes.json"
 MODEL_INPUT = 640
 MASK_SIZE = 160
 PREPROCESS = "stretch"

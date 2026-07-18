@@ -3,7 +3,6 @@
     <!-- App General -->
     <string name="app_name">Paafekt</string>
     <string name="app_tagline">3D Room Explorer</string>
-    <string name="app_version">Version</string>
 
     <!-- Common Actions -->
     <string name="common_done">Done</string>
@@ -30,7 +29,6 @@
 
     <!-- Home View -->
     <string name="home_create_room">Create Room from Photo</string>
-    <string name="home_rooms_remaining">%1$d of %2$d rooms remaining</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>
     <string name="home_room_actions_title">Room options</string>
     <string name="home_room_actions_subtitle">Rename or remove this saved room</string>
@@ -66,11 +64,8 @@
     <string name="settings_height_label">Height</string>
     <string name="settings_depth_label">Depth</string>
     <string name="settings_dimension_value_meters">%.1f m</string>
-    <string name="settings_width">Width: %.1fm</string>
-    <string name="settings_depth">Depth: %.1fm</string>
-    <string name="settings_height">Height: %.1fm</string>
     <string name="settings_developer">Developer</string>
-    <string name="settings_developer_footer">Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.</string>
+    <string name="settings_developer_footer">Enable debug mode to see detailed detection information and performance metrics.</string>
     <string name="settings_debug_mode">Debug Mode</string>
     <string name="settings_debug_mode_description">Show detection boxes and timing information</string>
     <string name="settings_account">Account</string>
@@ -431,9 +426,6 @@
     <string name="room_viewer_saved_toast">Room saved!</string>
 
     <!-- Model Viewer -->
-    <string name="model_viewer_title">Models</string>
-    <string name="model_viewer_view_3d">View 3D</string>
-    <string name="model_viewer_ar">AR</string>
 
     <!-- Settings (developer) -->
 
@@ -446,29 +438,8 @@
     <!-- Login (legacy) -->
 
     <!-- ARCore distance measure (beta) -->
-    <string name="ar_measure_status_init">Move the device slowly to detect floors and walls.</string>
-    <string name="ar_measure_status_tracking">Tracking OK · %1$d plane(s)</string>
-    <string name="ar_measure_status_paused">Tracking paused — move device to resume.</string>
-    <string name="ar_measure_status_not_tracking">Searching for surfaces…</string>
-    <string name="ar_measure_distance_m">Distance: %1$.3f m</string>
-    <string name="ar_measure_tap_two_points">Tap two points on a surface to measure.</string>
-    <string name="ar_measure_reset">Reset</string>
-    <string name="ar_measure_done">Done</string>
-    <string name="ar_measure_camera_required">Camera permission is required for AR measurement.</string>
-    <string name="ar_measure_camera_unavailable">Camera unavailable for AR.</string>
-    <string name="ar_measure_arcore_failed">ARCore: %1$s</string>
-    <string name="ar_measure_session_unavailable">AR session unavailable: %1$s</string>
-    <string name="ar_measure_tracking_lost">Wait until tracking is stable, then tap again.</string>
-    <string name="ar_measure_no_plane_hit">No surface hit — aim at a floor or wall.</string>
-    <string name="ar_measure_need_two_points">Place two points first (tap surface twice).</string>
 
     <!-- Single photo / AI room generation -->
-    <string name="single_photo_run_in_background">Run in background</string>
-    <string name="single_photo_progress_overlay_background_hint">You can leave this screen. When the room is ready, it will appear in your Home list.</string>
-    <string name="single_photo_ai_stop">Stop AI room generation</string>
-    <string name="single_photo_phase_finalize">Finalize</string>
-    <string name="single_photo_global_ai_ready">Ready — tap AI Room · %1$d%%</string>
-    <string name="home_room_generation_stopped">AI room generation stopped</string>
 
     <!-- Placement intelligence -->
 </resources>

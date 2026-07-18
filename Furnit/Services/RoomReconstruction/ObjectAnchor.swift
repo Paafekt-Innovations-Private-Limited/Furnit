@@ -103,16 +103,4 @@ struct ObjectAnchor: ScaleAnchor {
         return Double(samples[index])
     }
 
-    private func depthReliability(depthMap: RoomDepthMap, rect: CGRect) -> Double {
-        guard !depthMap.isEmpty, let width = depthMap.first?.count, width > 0 else { return 0 }
-        let height = depthMap.count
-        let centerX = max(1, min(width - 2, Int(rect.midX.rounded())))
-        let centerY = max(1, min(height - 2, Int(rect.midY.rounded())))
-        let center = depthMap[centerY][centerX]
-        guard center.isFinite, center > 0 else { return 0.25 }
-        let dx = abs(depthMap[centerY][centerX + 1] - depthMap[centerY][centerX - 1])
-        let dy = abs(depthMap[centerY + 1][centerX] - depthMap[centerY - 1][centerX])
-        let gradient = Double(max(dx, dy) / max(center, 1e-3))
-        return max(0.2, min(1.0, 1.0 - gradient * 6.0))
-    }
 }

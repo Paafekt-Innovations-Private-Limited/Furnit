@@ -160,12 +160,11 @@
 
 // MARK: - Quality Options
 "quality.standard" = "স্ট্যান্ডার্ড";
-"quality.standard.description" = "দ্রুত পারফরম্যান্সের জন্য মৌলিক কোয়ালিটি";
+
 "quality.high" = "হাই";
-"quality.high.description" = "আরো বিবরণ সহ উন্নত কোয়ালিটি";
+
 "quality.best" = "বেস্ট";
-"quality.best.description" = "সর্বাধিক বিবরণ সহ প্রিমিয়াম কোয়ালিটি";
-"quality.best.unavailable" = "সেরা কোয়ালিটির জন্য, আমাদের পার্টনার স্টোর ভিজিট করুন";
+
 
 // MARK: - Movement Speed Options
 "speed.slow" = "ধীর";

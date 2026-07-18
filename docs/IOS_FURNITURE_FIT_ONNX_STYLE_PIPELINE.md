@@ -45,8 +45,7 @@ Modes map to `FurnitureFitSegmentationMode` in `FurnitureFitOverlaySupport.swift
 
 Toggle full-video with the in-room **text.viewfinder** button while brain is active. The same top
 control model is mirrored by Android `GLBRoomActivity`: floating back, center ruler/pinch/tap
-helpers, recenter/save, AR, and the viewfinder toggle for full-video identify. A legacy Settings
-switch still exists but room viewers drive the mode from the in-room button.
+helpers, recenter/save, AR, and the viewfinder toggle for full-video identify.
 
 ## Current Behavior
 

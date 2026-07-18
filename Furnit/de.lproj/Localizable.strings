@@ -160,12 +160,11 @@
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";
-"quality.standard.description" = "Grundqualität für schnellere Leistung";
+
 "quality.high" = "Hoch";
-"quality.high.description" = "Verbesserte Qualität mit mehr Details";
+
 "quality.best" = "Beste";
-"quality.best.description" = "Premium-Qualität mit maximalen Details";
-"quality.best.unavailable" = "Für beste Qualität besuchen Sie bitte unsere Partnershops";
+
 
 // MARK: - Movement Speed Options
 "speed.slow" = "Langsam";

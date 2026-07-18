@@ -983,13 +983,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         tapGesture.require(toFail: panGesture)
         selectedObjectChipButton.addTarget(self, action: #selector(handleClearSelectedObjectTapped), for: .touchUpInside)
 
-        // Listen for reset notification from SplatRoomView toolbar ("reset size" button).
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleResetScaleTapped),
-            name: NSNotification.Name("FurnitureFitResetOverlayScale"),
-            object: nil
-        )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleClearSelectedObjectTapped),
@@ -5737,41 +5730,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         default: break
         }
-    }
-
-    /// Reset overlay scale back to its default for the current detection: keep room and AR-assisted
-    /// scaling, but remove user pinch so the furniture returns to its \"real\" size.
-    @objc private func handleResetScaleTapped() {
-        if usesIndependentOverlayItems {
-            for index in overlayItems.indices {
-                overlayItems[index].pinchScale = 1.0
-                overlayItems[index].panOffset = .zero
-                overlayItems[index].lockedAssistedScale = false
-            }
-            userPinchScale = 1.0
-            userPanOffset = .zero
-            userLockedAssistedOverlayScale = false
-            if debugMode {
-                logDebug("📐 [RESET] independent overlay scales reset")
-            }
-            UIView.animate(withDuration: 0.2) {
-                self.applyAllIndependentOverlayItemTransforms()
-            }
-            publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
-            return
-        }
-
-        guard maskImageView.image != nil else { return }
-        userPinchScale = 1.0
-        userPanOffset = .zero
-        userLockedAssistedOverlayScale = false
-        if debugMode {
-            logDebug("📐 [RESET] overlay scale reset to default (pinch=1.0, pan=zero)")
-        }
-        UIView.animate(withDuration: 0.2) {
-            self.applyCurrentOverlayScaleTransform()
-        }
-        publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {

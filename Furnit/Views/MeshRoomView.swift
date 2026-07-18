@@ -1692,12 +1692,6 @@ struct MeshWebGLView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLCameraMoveDown"),
                 object: nil
             )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(scaleMeshRoom(_:)),
-                name: NSNotification.Name("MeshRoomScaleRoom"),
-                object: nil
-            )
         }
 
         deinit {
@@ -1742,12 +1736,6 @@ struct MeshWebGLView: UIViewRepresentable {
 
         @objc private func nudgeMeshCameraDown() {
             webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(-0.2);", completionHandler: nil)
-        }
-
-        @objc private func scaleMeshRoom(_ notification: Notification) {
-            guard let factor = notification.userInfo?["factor"] as? Double, factor.isFinite, factor > 0 else { return }
-            let js = "if (typeof window.scaleRoom === 'function') { window.scaleRoom(\(factor)); }"
-            webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
         @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {

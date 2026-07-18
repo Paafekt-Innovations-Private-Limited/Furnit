@@ -22,49 +22,6 @@ enum AssetQuality: String, CaseIterable, Identifiable {
         }
     }
 
-    // Description for each quality level (localized)
-    var description: String {
-        switch self {
-        case .standard:
-            return L10n.Quality.standardDescription
-        case .high:
-            return L10n.Quality.highDescription
-        case .best:
-            return L10n.Quality.bestDescription
-        }
-    }
-    
-    // Icon for each quality level
-    var icon: String {
-        switch self {
-        case .standard:
-            return "speedometer"
-        case .high:
-            return "eye"
-        case .best:
-            return "crown"
-        }
-    }
-    
-    // Whether this quality level is available for selection
-    var isAvailable: Bool {
-        switch self {
-        case .standard, .high:
-            return true
-        case .best:
-            return false // Disabled - requires partner store visit
-        }
-    }
-    
-    // Special message for unavailable quality levels (localized)
-    var unavailableMessage: String? {
-        switch self {
-        case .best:
-            return L10n.Quality.bestUnavailable
-        default:
-            return nil
-        }
-    }
 }
 
 // ObservableObject to manage quality settings across the app
@@ -74,12 +31,6 @@ class QualitySettings: ObservableObject {
     static var supportsLiDARSceneDepth: Bool {
         ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
             || ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth)
-    }
-
-    /// `true` when this device can run ARKit world tracking for AR-assisted furniture sizing.
-    /// LiDAR devices get scene depth; non-LiDAR devices fall back to plane-raycast distance.
-    static var supportsFurnitureFitARAssisted: Bool {
-        ARWorldTrackingConfiguration.isSupported
     }
 
     /// Fixed rendering profile for the RealityKit/USDZ path.
@@ -149,18 +100,6 @@ class QualitySettings: ObservableObject {
 
 // Extension for RealityKit rendering configuration
 extension AssetQuality {
-    // RealityKit rendering scale factor based on quality
-    var renderScale: Float {
-        switch self {
-        case .standard:
-            return 0.75
-        case .high:
-            return 1.0 
-        case .best:
-            return 1.25
-        }
-    }
-    
     // Lighting intensity multiplier for RealityKit
     var lightingIntensity: Float {
         switch self {
@@ -170,42 +109,6 @@ extension AssetQuality {
             return 1.0
         case .best:
             return 1.3
-        }
-    }
-    
-    // Whether to enable high-resolution textures
-    var useHighResTextures: Bool {
-        switch self {
-        case .standard:
-            return false
-        case .high:
-            return true
-        case .best:
-            return true
-        }
-    }
-    
-    // Shadow quality level for RealityKit
-    var shadowQuality: String {
-        switch self {
-        case .standard:
-            return "low"
-        case .high:
-            return "medium"
-        case .best:
-            return "high"
-        }
-    }
-    
-    // LOD (Level of Detail) bias for model quality
-    var lodBias: Float {
-        switch self {
-        case .standard:
-            return 1.5 // Lower detail at distance
-        case .high:
-            return 1.0 // Normal detail
-        case .best:
-            return 0.5 // Higher detail at distance
         }
     }
 }

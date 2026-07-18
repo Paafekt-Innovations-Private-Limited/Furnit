@@ -1707,12 +1707,6 @@ struct GLBWebGLView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLCameraMoveDown"),
                 object: nil
             )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(scaleGLBRoom(_:)),
-                name: NSNotification.Name("GLBRoomScaleRoom"),
-                object: nil
-            )
         }
 
         deinit {
@@ -1737,12 +1731,6 @@ struct GLBWebGLView: UIViewRepresentable {
 
         @objc private func nudgeGLBCameraDown() {
             webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(-0.2);", completionHandler: nil)
-        }
-
-        @objc private func scaleGLBRoom(_ notification: Notification) {
-            guard let factor = notification.userInfo?["factor"] as? Double, factor.isFinite, factor > 0 else { return }
-            let js = "if (typeof window.scaleRoom === 'function') { window.scaleRoom(\(factor)); }"
-            webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
         @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {

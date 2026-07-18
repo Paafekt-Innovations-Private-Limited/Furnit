@@ -13,8 +13,6 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     @Published var generatedRoomScene: SCNScene? // ✅ CHANGED: from URL to SCNScene
     
     private let depthEstimator = SyntheticDepthEstimator()
-    private let roomAnalyzer = RoomStructureAnalyzer()
-    private let textureProcessor = TextureProcessor()
     
     struct RoomDimensions {
         var width: Float = 4.0

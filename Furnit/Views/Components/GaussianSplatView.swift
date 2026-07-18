@@ -1375,14 +1375,7 @@ struct GaussianSplatView: UIViewRepresentable {
             view?.setNeedsDisplay()
         }
 
-        var viewportSize: CGSize {
-            if let view {
-                return view.bounds.size
-            }
-            return drawableSize
-        }
-
-        /// Orbit, zoom, and scene scale back to defaults.
+        /// Restores the splat room camera and scene scale to their initial values.
         func performSplatRoomRecenter() {
             cameraYaw = initialSplatRoomYaw
             cameraPitch = 0
@@ -1392,6 +1385,13 @@ struct GaussianSplatView: UIViewRepresentable {
             sceneScale = SIMD2(1, 1)
             logDebug("🎯 [GaussianSplatView] Splat room recenter: orbit/zoom reset yaw=\(initialSplatRoomYaw)")
             view?.setNeedsDisplay()
+        }
+
+        var viewportSize: CGSize {
+            if let view {
+                return view.bounds.size
+            }
+            return drawableSize
         }
 
         func setModalHeavyWorkPaused(_ paused: Bool) {
@@ -2101,36 +2101,6 @@ struct GaussianSplatView: UIViewRepresentable {
 
         func registerSplatRoomNotifications() {
             let nc = NotificationCenter.default
-
-            // Recenter: restore default camera orientation
-            let recenterToken = nc.addObserver(
-                forName: NSNotification.Name("RecenterWebGLCamera"),
-                object:  nil,
-                queue:   nil
-            ) { [weak self] _ in
-                DispatchQueue.main.async { [weak self] in
-                    self?.performSplatRoomRecenter()
-                }
-            }
-            notificationTokens.append(recenterToken)
-
-            // Joystick pan: forward/back and left/right strafe
-            let joystickToken = nc.addObserver(
-                forName: NSNotification.Name("WebGLJoystickMove"),
-                object:  nil,
-                queue:   nil
-            ) { [weak self] note in
-                DispatchQueue.main.async { [weak self] in
-                    guard let self,
-                          let offset = note.userInfo?["offset"] as? CGSize else { return }
-                    let dx = Float(offset.width) * 0.012
-                    let dy = Float(-offset.height) * 0.012
-                    self.cameraOffset.x += dx
-                    self.cameraOffset.z += dy
-                    self.view?.setNeedsDisplay()
-                }
-            }
-            notificationTokens.append(joystickToken)
 
             // Scale: supports both (scaleX, scaleY) dict and single (factor) value
             let scaleToken = nc.addObserver(

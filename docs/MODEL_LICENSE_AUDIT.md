@@ -41,7 +41,7 @@ Each model has **three separate licenses that can differ** — check all three; 
 | Removed | SparkJS (`spark.module.js`) | **Removed** — splats use MetalSplatter | **Removed** — unused legacy bundle |
 | No | M-LSD, MiDaS, Whisper, SHARP, ExecuTorch, NCNN, Inria 3DGS code | — | — |
 
-Splat rooms: user/imported PLY (`_3dgs.ply`). Renderer = **MetalSplatter (MIT)**. `scripts/depthanything_to_splat.py` uses INRIA-style PLY layout only; **no** Inria training code in repo (grep 2026-07-11).
+Splat rooms: user/imported PLY (`_3dgs.ply`). Renderer = **MetalSplatter (MIT)**. There is **no** Inria training code in the repository (verified 2026-07-18).
 
 ---
 
@@ -108,8 +108,6 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | **Inria gaussian-splatting** (training) | **Non-commercial research** | **NO** | **NO** — zero `graphdeco` / `diff-gaussian` refs in repo | https://github.com/graphdeco-inria/gaussian-splatting/blob/main/LICENSE.md — *“non-commercially”*, *“THE USER CANNOT USE … FOR COMMERCIAL PURPOSES”* | 2026-07-11 |
 | **MetalSplatter 1.0.1** | MIT | YES | **YES** (iOS renderer) | https://github.com/scier/MetalSplatter/blob/main/LICENSE — Copyright (c) 2026 Sean Cier | 2026-07-11 |
 | **User PLY splats** | User content | N/A | YES | Generated/imported sidecars | — |
-| **depthanything_to_splat.py** | Furnit script | N/A | Export tool only | INRIA-style PLY layout comment only; no Inria code | 2026-07-11 |
-
 **Verdict:** Ship path = **MIT renderer + user PLY** — **OK** for commercial **if** no Inria code/weights added later.
 
 ---
@@ -140,10 +138,10 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 | Item | Status | Source |
 |------|--------|--------|
-| M-LSD | Scripts only (`scripts/mlsd_*.py`) | Repo grep |
+| M-LSD | Development scripts only (`scripts/mlsd_draw_room_lines.py`, `scripts/structure_box_measure_room.py`); no app runtime integration | Repo grep |
 | Whisper | Zero references | Repo grep |
 | Apple SHARP | Doc mention only (historical) | was `docs/UI_AUDIT.md`; splats now MetalSplatter |
-| ExecuTorch / NCNN / LiteRT | Gitignored / legacy | `android/README.md` |
+| ExecuTorch / NCNN / LiteRT | No active runtime integration | Repo grep |
 
 ---
 

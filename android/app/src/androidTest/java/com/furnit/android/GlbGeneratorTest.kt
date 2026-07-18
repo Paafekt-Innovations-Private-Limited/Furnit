@@ -7,6 +7,7 @@ import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.furnit.android.services.GlbGenerator
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +27,12 @@ class GlbGeneratorTest {
         private const val GLB_VERSION = 2
         private const val JSON_CHUNK_TYPE = 0x4E4F534A  // "JSON"
         private const val BIN_CHUNK_TYPE = 0x004E4942   // "BIN\0"
+    }
+
+    @After
+    fun cleanUpGeneratedFiles() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        TestCleanup.cleanAll(context)
     }
 
     @Test

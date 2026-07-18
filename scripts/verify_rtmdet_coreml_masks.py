@@ -20,8 +20,7 @@ from PIL import Image
 
 DEFAULT_MODEL = Path("Furnit/Models/RTMDet/rtmdet-ins-m.mlpackage")
 DEFAULT_IMAGES = [
-    Path("/Users/al/Downloads/WhatsApp Image 2026-06-08 at 15.19.42 (1).jpeg"),
-    Path("/Users/al/Downloads/WhatsApp Image 2026-06-08 at 16.08.53.jpeg"),
+    Path("FurnitTests/rtmdet_repeated_chair_frame.jpg"),
 ]
 
 MODEL_INPUT = 640

@@ -17,41 +17,39 @@ final class ImageBasedTests: XCTestCase {
         if let url = bundle.url(forResource: name, withExtension: ext) {
             return UIImage(contentsOfFile: url.path)
         }
-        // Try loading from the test folder path directly
-        let testFolderPath = "/Users/al/Documents/tries01/Furnit/FurnitTests/\(name).\(ext)"
-        return UIImage(contentsOfFile: testFolderPath)
+        return nil
     }
 
     // MARK: - Image Loading Tests
 
-    func testBusImageLoads() {
-        let image = loadTestImage(named: "bus", extension: "jpg")
-        XCTAssertNotNil(image, "bus.jpg should load from test bundle")
+    func testImageFixtureLoads() {
+        let image = loadTestImage(named: "rtmdet_repeated_chair_frame", extension: "jpg")
+        XCTAssertNotNil(image, "RTMDet image fixture should load from test bundle")
 
         if let img = image {
             XCTAssertGreaterThan(img.size.width, 0)
             XCTAssertGreaterThan(img.size.height, 0)
-            print("Bus image size: \(img.size.width) x \(img.size.height)")
+            print("Fixture image size: \(img.size.width) x \(img.size.height)")
         }
     }
 
-    func testRoomImageLoads() {
-        let image = loadTestImage(named: "room", extension: "jpeg")
-        XCTAssertNotNil(image, "room.jpeg should load from test bundle")
+    func testImageFixtureHasDimensions() {
+        let image = loadTestImage(named: "rtmdet_repeated_chair_frame", extension: "jpg")
+        XCTAssertNotNil(image, "RTMDet image fixture should load from test bundle")
 
         if let img = image {
             XCTAssertGreaterThan(img.size.width, 0)
             XCTAssertGreaterThan(img.size.height, 0)
-            print("Room image size: \(img.size.width) x \(img.size.height)")
+            print("Fixture image size: \(img.size.width) x \(img.size.height)")
         }
     }
 
     // MARK: - Image Preprocessing Tests
 
     func testImageToPixelBuffer() {
-        guard let image = loadTestImage(named: "bus", extension: "jpg"),
+        guard let image = loadTestImage(named: "rtmdet_repeated_chair_frame", extension: "jpg"),
               let cgImage = image.cgImage else {
-            XCTFail("Could not load bus.jpg")
+            XCTFail("Could not load RTMDet image fixture")
             return
         }
 
@@ -100,8 +98,8 @@ final class ImageBasedTests: XCTestCase {
     }
 
     func testImageResizeForModel() {
-        guard let image = loadTestImage(named: "room", extension: "jpeg") else {
-            XCTFail("Could not load room.jpeg")
+        guard let image = loadTestImage(named: "rtmdet_repeated_chair_frame", extension: "jpg") else {
+            XCTFail("Could not load RTMDet image fixture")
             return
         }
 
@@ -262,9 +260,9 @@ final class ImageBasedTests: XCTestCase {
     // MARK: - Performance Tests
 
     func testImagePreprocessingPerformance() {
-        guard let image = loadTestImage(named: "bus", extension: "jpg"),
+        guard let image = loadTestImage(named: "rtmdet_repeated_chair_frame", extension: "jpg"),
               let cgImage = image.cgImage else {
-            XCTFail("Could not load bus.jpg")
+            XCTFail("Could not load RTMDet image fixture")
             return
         }
 

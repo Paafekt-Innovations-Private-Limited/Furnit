@@ -113,25 +113,4 @@ object DebugLogger {
         }
     }
 
-    /**
-     * Log with emoji prefix (matches iOS logging style)
-     */
-    fun camera(message: String) = log("📷 $message")
-    fun model(message: String) = log("🏠 $message")
-    fun save(message: String) = log("💾 $message")
-    fun load(message: String) = log("📂 $message")
-    fun reset(message: String) = log("🔄 $message")
-    fun warning(message: String) = log("⚠️ $message")
-    fun success(message: String) = log("✅ $message")
-    fun error(message: String) = log("❌ $message")
-    fun ai(message: String) = log("🤖 $message")
-    fun measure(message: String) = log("📐 $message")
-}
-
-/**
- * Global debug log function for convenience
- * Similar to iOS logDebug() global function
- */
-fun logDebug(message: String) {
-    DebugLogger.log(message)
 }

@@ -8,6 +8,10 @@ if ! command -v periphery >/dev/null 2>&1; then
   exit 1
 fi
 OUT="${1:-periphery-report.txt}"
-periphery scan --disable-update-check 2>&1 | tee "$OUT"
+periphery scan \
+  --project Furnit.xcodeproj \
+  --schemes Furnit \
+  --targets Furnit \
+  --disable-update-check 2>&1 | tee "$OUT"
 echo ""
 echo "Report written to: $OUT"

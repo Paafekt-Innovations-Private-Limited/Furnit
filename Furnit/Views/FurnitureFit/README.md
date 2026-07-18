@@ -407,8 +407,7 @@ The cadence interval (`rtmdetLiveTargetInterval`) is a single tunable constant a
 - `FurnitureFitView.swift` - Main pipeline implementation
 - `FurnitureFitOverlayScaling.swift` - Overlay transform computation (pan, pinch, assisted scale)
 - `CompositeKernels.metal` - GPU compositing shaders
-- `MetalMaskLogic.swift` - Metal buffer management
-- `classes.json` (per language in `Furnit/xx.lproj/`) — class ID → display name for bbox labels; `Bundle` loads the file for the active locale
+- `Furnit/en.lproj/classes.json` — class ID → display name for bbox labels; the bundle uses this English map as the current runtime source
 - `blacklist.json` - Classes to ignore (rooms, walls, etc.)
 
 ## Related docs (room size, pinhole, overlay)

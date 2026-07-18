@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Overwrites every Furnit/*.lproj/classes.json from en.lproj/classes.json.
-# Use when English keys changed and localized files should be refreshed before re-translation.
-# Do NOT run blindly if you maintain translated strings in other .lproj copies.
+# Creates or overwrites Furnit/*.lproj/classes.json from en.lproj/classes.json.
+# The current repository tracks only the English runtime map. Run this only to seed
+# locale-specific class maps before translating and committing those files.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EN="$ROOT/Furnit/en.lproj/classes.json"

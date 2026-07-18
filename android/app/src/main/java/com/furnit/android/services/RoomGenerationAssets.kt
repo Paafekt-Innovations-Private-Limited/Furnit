@@ -2,8 +2,6 @@ package com.furnit.android.services
 
 import android.content.Context
 import com.furnit.android.utils.LogUtil
-import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 
 object RoomGenerationAssets {
@@ -44,10 +42,7 @@ object RoomGenerationAssets {
     data class Availability(
         val present: List<AssetSpec>,
         val missing: List<AssetSpec>,
-    ) {
-        val hasSwiftParityAssets: Boolean
-            get() = missing.isEmpty()
-    }
+    )
 
     fun checkAvailability(context: Context): Availability {
         val present = mutableListOf<AssetSpec>()
@@ -75,18 +70,6 @@ object RoomGenerationAssets {
             }
             loggedAvailability = true
         }
-    }
-
-    @Throws(IOException::class)
-    fun copyAssetToCache(context: Context, assetPath: String): File {
-        val outFile = File(context.cacheDir, assetPath)
-        outFile.parentFile?.mkdirs()
-        context.assets.open(assetPath).use { input ->
-            FileOutputStream(outFile).use { output ->
-                input.copyTo(output)
-            }
-        }
-        return outFile
     }
 
     private fun assetExists(context: Context, assetPath: String): Boolean {

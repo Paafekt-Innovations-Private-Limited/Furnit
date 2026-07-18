@@ -45,13 +45,13 @@ app/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indo
 app/src/main/assets/rtmdet-ins-m-raw.onnx
 ```
 
-Expected but not yet exported for Android:
+Optional local calibration asset:
 
 ```text
 app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
 ```
 
-GeoCalib currently exists in the shared project as Core ML/checkpoint artifacts. Android needs an ONNX or TFLite export before the full Swift metric reconstruction path can be wired.
+The metric measurement pipeline is wired and runs Depth Anything plus RTMDet today. If the gitignored GeoCalib ONNX is absent, it uses fallback focal/gravity calibration.
 
 ## Runtime
 
@@ -63,7 +63,6 @@ Use:
 
 ```bash
 ./gradlew :app:assembleDebug
-rg -n "old-room-backend-token" app/src/main/java app/src/main/res app/build.gradle
 ```
 
 After creating an AI room, confirm the picker appears before generation work, the preview shows a flat photo wall (not visibly stretched plane crops), `GLBRoomActivity` recenters the camera in front of the mesh, and the top controls are floating rather than a full-width band.

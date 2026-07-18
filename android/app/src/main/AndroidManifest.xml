@@ -17,7 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Furnit">
 
-        <!-- ARCore optional: app installs on non-AR devices; ArMeasureActivity checks support at runtime. -->
+        <!-- ARCore remains optional for AR photo capture and furniture sizing. -->
         <meta-data
             android:name="com.google.ar.core"
             android:value="optional" />
@@ -54,11 +54,6 @@
         <activity
             android:name=".RoomViewerActivity"
             android:exported="false"
-            android:theme="@style/Theme.Furnit.FullScreen" />
-        <activity
-            android:name=".ArMeasureActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
             android:name=".ArDepthPhotoCaptureActivity"

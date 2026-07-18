@@ -160,12 +160,11 @@
 
 // MARK: - Quality Options
 "quality.standard" = "मानक";
-"quality.standard.description" = "तेज़ प्रदर्शन के लिए बुनियादी गुणवत्ता";
+
 "quality.high" = "उच्च";
-"quality.high.description" = "बेहतर विवरण के साथ उन्नत गुणवत्ता";
+
 "quality.best" = "सर्वोत्तम";
-"quality.best.description" = "अधिकतम विवरण के साथ प्रीमियम गुणवत्ता";
-"quality.best.unavailable" = "सर्वोत्तम गुणवत्ता के लिए, कृपया हमारे पार्टनर स्टोर पर जाएं";
+
 
 // MARK: - Movement Speed Options
 "speed.slow" = "धीमी";

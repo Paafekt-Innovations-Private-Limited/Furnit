@@ -181,23 +181,15 @@ android/.idea/
 android/captures/
 android/.externalNativeBuild/
 **/.cxx/
-android/app/src/main/cpp/ncnn-android-vulkan/
 
 # Kotlin
 *.kotlin_module
 
-android/predictor.*
-android/onnx__*
-android/_predictor_*
-android/onnx_temp/
-android/pnnx_pt.log
-
-# Large model files (NCNN, PyTorch, ONNX Runtime)
+# Large local Android model files
 android/*.bin
 android/*.param
 android/*.pt
 android/*.ort
-android/app/src/main/cpp/ncnn-android.zip
 android/app/src/main/assets/*.bin
 android/app/src/main/assets/*.param
 
@@ -232,22 +224,11 @@ ml_experiments/
 .wheelcache/
 android/.gradle-home/
 
-# NCNN model files (stored on Google Drive)
-
-# Temporary fix/conversion scripts (export scripts are kept for reproducibility)
-android/fix_*.py
-android/reconvert_*.py
-
 # ONNX model files (large)
 android/*.onnx
 
 # Bug reports
 android/bugreport-*.zip
-
-# NCNN SDK downloads and backups
-android/app/src/main/cpp/ncnn-*-android-vulkan.zip
-android/app/src/main/cpp/ncnn-*-android-vulkan/
-android/app/src/main/cpp/ncnn-android-vulkan-old/
 
 *.bin
 !Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage/Data/com.apple.CoreML/weights/weight.bin
@@ -259,11 +240,7 @@ Furnit/Models/GeoCalib/weights/*.tar
 !Furnit/Models/GeoCalib/GeoCalibPinholeCNN.mlpackage/**
 *.param
 
-# ML model binaries (too large for git; backup to external HD — see scripts/backup_large_files_to_external.sh)
-android/executorch_models/
-android/executorch_fp16_models/
-android/executorch_models_vulkan/
-# Vulkan / portable export trees (full .pte + manifests; backup off-machine)
+# Local ML model binaries and export artifacts
 *.pte
 *.pte.manifest.json
 *.pt
@@ -277,47 +254,27 @@ android/__pycache__/
 # ONNX external weight files
 *.onnx.data
 
-# Third-party source trees (clone separately)
-android/third_party/executorch/
-
 # Personal / non-project files
 KishoreS_CV_Updated.html
 
 test_images/
 
-# Large files (backup to external HD only; see scripts/backup_large_files_to_external.sh)
+# Local Android binary dependencies and logs
 android/app/libs/
-android/app/src/main/cpp/executorch_lib/
-android/app/src/main/cpp/executorch_lib_etVulkan/
-android/app/src/main/cpp/executorch_lib_etCpu/
-android/app/src/main/jniLibs/
 android/logcat_crash.txt
 
-# ExecuTorch source tree, model dirs (backup to /Volumes/LaCie)
-executorch/
-android/models_cpu/
 ShanjeevRAG-new/
 
 # Export logs, test logs, backup files
 android/export_log*.txt
 android/part1_test_logcat.txt
-android/logcat_vulkan*.txt
 
 # Local Gradle home under repo (do not commit)
 android/.gradle-local/
 *.bak
 
-# Local Python venvs (ONNX / LiteRT tooling; very large)
-android/.venv_onnx2mlpkg/
-
 # ONNX Runtime calibration tensors (large)
 android/calibration_image_sample_data_*.npy
-
-# Local CoreSimulator / disk helper scripts (machine-specific)
-scripts/cleanup_stuck_simulator_runtime.sh
-scripts/move_core_simulator_to_lacie.sh
-scripts/restore_coresimulator_internal.sh
-scripts/symlink_coresimulator_lacie_quick.sh
 
 # Local script tooling caches (e.g. KTX binaries for export_bundled_usdz_to_glb.py)
 scripts/.tools/

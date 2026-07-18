@@ -35,22 +35,9 @@ class AppStateManager: ObservableObject {
         return "Version \(appVersion) (\(buildNumber))"
     }
     
-    // Check if this is the first app launch
-    private let hasLaunchedKey = "has_launched_before"
-    
-    var isFirstLaunch: Bool {
-        return !UserDefaults.standard.bool(forKey: hasLaunchedKey)
-    }
-    
-    // Mark app as launched
-    func markAsLaunched() {
-        UserDefaults.standard.set(true, forKey: hasLaunchedKey)
-    }
-    
     // Reset all settings to defaults
     func resetAllSettings() {
         qualitySettings.resetToDefault()
-        UserDefaults.standard.removeObject(forKey: hasLaunchedKey)
         logDebug("🔄 All settings reset to defaults")
     }
 }

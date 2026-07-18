@@ -4,7 +4,7 @@ Convert the Hugging Face Depth Anything V2 metric indoor small model to Core ML.
 
 Example:
   python3 scripts/convert_depthanything_metric_indoor_small_to_coreml.py \
-    --out Furnit/Resources/DepthAnythingV2MetricIndoorSmall.mlpackage
+    --out Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from transformers import AutoModelForDepthEstimation
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL_ID = "depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf"
-DEFAULT_OUT = REPO_ROOT / "Furnit" / "Resources" / "DepthAnythingV2MetricIndoorSmall.mlpackage"
+DEFAULT_OUT = REPO_ROOT / "Furnit" / "Models" / "DepthAnything" / "DepthAnythingV2MetricIndoorSmall.mlpackage"
 DEFAULT_INPUT_SIDE = 518
 
 
