@@ -1,7 +1,10 @@
 package com.furnit.android.theme
 
 import android.app.Activity
+import android.graphics.Color
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -13,8 +16,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.furnit.android.R
+import com.furnit.android.util.DisplayNameValidation
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
 
@@ -73,13 +78,46 @@ object PaafektDialogs {
             setTextColor(PaafektColors.accentText)
             backgroundTintList = android.content.res.ColorStateList.valueOf(PaafektColors.accent)
             setOnClickListener {
-                onSave(input.text?.toString()?.trim().orEmpty()) { dialog.dismiss() }
+                val typedName = input.text?.toString()?.trim().orEmpty()
+                if (!DisplayNameValidation.isValid(typedName)) {
+                    Toast.makeText(
+                        activity,
+                        activity.getString(R.string.room_viewer_invalid_room_name),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    return@setOnClickListener
+                }
+                onSave(typedName) { dialog.dismiss() }
             }
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         buttonRow.addView(cancelButton)
         buttonRow.addView(saveButton)
+
+        val nameHint = TextView(activity).apply {
+            text = activity.getString(R.string.room_viewer_name_hint)
+            textSize = 12f
+            setTextColor(PaafektColors.textSecondary)
+            setPadding(0, (6 * density).toInt(), 0, 0)
+        }
+
+        fun refreshNameHint() {
+            val typed = input.text?.toString()?.trim().orEmpty()
+            if (typed.isNotEmpty() && !DisplayNameValidation.isValid(typed)) {
+                nameHint.text = activity.getString(R.string.room_viewer_invalid_room_name)
+                nameHint.setTextColor(Color.parseColor("#FFB020"))
+            } else {
+                nameHint.text = activity.getString(R.string.room_viewer_name_hint)
+                nameHint.setTextColor(PaafektColors.textSecondary)
+            }
+        }
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) { refreshNameHint() }
+        })
+        refreshNameHint()
 
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -88,6 +126,13 @@ object PaafektDialogs {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ))
+            addView(
+                nameHint,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
             addView(
                 buttonRow,
                 LinearLayout.LayoutParams(

@@ -56,6 +56,7 @@ enum L10n {
     enum Login {
         static let yourName = "login.yourName".localized
         static let enterName = "login.enterName".localized
+        static let nameHint = "login.nameHint".localized
         static let phoneNumber = "login.phoneNumber".localized
         static let phonePlaceholder = "login.phonePlaceholder".localized
         static let sendOTP = "login.sendOTP".localized
@@ -381,6 +382,8 @@ enum L10n {
         static let roomName = "roomViewer.roomName".localized
         static let roomNamePlaceholder = "roomViewer.roomNamePlaceholder".localized
         static let enterName = "roomViewer.enterName".localized
+        static let nameHint = "roomViewer.nameHint".localized
+        static let invalidRoomName = "roomViewer.invalidRoomName".localized
         static let savingRoom = "roomViewer.savingRoom".localized
         static let preparingModel = "roomViewer.preparingModel".localized
         static let exportingUSDZ = "roomViewer.exportingUSDZ".localized

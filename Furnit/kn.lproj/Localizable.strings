@@ -24,6 +24,7 @@
 // MARK: - Login View
 "login.yourName" = "ನಿಮ್ಮ ಹೆಸರು";
 "login.enterName" = "ನಿಮ್ಮ ಹೆಸರನ್ನು ನಮೂದಿಸಿ";
+"login.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Sam, s440).";
 "login.phoneNumber" = "ಫೋನ್ ಸಂಖ್ಯೆ";
 "login.phonePlaceholder" = "ಫೋನ್ ಸಂಖ್ಯೆ";
 "login.sendOTP" = "OTP ಕಳುಹಿಸು";
@@ -247,6 +248,8 @@
 "roomViewer.roomName" = "ಕೊಠಡಿ ಹೆಸರು";
 "roomViewer.roomNamePlaceholder" = "ಉದಾ. ಲಿವಿಂಗ್ ರೂಮ್";
 "roomViewer.enterName" = "ನಿಮ್ಮ ಕೊಠಡಿಗೆ ಹೆಸರು ನಮೂದಿಸಿ";
+"roomViewer.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Living Room, s440).";
+"roomViewer.invalidRoomName" = "Room name needs at least 3 characters with a letter";
 "roomViewer.savingRoom" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ";
 "roomViewer.preparingModel" = "ಕೊಠಡಿ ಮಾದರಿ ತಯಾರಿಸುತ್ತಿದೆ...";
 "roomViewer.exportingUSDZ" = "USDZ ಸ್ವರೂಪಕ್ಕೆ ರಫ್ತು ಮಾಡುತ್ತಿದೆ...";

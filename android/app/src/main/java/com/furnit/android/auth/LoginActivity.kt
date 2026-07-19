@@ -134,6 +134,17 @@ class LoginActivity : AppCompatActivity() {
         cardLayout.addView(nameInput, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, 0, 0, 4) })
+
+        val nameHint = TextView(this).apply {
+            text = getString(R.string.login_name_hint)
+            textSize = 12f
+            setTextColor(PaafektColors.textSecondary)
+            setPadding(4, 0, 4, 0)
+        }
+        cardLayout.addView(nameHint, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { setMargins(0, 0, 0, 24) })
 
         // Phone number section
@@ -252,7 +263,7 @@ class LoginActivity : AppCompatActivity() {
         val name = nameInput.text.toString().trim()
         val phone = phoneInput.text.toString().replace(Regex("[^0-9]"), "")
 
-        val isValid = name.isNotEmpty() && phone.length >= 10
+        val isValid = com.furnit.android.util.DisplayNameValidation.isValid(name) && phone.length >= 10
         sendOtpButton.isEnabled = isValid
         sendOtpButton.alpha = if (isValid) 1.0f else 0.5f
     }
@@ -274,6 +285,12 @@ class LoginActivity : AppCompatActivity() {
         val name = nameInput.text.toString().trim()
         val phoneDigits = phoneInput.text.toString().replace(Regex("[^0-9]"), "")
         val fullPhoneNumber = "${selectedCountry.dialCode}$phoneDigits"
+
+        if (!com.furnit.android.util.DisplayNameValidation.isValid(name) || phoneDigits.length < 10) {
+            errorText.text = getString(R.string.login_validation_error)
+            errorText.visibility = View.VISIBLE
+            return
+        }
 
         LogUtil.d(TAG, "Sending OTP to: $fullPhoneNumber")
 

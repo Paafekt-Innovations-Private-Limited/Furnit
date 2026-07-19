@@ -797,8 +797,8 @@ class ContentActivity : AppCompatActivity() {
             title = getString(R.string.home_rename_room_title),
             placeholder = getString(R.string.home_rename_room_hint),
         ) { name, dismiss ->
-            if (name.isEmpty()) {
-                Toast.makeText(this, getString(R.string.home_rename_room_empty), Toast.LENGTH_SHORT).show()
+            if (!com.furnit.android.util.DisplayNameValidation.isValid(name)) {
+                Toast.makeText(this, getString(R.string.room_viewer_invalid_room_name), Toast.LENGTH_SHORT).show()
                 return@showNameRoomDialog
             }
             if (!modelManager.isRoomNameAvailable(name, excludeRoomId = model.id)) {

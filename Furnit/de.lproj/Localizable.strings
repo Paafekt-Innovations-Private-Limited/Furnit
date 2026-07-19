@@ -24,6 +24,7 @@
 // MARK: - Login View
 "login.yourName" = "Ihr Name";
 "login.enterName" = "Namen eingeben";
+"login.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Sam, s440).";
 "login.phoneNumber" = "Telefonnummer";
 "login.phonePlaceholder" = "Telefonnummer";
 "login.sendOTP" = "Code senden";
@@ -333,6 +334,8 @@
 "roomViewer.roomName" = "Raumname";
 "roomViewer.roomNamePlaceholder" = "z. B. Wohnzimmer";
 "roomViewer.enterName" = "Geben Sie einen Namen für Ihren Raum ein";
+"roomViewer.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Living Room, s440).";
+"roomViewer.invalidRoomName" = "Room name needs at least 3 characters with a letter";
 "roomViewer.savingRoom" = "Raum wird gespeichert";
 "roomViewer.preparingModel" = "Raummodell wird vorbereitet...";
 "roomViewer.exportingUSDZ" = "In USDZ-Format exportieren...";

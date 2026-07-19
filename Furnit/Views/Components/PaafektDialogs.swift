@@ -192,6 +192,10 @@ struct PaafektNameRoomSheet: View {
         roomName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var isNameValid: Bool {
+        DisplayNameValidation.isValid(roomName)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -213,6 +217,16 @@ struct PaafektNameRoomSheet: View {
                         .textInputAutocapitalization(.words)
                         .focused($isFieldFocused)
 
+                    Text(isNameValid || trimmedName.isEmpty
+                         ? L10n.RoomViewer.nameHint
+                         : L10n.RoomViewer.invalidRoomName)
+                        .font(Theme.Typo.caption())
+                        .foregroundStyle(
+                            !trimmedName.isEmpty && !isNameValid
+                                ? Color.orange
+                                : Theme.Palette.textSecondary
+                        )
+
                     HStack(spacing: Theme.Space.md) {
                         Button(L10n.Common.cancel) {
                             isPresented = false
@@ -220,10 +234,11 @@ struct PaafektNameRoomSheet: View {
                         .buttonStyle(SecondaryButtonStyle())
 
                         Button(L10n.Common.save) {
+                            guard isNameValid else { return }
                             onSave()
                         }
                         .buttonStyle(PrimaryButtonStyle())
-                        .disabled(trimmedName.isEmpty)
+                        .disabled(!isNameValid)
                     }
                 }
                 .padding(Theme.Space.lg)
@@ -237,7 +252,7 @@ struct PaafektNameRoomSheet: View {
             .toolbarBackground(Theme.Palette.surface, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
-        .presentationDetents([.height(220), .medium])
+        .presentationDetents([.height(260), .medium])
         .presentationDragIndicator(.visible)
         .presentationBackground(Theme.Palette.surface)
         .onAppear {

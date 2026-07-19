@@ -209,6 +209,10 @@ struct LoginView: View {
                                     phoneFieldFocused = true
                                 }
                                 .disabled(isLoading)
+
+                            Text(L10n.Login.nameHint)
+                                .font(Theme.Typo.caption())
+                                .foregroundStyle(Theme.Palette.textSecondary)
                         }
 
                         // Phone Field with Country Code
@@ -308,7 +312,7 @@ struct LoginView: View {
     }
 
     private var isValidInput: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        DisplayNameValidation.isValid(name) &&
         phoneNumber.filter { $0.isNumber }.count >= 10
     }
 

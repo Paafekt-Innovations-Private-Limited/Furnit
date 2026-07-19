@@ -1972,7 +1972,7 @@ private struct DepthAnythingPreviewRoomView: View {
 
     private func startSavingRoom() {
         let trimmedRoomName = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedRoomName.isEmpty else { return }
+        guard DisplayNameValidation.isValid(trimmedRoomName) else { return }
         guard !modelManager.hasSavedRoomNameConflict(trimmedRoomName) else {
             saveAlertMessage = L10n.RoomViewer.duplicateRoomName
             saveWasSuccessful = false
@@ -3759,7 +3759,7 @@ struct SceneKitViewer: View {
     // MARK: - Save Room Functions
     private func startSavingRoom() {
         let trimmedRoomName = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedRoomName.isEmpty else {
+        guard DisplayNameValidation.isValid(trimmedRoomName) else {
             return
         }
 

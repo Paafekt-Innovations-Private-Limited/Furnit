@@ -572,16 +572,11 @@ class ModelDetailActivity : AppCompatActivity() {
 
     private fun showSaveDialog() {
         PaafektDialogs.showNameRoomDialog(this) { typedName, dismiss ->
-            if (typedName.isNotEmpty() && !ModelManager.isRoomNameAvailable(this, typedName)) {
+            if (!ModelManager.isRoomNameAvailable(this, typedName)) {
                 Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
                 return@showNameRoomDialog
             }
-            val name = if (typedName.isEmpty()) {
-                ModelManager.findAvailableRoomName(this, RoomDisplayName.myRoomWithTimestamp())
-            } else {
-                typedName
-            }
-            saveRoom(name)
+            saveRoom(typedName)
             dismiss()
         }
     }

@@ -24,6 +24,7 @@
 // MARK: - Login View
 "login.yourName" = "మీ పేరు";
 "login.enterName" = "మీ పేరు నమోదు చేయండి";
+"login.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Sam, s440).";
 "login.phoneNumber" = "ఫోన్ నంబర్";
 "login.phonePlaceholder" = "ఫోన్ నంబర్";
 "login.sendOTP" = "OTP పంపు";
@@ -247,6 +248,8 @@
 "roomViewer.roomName" = "గది పేరు";
 "roomViewer.roomNamePlaceholder" = "ఉదా. లివింగ్ రూమ్";
 "roomViewer.enterName" = "మీ గదికి పేరు నమోదు చేయండి";
+"roomViewer.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Living Room, s440).";
+"roomViewer.invalidRoomName" = "Room name needs at least 3 characters with a letter";
 "roomViewer.savingRoom" = "గది సేవ్ అవుతోంది";
 "roomViewer.preparingModel" = "గది మోడల్ తయారవుతోంది...";
 "roomViewer.exportingUSDZ" = "USDZ ఫార్మాట్‌కు ఎక్స్‌పోర్ట్ అవుతోంది...";
