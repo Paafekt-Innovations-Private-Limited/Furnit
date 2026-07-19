@@ -24,7 +24,7 @@
 // MARK: - Login View
 "login.yourName" = "നിങ്ങളുടെ പേര്";
 "login.enterName" = "നിങ്ങളുടെ പേര് നൽകുക";
-"login.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Sam, s440).";
+"login.nameHint" = "കുറഞ്ഞത് 3 അക്ഷരങ്ങൾ; ഒരു അക്ഷരം ഉൾപ്പെടുത്തുക.";
 "login.phoneNumber" = "ഫോൺ നമ്പർ";
 "login.phonePlaceholder" = "ഫോൺ നമ്പർ";
 "login.sendOTP" = "OTP അയയ്ക്കുക";
@@ -248,8 +248,8 @@
 "roomViewer.roomName" = "മുറി പേര്";
 "roomViewer.roomNamePlaceholder" = "ഉദാ. ലിവിംഗ് റൂം";
 "roomViewer.enterName" = "നിങ്ങളുടെ മുറിക്ക് പേര് നൽകുക";
-"roomViewer.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Living Room, s440).";
-"roomViewer.invalidRoomName" = "Room name needs at least 3 characters with a letter";
+"roomViewer.nameHint" = "കുറഞ്ഞത് 3 അക്ഷരങ്ങൾ; ഒരു അക്ഷരം ഉൾപ്പെടുത്തുക.";
+"roomViewer.invalidRoomName" = "ദയവായി കുറഞ്ഞത് 3 അക്ഷരങ്ങൾ നൽകുക; ഒരു അക്ഷരം ഉൾപ്പെടുത്തുക.";
 "roomViewer.savingRoom" = "മുറി സേവ് ചെയ്യുന്നു";
 "roomViewer.preparingModel" = "മുറി മോഡൽ തയ്യാറാക്കുന്നു...";
 "roomViewer.exportingUSDZ" = "USDZ ഫോർമാറ്റിലേക്ക് എക്സ്പോർട്ട് ചെയ്യുന്നു...";

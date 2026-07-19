@@ -24,7 +24,7 @@
 // MARK: - Login View
 "login.yourName" = "உங்கள் பெயர்";
 "login.enterName" = "உங்கள் பெயரை உள்ளிடவும்";
-"login.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Sam, s440).";
+"login.nameHint" = "குறைந்தது 3 எழுத்துகள்; ஒரு எழுத்து இருக்க வேண்டும்.";
 "login.phoneNumber" = "தொலைபேசி எண்";
 "login.phonePlaceholder" = "தொலைபேசி எண்";
 "login.sendOTP" = "OTP அனுப்பு";
@@ -248,8 +248,8 @@
 "roomViewer.roomName" = "அறை பெயர்";
 "roomViewer.roomNamePlaceholder" = "எ.கா. வாழும் அறை";
 "roomViewer.enterName" = "உங்கள் அறைக்கு பெயர் உள்ளிடவும்";
-"roomViewer.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Living Room, s440).";
-"roomViewer.invalidRoomName" = "Room name needs at least 3 characters with a letter";
+"roomViewer.nameHint" = "குறைந்தது 3 எழுத்துகள்; ஒரு எழுத்து இருக்க வேண்டும்.";
+"roomViewer.invalidRoomName" = "குறைந்தது 3 எழுத்துகளை உள்ளிடவும்; ஒரு எழுத்து இருக்க வேண்டும்.";
 "roomViewer.savingRoom" = "அறையைச் சேமிக்கிறது";
 "roomViewer.preparingModel" = "அறை மாதிரியைத் தயாரிக்கிறது...";
 "roomViewer.exportingUSDZ" = "USDZ வடிவத்தில் ஏற்றுமதி செய்கிறது...";

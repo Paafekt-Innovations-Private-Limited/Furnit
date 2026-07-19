@@ -24,7 +24,7 @@
 // MARK: - Login View
 "login.yourName" = "你的名字";
 "login.enterName" = "请输入你的名字";
-"login.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Sam, s440).";
+"login.nameHint" = "至少 3 个字符，且需包含一个字母。";
 "login.phoneNumber" = "手机号码";
 "login.phonePlaceholder" = "手机号码";
 "login.sendOTP" = "发送验证码";
@@ -323,8 +323,8 @@
 "roomViewer.roomName" = "房间名称";
 "roomViewer.roomNamePlaceholder" = "例如：客厅";
 "roomViewer.enterName" = "为你的房间输入名称";
-"roomViewer.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Living Room, s440).";
-"roomViewer.invalidRoomName" = "Room name needs at least 3 characters with a letter";
+"roomViewer.nameHint" = "至少 3 个字符，且需包含一个字母。";
+"roomViewer.invalidRoomName" = "请输入至少 3 个字符，并包含一个字母。";
 "roomViewer.savingRoom" = "正在保存房间";
 "roomViewer.preparingModel" = "正在准备房间模型...";
 "roomViewer.exportingUSDZ" = "正在汇出USDZ格式...";

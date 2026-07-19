@@ -25,13 +25,13 @@
 // MARK: - Login View
 "login.yourName" = "Your Name";
 "login.enterName" = "Enter your name";
-"login.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Sam, s440).";
+"login.nameHint" = "Use at least 3 characters, including one letter.";
 "login.phoneNumber" = "Phone Number";
 "login.phonePlaceholder" = "Phone number";
 "login.sendOTP" = "Send OTP";
 "login.sending" = "Sending...";
 "login.otpHint" = "OTP will be sent via SMS";
-"login.validationError" = "Please enter a valid name (at least 3 characters with a letter) and phone number";
+"login.validationError" = "Please enter a valid name and phone number.";
 "login.sendFailed" = "Failed to send OTP. Please try again.";
 
 // MARK: - Country Picker
@@ -400,8 +400,8 @@
 "roomViewer.roomName" = "Room Name";
 "roomViewer.roomNamePlaceholder" = "e.g. Living Room";
 "roomViewer.enterName" = "Enter a name for your room";
-"roomViewer.nameHint" = "At least 3 characters with a letter. Digits OK (e.g. Living Room, s440).";
-"roomViewer.invalidRoomName" = "Room name needs at least 3 characters with a letter";
+"roomViewer.nameHint" = "Use at least 3 characters, including one letter.";
+"roomViewer.invalidRoomName" = "Please enter at least 3 characters, including one letter.";
 "roomViewer.savingRoom" = "Saving Room";
 "roomViewer.preparingModel" = "Preparing room model...";
 "roomViewer.exportingUSDZ" = "Exporting to USDZ format...";
