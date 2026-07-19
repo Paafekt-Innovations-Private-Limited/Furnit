@@ -651,11 +651,12 @@ struct HomeViewModelRow: View {
     }
 }
 
-/// Licenses & Attributions (Settings → Open Source Licenses). Depth Anything + GeoCalib (Apache-2.0), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0), Three.js (MIT).
+/// Licenses & Attributions (Settings → Open Source Licenses). Depth Anything Small (Apache-2.0), GeoCalib (code Apache-2.0 / weights CC BY 4.0), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0), Three.js (MIT).
 struct LicensesView: View {
     private enum LicenseURL {
         static let mit = URL(string: "https://opensource.org/licenses/MIT")!
         static let apache2 = URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!
+        static let ccBy4 = URL(string: "https://creativecommons.org/licenses/by/4.0/legalcode")!
         static let hypersim = URL(string: "https://github.com/apple/ml-hypersim")!
         static let spzSwift = URL(string: "https://github.com/scier/spz-swift")!
         static let coco = URL(string: "https://cocodataset.org/#termsofuse")!
@@ -707,7 +708,9 @@ struct LicensesView: View {
                     Text(L10n.Licenses.geoCalib)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
+                    Link(L10n.Licenses.viewCcBy4, destination: LicenseURL.ccBy4)
+                        .font(.caption)
+                    Link(L10n.Licenses.viewApache2Code, destination: LicenseURL.apache2)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)

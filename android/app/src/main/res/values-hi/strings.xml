@@ -47,6 +47,8 @@
     <string name="licenses_open_source_section">ओपन सोर्स लाइसेंस</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">पूर्ण लाइसेंस देखें</string>
+<string name="licenses_view_apache_2_code">Apache 2.0 लाइसेंस देखें (कोड)</string>
+<string name="licenses_view_cc_by_4">CC BY 4.0 लाइसेंस देखें</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">कॉपीराइट (c) Google LLC। Apache लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -365,11 +367,11 @@
     <!-- Full-catalog parity additions -->
     <string name="settings_open_link_failed">इस लिंक को खोलने के लिए कोई ब्राउज़र उपलब्ध नहीं है।</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">एक फ़ोटो से रूम पुनर्निर्माण के लिए मेट्रिक इनडोर गहराई अनुमान। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — एकल-फ़ोटो रूम पुनर्निर्माण के लिए मीट्रिक इनडोर डेप्थ। Small वेट Apache License 2.0 के अंतर्गत (Base/Large/Giant उपयोग नहीं)।</string>
     <string name="licenses_hypersim_title">Hypersim डेटासेट</string>
     <string name="licenses_hypersim">Apple के कृत्रिम इनडोर Hypersim डेटासेट का उपयोग करके मेट्रिक इनडोर मॉडल को बेहतर ढंग से प्रशिक्षित किया गया। Hypersim को CC BY-SA 3.0 के अंतर्गत लाइसेंस दिया गया है।</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">फोकल लंबाई और गुरुत्व संकेतों के लिए एकल-छवि कैमरा कैलिब्रेशन। कॉपीराइट 2024 ETH Zurich। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।</string>
+    <string name="licenses_geo_calib">फोकल लंबाई और गुरुत्वाकर्षण संकेतों के लिए एकल-छवि कैमरा कैलिब्रेशन। Copyright 2024 ETH Zurich. कोड Apache License 2.0 के अंतर्गत। शिप किए गए pinhole वेट Creative Commons Attribution 4.0 (CC BY 4.0) के अंतर्गत।</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D रूम व्यूअर के लिए सम्मिलित WebGL रेंडरिंग सहायता। कॉपीराइट (c) 2010-2024 three.js लेखक। MIT लाइसेंस के अंतर्गत लाइसेंस प्राप्त।</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

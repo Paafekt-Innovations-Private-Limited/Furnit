@@ -151,13 +151,15 @@
 "licenses.title" = "Licencias y atribuciones";
 "licenses.openSourceSection" = "Licencias de código abierto";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "Ver licencia CC BY 4.0";
+"licenses.viewApache2Code" = "Ver licencia Apache 2.0 (código)";
 "licenses.viewFullLicense" = "Ver licencia completa";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "Estimación métrica de profundidad en interiores para reconstruir habitaciones a partir de una sola foto. Bajo la licencia Apache 2.0.";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — profundidad métrica en interiores para reconstruir cuartos a partir de una sola foto. Pesos Small bajo Apache License 2.0 (Base/Large/Giant no se usan).";
 "licenses.hypersimTitle" = "Conjunto de datos Hypersim";
 "licenses.hypersim" = "El modelo métrico para interiores se ajustó con el conjunto de datos sintéticos de interiores Hypersim de Apple. Hypersim se distribuye bajo la licencia CC BY-SA 3.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Calibración de cámara a partir de una sola imagen para obtener indicaciones de distancia focal y gravedad. Copyright 2024 ETH Zurich. Bajo la licencia Apache 2.0.";
+"licenses.geoCalib" = "Calibración de cámara a partir de una sola imagen para distancia focal y gravedad. Copyright 2024 ETH Zurich. Código bajo Apache License 2.0. Pesos pinhole incluidos bajo Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "Renderizado de Gaussian splats en el dispositivo. Copyright (c) Sean Cier. Bajo la licencia MIT.";
 "licenses.firebaseTitle" = "Firebase";

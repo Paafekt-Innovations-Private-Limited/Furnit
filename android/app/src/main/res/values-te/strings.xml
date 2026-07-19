@@ -45,6 +45,8 @@
     <string name="licenses_open_source_section">ఓపెన్ సోర్స్ లైసెన్స్‌లు</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">పూర్తి లైసెన్స్ చూడండి</string>
+<string name="licenses_view_apache_2_code">Apache 2.0 లైసెన్స్ (కోడ్)</string>
+<string name="licenses_view_cc_by_4">CC BY 4.0 లైసెన్స్ చూడండి</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">కాపీరైట్ (c) Google LLC. Apache లైసెన్స్ 2.0 క్రింద లైసెన్స్ పొందింది.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -387,11 +389,11 @@
     <string name="camera_wide_unavailable">వైడ్-యాంగిల్ కెమెరా తెరవలేకపోయాం</string>
     <string name="camera_ar_photo_failed">AR ఫోటో క్యాప్చర్ విఫలమైంది</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">ఒకే ఫోటో గది పునర్నిర్మాణానికి మెట్రిక్ ఇండోర్ లోతు అంచనా. Apache License 2.0 కింద లైసెన్స్.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — ఒకే ఫోటో గది పునర్నిర్మాణానికి మెట్రిక్ ఇండోర్ లోతు. Small వెయిట్లు Apache License 2.0 (Base/Large/Giant ఉపయోగించబడవు).</string>
     <string name="licenses_hypersim_title">Hypersim డేటాసెట్</string>
     <string name="licenses_hypersim">మెట్రిక్ ఇండోర్ మోడల్‌ను Apple Hypersim సింథటిక్ ఇండోర్ డేటాసెట్‌తో ఫైన్-ట్యూన్ చేశారు. Hypersim CC BY-SA 3.0 కింద లైసెన్స్ పొందింది.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">ఫోకల్ దూరం మరియు గురుత్వ సూచనలకు ఒకే-చిత్ర కెమెరా క్యాలిబ్రేషన్. కాపీరైట్ 2024 ETH Zurich. Apache License 2.0.</string>
+    <string name="licenses_geo_calib">ఫోకల్ పొడవు మరియు గురుత్వాకర్షణ సూచనల కోసం ఒకే-చిత్ర కెమెరా క్యాలిబ్రేషన్. Copyright 2024 ETH Zurich. కోడ్ Apache License 2.0. షిప్ చేసిన pinhole వెయిట్లు Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D గది వ్యూయర్ల కోసం బండిల్ చేసిన WebGL రెండరింగ్ మద్దతు. కాపీరైట్ (c) 2010-2024 three.js రచయితలు. MIT లైసెన్స్.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

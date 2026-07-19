@@ -100,8 +100,10 @@
     <string name="licenses_hypersim_title">Hypersim Dataset</string>
     <string name="licenses_hypersim">The metric indoor model was fine-tuned using Apple\'s Hypersim synthetic indoor dataset. Hypersim is licensed under CC BY-SA 3.0.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_geo_calib">Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Code licensed under Apache License 2.0. Shipped pinhole weights licensed under Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_view_full_license">View full license</string>
+<string name="licenses_view_apache_2_code">View Apache 2.0 license (code)</string>
+<string name="licenses_view_cc_by_4">View CC BY 4.0 license</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Licensed under the Apache License 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>

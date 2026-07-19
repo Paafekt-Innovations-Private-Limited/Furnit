@@ -47,6 +47,8 @@
     <string name="licenses_open_source_section">开源许可</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">查看完整许可</string>
+<string name="licenses_view_apache_2_code">查看 Apache 2.0 许可（代码）</string>
+<string name="licenses_view_cc_by_4">查看 CC BY 4.0 许可</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">版权所有 (c) Google LLC。依据 Apache 2.0 许可授权。</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -378,12 +380,12 @@
     <string name="placement_intelligence_fits">尺寸适配</string>
     <string name="placement_intelligence_aesthetic_unavailable">在采集房间和家具颜色前，无法提供美学指导。</string>
     <string name="camera_ar_save_failed">无法保存照片，请重试。</string>
-    <string name="licenses_depth_anything">用于单张照片房间重建的室内公制深度估算。依据 Apache License 2.0 授权。</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — 用于单张照片房间重建的室内公制深度。Small 权重依据 Apache License 2.0 授权（未使用 Base/Large/Giant）。</string>
     <string name="room_viewer_navigation_teaching_hint">拖动环视 · 双指捏合缩放 · 双指移动</string>
     <string name="licenses_hypersim">室内公制模型使用 Apple 的 Hypersim 合成室内数据集进行微调。Hypersim 依据 CC BY-SA 3.0 授权。</string>
     <string name="camera_ar_capture_failed">拍摄失败，请重试。</string>
     <string name="camera_ar_capturing">正在拍摄照片并获取 AR 深度…</string>
-    <string name="licenses_geo_calib">用于焦距与重力提示的单图像相机校准。版权所有 2024 ETH Zurich。依据 Apache License 2.0 授权。</string>
+    <string name="licenses_geo_calib">用于焦距与重力提示的单图像相机校准。版权所有 2024 ETH Zurich。代码依据 Apache License 2.0 授权。随附的针孔模型权重依据知识共享署名 4.0（CC BY 4.0）授权。</string>
     <string name="room_viewer_full_video_selection_helper">轻点另一个物品</string>
     <string name="placement_intelligence_single_item">请选择一件家具以获得尺寸适配结果。</string>
     <string name="camera_zoom_wide">1x 广角</string>

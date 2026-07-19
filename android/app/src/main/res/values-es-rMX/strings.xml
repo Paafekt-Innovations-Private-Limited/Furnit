@@ -85,12 +85,14 @@
     <string name="licenses_open_source_section">Licencias de código abierto</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">Estimación métrica de profundidad en interiores para reconstruir cuartos a partir de una sola foto. Bajo la licencia Apache 2.0.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — profundidad métrica en interiores para reconstruir cuartos a partir de una sola foto. Pesos Small bajo Apache License 2.0 (Base/Large/Giant no se usan).</string>
     <string name="licenses_hypersim_title">Conjunto de datos Hypersim</string>
     <string name="licenses_hypersim">El modelo métrico para interiores se ajustó con el conjunto de datos sintéticos de interiores Hypersim de Apple. Hypersim se distribuye bajo la licencia CC BY-SA 3.0.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">Calibración de cámara a partir de una sola imagen para obtener indicaciones de distancia focal y gravedad. Copyright 2024 ETH Zurich. Bajo la licencia Apache 2.0.</string>
+    <string name="licenses_geo_calib">Calibración de cámara a partir de una sola imagen para distancia focal y gravedad. Copyright 2024 ETH Zurich. Código bajo Apache License 2.0. Pesos pinhole incluidos bajo Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_view_full_license">Ver licencia completa</string>
+<string name="licenses_view_apache_2_code">Ver licencia Apache 2.0 (código)</string>
+<string name="licenses_view_cc_by_4">Ver licencia CC BY 4.0</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Bajo licencia Apache 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>

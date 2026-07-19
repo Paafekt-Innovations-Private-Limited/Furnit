@@ -47,6 +47,8 @@
     <string name="licenses_open_source_section">Licences open source</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">Voir la licence complète</string>
+<string name="licenses_view_apache_2_code">Voir la licence Apache 2.0 (code)</string>
+<string name="licenses_view_cc_by_4">Voir la licence CC BY 4.0</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Sous licence Apache 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -367,11 +369,11 @@
     <string name="settings_open_link_failed">Aucun navigateur n’est disponible pour ouvrir ce lien.</string>
 
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">Estimation métrique de la profondeur en intérieur pour la reconstruction d’une pièce à partir d’une seule photo. Sous licence Apache 2.0.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — profondeur métrique en intérieur pour la reconstruction de pièce à partir d’une seule photo. Poids Small sous licence Apache 2.0 (Base/Large/Giant non utilisés).</string>
     <string name="licenses_hypersim_title">Jeu de données Hypersim</string>
     <string name="licenses_hypersim">Le modèle métrique d’intérieur a été affiné à l’aide du jeu de données synthétique d’intérieurs Hypersim d’Apple. Hypersim est sous licence CC BY-SA 3.0.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">Étalonnage de la caméra à partir d’une seule image pour la distance focale et les indications de gravité. Copyright 2024 ETH Zurich. Sous licence Apache 2.0.</string>
+    <string name="licenses_geo_calib">Étalonnage de caméra à partir d’une seule image pour la focale et la gravité. Copyright 2024 ETH Zurich. Code sous licence Apache 2.0. Poids pinhole fournis sous Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">Prise en charge intégrée du rendu WebGL pour les visualiseurs de pièces 3D. Copyright (c) 2010–2024 auteurs de three.js. Sous licence MIT.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

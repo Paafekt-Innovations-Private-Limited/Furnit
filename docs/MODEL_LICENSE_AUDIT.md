@@ -9,7 +9,7 @@
 | # | Item | Verdict | Why (primary source) |
 |---|------|---------|----------------------|
 | 1 | **Depth Anything V2 Metric Indoor Small — training data** | **AMBIGUOUS — needs lawyer** | Metric Small weights are **Apache-2.0** per upstream README, but fine-tuning uses **Hypersim** (**CC-BY-SA 3.0**). Share-Alike may affect redistribution of derived weights; not resolved in any model card we found. |
-| 2 | **GeoCalib pinhole weights — training data** | **AMBIGUOUS — needs lawyer** | Code + release weights have **no separate commercial-restriction terms**, but training uses **OpenPano** (HDRMAPS + Poly Haven CC0 + Laval HDR). **HDRMAPS** and **Laval** commercial terms were **not found** in primary sources reviewed. |
+| 2 | ~~GeoCalib pinhole weights~~ | **CLEARED for commercial (2026-07-19)** | Upstream README: **code Apache-2.0**, **trained weights CC BY 4.0** (commercial OK; attribution). Thanks Laval authors for allowing that weight license. OpenPano mix remains background; published weight grant is CC BY 4.0. |
 | 3 | **HF license tag missing** | **Documentation gap** | Hugging Face API returns `"license": null` for `depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf` (queried 2026-07-11). Resolved for **Small** via GitHub README; still document in diligence. |
 
 **Not blockers (confirmed):** Inria 3DGS **not** in ship path; MiDaS **removed**; SparkJS **removed** (iOS + Android, 2026-07-11); MetalSplatter / Three.js / ONNX Runtime / RTMDet code **permissive** with attribution.
@@ -71,18 +71,16 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 | Layer | License | Commercial | Attribution | Primary source | Date |
 |-------|---------|------------|-------------|----------------|------|
-| **Code** | Apache-2.0 | YES | NOTICE + license copy | https://github.com/cvg/GeoCalib/blob/main/LICENSE — *Copyright 2024 ETH Zurich* | 2026-07-11 |
-| **Vendored copy** | Apache-2.0 | YES | Same | `third_party/GeoCalib/LICENSE` in repo | 2026-07-11 |
-| **Weights tarball** | *(no separate license text)* | **AMBIGUOUS — needs lawyer** | ETH Zurich / Apache if covered by code license | https://github.com/cvg/GeoCalib/releases/tag/v1.0 — `geocalib-pinhole.tar`; release notes contain **no** additional terms | 2026-07-11 |
-| **Training (OpenPano)** | Mixed | **AMBIGUOUS — needs lawyer** | Varies by source | https://github.com/cvg/GeoCalib/blob/main/README.md#openpano-dataset — sources: **HDRMAPS**, **Poly Haven**, **Laval Photometric Indoor HDR** | 2026-07-11 |
-| ↳ Poly Haven panos | CC0 | YES | Not required (appreciated) | https://polyhaven.com/license | 2026-07-11 |
-| ↳ HDRMAPS panos | **Not found** | **AMBIGUOUS** | — | Referenced in GeoCalib README only; no license URL in repo | 2026-07-11 |
-| ↳ Laval HDR | **Not found** | **AMBIGUOUS** | — | http://hdrdb.com/indoor-hdr-photometric/ (linked from GeoCalib README; terms not audited here) | 2026-07-11 |
-| **Stanford2D3D** | Terms-of-use form | **Eval only in siclib** | — | GeoCalib README: must agree to Google Form before download — used for **benchmark eval**, not stated as sole training set for shipped pinhole weights | 2026-07-11 |
+| **Code** | Apache-2.0 | YES | NOTICE + license copy | https://github.com/cvg/GeoCalib/blob/main/LICENSE — *Copyright 2024 ETH Zurich* | 2026-07-19 |
+| **Trained weights** | **CC BY 4.0** | YES | Attribution | https://github.com/cvg/GeoCalib/blob/main/README.md — License section: *“weights … under the Creative Commons Attribution 4.0 International Public License”*; thanks Laval authors | 2026-07-19 |
+| **CC BY 4.0 legalcode** | CC-BY-4.0 | YES | BY | https://creativecommons.org/licenses/by/4.0/legalcode | 2026-07-19 |
+| **Training (OpenPano)** | Mixed (dataset assembly) | Background | — | https://github.com/cvg/GeoCalib/blob/main/README.md#openpano-dataset — HDRMAPS, Poly Haven (CC0), Laval Indoor HDR | 2026-07-19 |
+| ↳ Poly Haven panos | CC0 | YES | Not required | https://polyhaven.com/license | 2026-07-11 |
+| **Stanford2D3D** | Terms-of-use form | **Eval only** | — | Benchmark eval; not the published weight license | 2026-07-11 |
 
-**App claim cross-check:** `licenses.geoCalib` = Apache-2.0, Copyright 2024 ETH Zurich — **Matches code LICENSE**. Does not disclose OpenPano training mix.
+**App claim cross-check (2026-07-19):** In-app licenses state **code Apache-2.0** + **shipped pinhole weights CC BY 4.0**, ETH Zurich copyright; UI links both license texts. Matches upstream README.
 
-**Action:** Lawyer on weights + HDRMAPS/Laval. Android ONNX and iOS Core ML exports use the same pretrained pinhole checkpoint.
+**Action:** Keep dual attribution links. No NC. Optional: credit OpenPano sources in docs if desired; not required by CC BY weight grant.
 
 ---
 
@@ -195,9 +193,9 @@ Licenses that **prohibit commercial distribution**, or research-only / GPL-AGPL 
 
 ## Lawyer priority (one fixed-fee review)
 
-1. **Hypersim CC-BY-SA 3.0** → Depth Anything Metric **Small** exported weights in commercial app.
-2. **GeoCalib OpenPano** training mix (HDRMAPS / Laval) → commercial weights.
-3. **RTMDet + COCO** (optional; lower risk than #1–2).
+1. **Hypersim CC-BY-SA 3.0** → Depth Anything Metric **Small** exported weights in commercial app (tail risk; commercial not blocked by SA).
+2. ~~GeoCalib~~ — **resolved upstream as CC BY 4.0 weights** (2026-07-19); keep attribution.
+3. **RTMDet + COCO** (optional; lower risk).
 
 ---
 

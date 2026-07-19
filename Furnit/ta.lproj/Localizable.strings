@@ -130,11 +130,13 @@
 "licenses.title" = "உரிமங்கள் மற்றும் அடிப்படைகள்";
 "licenses.openSourceSection" = "திறந்த மூல உரிமங்கள்";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "CC BY 4.0 உரிமத்தைக் காண்க";
+"licenses.viewApache2Code" = "Apache 2.0 உரிமம் (குறியீடு)";
 "licenses.viewFullLicense" = "முழு உரிமத்தைக் காண்க";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — ஒற்றைப் புகைப்பட அறை மறுகட்டமைப்புக்கான மெட்ரிக் உட்புற ஆழம். Small எடைகள் Apache License 2.0 (Base/Large/Giant பயன்படுத்தப்படவில்லை).";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "குவியத் தொலைவு மற்றும் ஈர்ப்பு குறிப்புகளுக்கான ஒற்றைப் பட கேமரா அளவுத்திருத்தம். Copyright 2024 ETH Zurich. குறியீடு Apache License 2.0. வழங்கப்படும் pinhole எடைகள் Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "சாதனத்திலேயே Gaussian splat rendering. பதிப்புரிமை (c) Sean Cier. MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
 "licenses.firebaseTitle" = "Firebase";

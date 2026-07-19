@@ -147,11 +147,13 @@
 "licenses.title" = "লাইসেন্স এবং অ্যাট্রিবিউশন";
 "licenses.openSourceSection" = "ওপেন সোর্স লাইসেন্স";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "CC BY 4.0 লাইসেন্স দেখুন";
+"licenses.viewApache2Code" = "Apache 2.0 লাইসেন্স দেখুন (কোড)";
 "licenses.viewFullLicense" = "সম্পূর্ণ লাইসেন্স দেখুন";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "একটি ছবি থেকে রুম পুনর্গঠনের জন্য মেট্রিক ইনডোর গভীরতা অনুমান। Apache License 2.0-এর অধীনে লাইসেন্সপ্রাপ্ত।";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — একক-ছবির রুম পুনর্গঠনের জন্য মেট্রিক ইনডোর গভীরতা। Small ওয়েট Apache License 2.0-এর অধীনে (Base/Large/Giant ব্যবহার হয় না)।";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "ফোকাল দৈর্ঘ্য ও অভিকর্ষের ইঙ্গিতের জন্য একক-ছবি ক্যামেরা ক্যালিব্রেশন। কপিরাইট 2024 ETH Zurich। Apache License 2.0-এর অধীনে লাইসেন্সপ্রাপ্ত।";
+"licenses.geoCalib" = "ফোকাল দৈর্ঘ্য ও মাধ্যাকর্ষণ ইঙ্গিতের জন্য একক-ছবি ক্যামেরা ক্যালিব্রেশন। Copyright 2024 ETH Zurich. কোড Apache License 2.0-এর অধীনে। শিপ করা pinhole ওয়েট Creative Commons Attribution 4.0 (CC BY 4.0)-এর অধীনে।";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "ডিভাইসেই Gaussian splat rendering। কপিরাইট (c) Sean Cier। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।";
 "licenses.firebaseTitle" = "Firebase";

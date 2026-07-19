@@ -47,6 +47,8 @@
     <string name="licenses_open_source_section">تراخيص المصدر المفتوح</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">عرض الترخيص الكامل</string>
+<string name="licenses_view_apache_2_code">عرض رخصة Apache 2.0 (الكود)</string>
+<string name="licenses_view_cc_by_4">عرض رخصة CC BY 4.0</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">حقوق النشر (c) Google LLC. مرخّص بموجب رخصة Apache 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -369,11 +371,11 @@
     <!-- Full-catalog parity additions -->
     <string name="settings_open_link_failed">لا يتوفر متصفح لفتح هذا الرابط.</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">تقدير عمق متري داخلي لإعادة بناء غرفة من صورة واحدة. مرخّص بموجب Apache License 2.0.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — تقدير عمق متري داخلي لإعادة بناء غرفة من صورة واحدة. أوزان Small مرخّصة بموجب Apache License 2.0 (لا يُستخدم Base/Large/Giant).</string>
     <string name="licenses_hypersim_title">مجموعة بيانات Hypersim</string>
     <string name="licenses_hypersim">تم تحسين نموذج العمق المتري الداخلي باستخدام مجموعة بيانات Apple الاصطناعية للمساحات الداخلية Hypersim. تُرخّص Hypersim بموجب CC BY-SA 3.0.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">معايرة كاميرا من صورة واحدة لتقدير الطول البؤري واتجاه الجاذبية. حقوق النشر 2024 ETH Zurich. مرخّص بموجب Apache License 2.0.</string>
+    <string name="licenses_geo_calib">معايرة كاميرا من صورة واحدة للبعد البؤري وإشارات الجاذبية. حقوق النشر 2024 ETH Zurich. الكود مرخّص بموجب Apache License 2.0. أوزان pinhole المضمّنة مرخّصة بموجب Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">دعم WebGL مضمّن لعرض الغرف ثلاثية الأبعاد. حقوق النشر (c) لمؤلفي three.js 2010-2024. مرخّص بموجب ترخيص MIT.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

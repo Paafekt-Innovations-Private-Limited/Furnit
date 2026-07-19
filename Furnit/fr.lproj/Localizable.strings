@@ -147,11 +147,13 @@
 "licenses.title" = "Licences et attributions";
 "licenses.openSourceSection" = "Licences open source";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "Voir la licence CC BY 4.0";
+"licenses.viewApache2Code" = "Voir la licence Apache 2.0 (code)";
 "licenses.viewFullLicense" = "Voir la licence complète";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — profondeur métrique en intérieur pour la reconstruction de pièce à partir d’une seule photo. Poids Small sous licence Apache 2.0 (Base/Large/Giant non utilisés).";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Étalonnage de caméra à partir d’une seule image pour la focale et la gravité. Copyright 2024 ETH Zurich. Code sous licence Apache 2.0. Poids pinhole fournis sous Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "Rendu Gaussian splat sur l’appareil. Copyright (c) Sean Cier. Sous licence MIT.";
 "licenses.firebaseTitle" = "Firebase";

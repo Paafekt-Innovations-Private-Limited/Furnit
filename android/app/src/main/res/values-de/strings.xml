@@ -47,6 +47,8 @@
     <string name="licenses_open_source_section">Open-Source-Lizenzen</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">Vollständige Lizenz anzeigen</string>
+<string name="licenses_view_apache_2_code">Apache-2.0-Lizenz anzeigen (Code)</string>
+<string name="licenses_view_cc_by_4">CC BY 4.0-Lizenz anzeigen</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Lizenziert unter der Apache-Lizenz 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -367,11 +369,11 @@
     <string name="settings_open_link_failed">Zum Öffnen dieses Links ist kein Browser verfügbar.</string>
 
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">Metrische Tiefenschätzung für Innenräume bei der Raumrekonstruktion aus einem einzelnen Foto. Lizenziert unter der Apache-Lizenz 2.0.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — metrische Tiefenschätzung für Innenräume bei der Einzelbild-Raumrekonstruktion. Small-Gewichte unter Apache-Lizenz 2.0 (Base/Large/Giant werden nicht verwendet).</string>
     <string name="licenses_hypersim_title">Hypersim-Datensatz</string>
     <string name="licenses_hypersim">Das metrische Innenraummodell wurde mit Apples synthetischem Hypersim-Innenraumdatensatz feinabgestimmt. Hypersim ist unter CC BY-SA 3.0 lizenziert.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">Kamerakalibrierung aus einem Einzelbild für Brennweite und Schwerkrafthinweise. Copyright 2024 ETH Zürich. Lizenziert unter der Apache-Lizenz 2.0.</string>
+    <string name="licenses_geo_calib">Kamerakalibrierung aus einem Einzelbild für Brennweite und Schwerkrafthinweise. Copyright 2024 ETH Zürich. Code unter Apache-Lizenz 2.0. Mitgelieferte Pinhole-Gewichte unter Creative Commons Namensnennung 4.0 (CC BY 4.0).</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">Integrierte WebGL-Rendering-Unterstützung für 3D-Raum-Viewer. Copyright (c) 2010–2024 Autoren von three.js. Lizenziert unter der MIT-Lizenz.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

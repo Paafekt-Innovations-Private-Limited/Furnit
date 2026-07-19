@@ -13,6 +13,7 @@ class LicensesActivity : AppCompatActivity() {
 
     private val urlMit = "https://opensource.org/licenses/MIT"
     private val urlApache2 = "https://www.apache.org/licenses/LICENSE-2.0"
+    private val urlCcBy4 = "https://creativecommons.org/licenses/by/4.0/legalcode"
     private val urlHypersim = "https://github.com/apple/ml-hypersim"
     private val urlCoco = "https://cocodataset.org/#termsofuse"
 
@@ -28,7 +29,15 @@ class LicensesActivity : AppCompatActivity() {
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
         addSection(layout, getString(R.string.licenses_depth_anything_title), getString(R.string.licenses_depth_anything), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_hypersim_title), getString(R.string.licenses_hypersim), licenseUrl = urlHypersim)
-        addSection(layout, getString(R.string.licenses_geo_calib_title), getString(R.string.licenses_geo_calib), licenseUrl = urlApache2)
+        addSection(
+            layout,
+            getString(R.string.licenses_geo_calib_title),
+            getString(R.string.licenses_geo_calib),
+            licenseLinks = listOf(
+                getString(R.string.licenses_view_cc_by_4) to urlCcBy4,
+                getString(R.string.licenses_view_apache_2_code) to urlApache2,
+            ),
+        )
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_coco_title), getString(R.string.licenses_coco), licenseUrl = urlCoco)
@@ -48,6 +57,7 @@ class LicensesActivity : AppCompatActivity() {
         body: String? = null,
         isBold: Boolean = false,
         licenseUrl: String? = null,
+        licenseLinks: List<Pair<String, String>> = emptyList(),
     ) {
         val card = PaafektScreenViews.createSectionCard(this)
         card.addView(
@@ -61,11 +71,16 @@ class LicensesActivity : AppCompatActivity() {
         if (!body.isNullOrEmpty()) {
             card.addView(PaafektScreenViews.createSecondaryLabel(this, body))
         }
-        if (!licenseUrl.isNullOrEmpty()) {
+        val links = when {
+            licenseLinks.isNotEmpty() -> licenseLinks
+            !licenseUrl.isNullOrEmpty() -> listOf(getString(R.string.licenses_view_full_license) to licenseUrl)
+            else -> emptyList()
+        }
+        for ((label, url) in links) {
             card.addView(
-                PaafektScreenViews.createLinkLabel(this, getString(R.string.licenses_view_full_license)) {
+                PaafektScreenViews.createLinkLabel(this, label) {
                     try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(licenseUrl)))
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     } catch (_: Exception) {
                     }
                 },

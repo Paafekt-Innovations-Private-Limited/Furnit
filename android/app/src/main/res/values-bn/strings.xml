@@ -47,6 +47,8 @@
     <string name="licenses_open_source_section">ওপেন সোর্স লাইসেন্স</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">সম্পূর্ণ লাইসেন্স দেখুন</string>
+<string name="licenses_view_apache_2_code">Apache 2.0 লাইসেন্স দেখুন (কোড)</string>
+<string name="licenses_view_cc_by_4">CC BY 4.0 লাইসেন্স দেখুন</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">কপিরাইট (c) Google LLC। Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -365,11 +367,11 @@
     <!-- Full-catalog parity additions -->
     <string name="settings_open_link_failed">এই লিঙ্ক খোলার জন্য কোনো ব্রাউজার উপলভ্য নেই।</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">একটি ছবি থেকে রুম পুনর্গঠনের জন্য মেট্রিক ইনডোর গভীরতা অনুমান। Apache License 2.0-এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — একক-ছবির রুম পুনর্গঠনের জন্য মেট্রিক ইনডোর গভীরতা। Small ওয়েট Apache License 2.0-এর অধীনে (Base/Large/Giant ব্যবহার হয় না)।</string>
     <string name="licenses_hypersim_title">Hypersim ডেটাসেট</string>
     <string name="licenses_hypersim">Apple-এর কৃত্রিম ইনডোর Hypersim ডেটাসেট ব্যবহার করে মেট্রিক ইনডোর মডেলটি সূক্ষ্মভাবে প্রশিক্ষিত হয়েছে। Hypersim CC BY-SA 3.0-এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">ফোকাল দৈর্ঘ্য ও অভিকর্ষের ইঙ্গিতের জন্য একক-ছবি ক্যামেরা ক্যালিব্রেশন। কপিরাইট 2024 ETH Zurich। Apache License 2.0-এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
+    <string name="licenses_geo_calib">ফোকাল দৈর্ঘ্য ও মাধ্যাকর্ষণ ইঙ্গিতের জন্য একক-ছবি ক্যামেরা ক্যালিব্রেশন। Copyright 2024 ETH Zurich. কোড Apache License 2.0-এর অধীনে। শিপ করা pinhole ওয়েট Creative Commons Attribution 4.0 (CC BY 4.0)-এর অধীনে।</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D রুম ভিউয়ারের জন্য সংযুক্ত WebGL রেন্ডারিং সহায়তা। কপিরাইট (c) 2010-2024 three.js লেখকগণ। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

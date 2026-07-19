@@ -73,8 +73,9 @@ def main() -> None:
         (
             "GeoCalib",
             "Single-image camera calibration for focal length and gravity hints. "
-            "Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.",
-            "Apache 2.0",
+            "Copyright 2024 ETH Zurich. Code licensed under Apache License 2.0. "
+            "Shipped pinhole weights licensed under Creative Commons Attribution 4.0 (CC BY 4.0).",
+            "Code Apache 2.0 / weights CC BY 4.0",
         ),
         (
             "MetalSplatter",
@@ -123,9 +124,10 @@ def main() -> None:
         ],
         [
             "GeoCalib",
-            "Apache 2.0",
+            "Code Apache 2.0 / weights CC BY 4.0",
             "https://github.com/cvg/GeoCalib",
-            "Open LICENSE — should be Apache 2.0, ETH Zurich copyright. Training-data fine print is a lawyer question.",
+            "README License section: code Apache-2.0, trained weights CC BY 4.0. "
+            "Confirm in-app text and links match. Commercial OK with attribution.",
         ],
         [
             "MetalSplatter",
@@ -198,7 +200,7 @@ def main() -> None:
         "All six software names appear (Depth Anything, GeoCalib, MetalSplatter, Firebase, RTMDet, Three.js).",
         "“View full license” links work (open in Safari).",
         "Depth Anything — official site says Small model is Apache 2.0; only Small is shipped.",
-        "GeoCalib — official LICENSE is Apache 2.0.",
+        "GeoCalib — README: code Apache 2.0, trained weights CC BY 4.0; app links both.",
         "MetalSplatter — official LICENSE is MIT.",
         "Firebase — official LICENSE is Apache 2.0.",
         "RTMDet / MMDetection — official LICENSE is Apache 2.0.",

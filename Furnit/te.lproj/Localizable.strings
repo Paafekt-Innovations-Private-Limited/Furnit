@@ -130,11 +130,13 @@
 "licenses.title" = "లైసెన్స్‌లు మరియు ఆకృతులు";
 "licenses.openSourceSection" = "ఓపెన్ సోర్స్ లైసెన్స్‌లు";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "CC BY 4.0 లైసెన్స్ చూడండి";
+"licenses.viewApache2Code" = "Apache 2.0 లైసెన్స్ (కోడ్)";
 "licenses.viewFullLicense" = "పూర్తి లైసెన్స్ చూడండి";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — ఒకే ఫోటో గది పునర్నిర్మాణానికి మెట్రిక్ ఇండోర్ లోతు. Small వెయిట్లు Apache License 2.0 (Base/Large/Giant ఉపయోగించబడవు).";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "ఫోకల్ పొడవు మరియు గురుత్వాకర్షణ సూచనల కోసం ఒకే-చిత్ర కెమెరా క్యాలిబ్రేషన్. Copyright 2024 ETH Zurich. కోడ్ Apache License 2.0. షిప్ చేసిన pinhole వెయిట్లు Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "పరికరంపైనే Gaussian splat rendering. కాపీరైట్ (c) Sean Cier. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.";
 "licenses.firebaseTitle" = "Firebase";

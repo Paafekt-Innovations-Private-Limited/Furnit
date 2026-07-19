@@ -45,6 +45,8 @@
     <string name="licenses_open_source_section">ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">പൂർണ്ണ ലൈസൻസ് കാണുക</string>
+<string name="licenses_view_apache_2_code">Apache 2.0 ലൈസൻസ് (കോഡ്)</string>
+<string name="licenses_view_cc_by_4">CC BY 4.0 ലൈസൻസ് കാണുക</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">കൃതിസ്വാമ്യം (c) Google LLC. Apache ലൈസൻസ് 2.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -387,11 +389,11 @@
     <string name="camera_wide_unavailable">വൈഡ്-ആംഗിൾ ക്യാമറ തുറക്കാനായില്ല</string>
     <string name="camera_ar_photo_failed">AR ഫോട്ടോ ക്യാപ്ചർ പരാജയപ്പെട്ടു</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">ഒറ്റ ഫോട്ടോ മുറി പുനർനിർമ്മാണത്തിനുള്ള മെട്രിക് ഇൻഡോർ ഡെപ്ത് എസ്റ്റിമേഷൻ. Apache License 2.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — ഒറ്റ ഫോട്ടോ മുറി പുനർനിർമ്മാണത്തിനുള്ള മെട്രിക് ഇൻഡോർ ഡെപ്ത്. Small വെയ്റ്റുകൾ Apache License 2.0 (Base/Large/Giant ഉപയോഗിക്കുന്നില്ല).</string>
     <string name="licenses_hypersim_title">Hypersim ഡാറ്റാസെറ്റ്</string>
     <string name="licenses_hypersim">മെട്രിക് ഇൻഡോർ മോഡൽ Apple-ന്റെ Hypersim സിന്തറ്റിക് ഇൻഡോർ ഡാറ്റാസെറ്റ് ഉപയോഗിച്ച് ഫൈൻ-ട്യൂൺ ചെയ്തു. Hypersim CC BY-SA 3.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">ഫോക്കൽ ദൂരത്തിനും ഗ്രാവിറ്റി സൂചനകൾക്കുമുള്ള ഒറ്റ-ചിത്ര ക്യാമറ കാലിബ്രേഷൻ. പകർപ്പവകാശം 2024 ETH Zurich. Apache License 2.0.</string>
+    <string name="licenses_geo_calib">ഫോക്കൽ ദൂരത്തിനും ഗുരുത്വ സൂചനകൾക്കുമുള്ള ഒറ്റ-ചിത്ര ക്യാമറ കാലിബ്രേഷൻ. Copyright 2024 ETH Zurich. കോഡ് Apache License 2.0. ഷിപ്പ് ചെയ്ത pinhole വെയ്റ്റുകൾ Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D മുറി വ്യൂവറുകൾക്കുള്ള ഉൾപ്പെടുത്തിയ WebGL റെൻഡറിംഗ് പിന്തുണ. പകർപ്പവകാശം (c) 2010-2024 three.js രചയിതാക്കൾ. MIT ലൈസൻസ്.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

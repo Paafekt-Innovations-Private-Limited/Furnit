@@ -130,11 +130,13 @@
 "licenses.title" = "ಲೈಸೆನ್ಸ್‌ಗಳು ಮತ್ತು ಆಕೃತಿಗಳು";
 "licenses.openSourceSection" = "ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "CC BY 4.0 ಪರವಾನಗಿ ನೋಡಿ";
+"licenses.viewApache2Code" = "Apache 2.0 ಪರವಾನಗಿ (ಕೋಡ್)";
 "licenses.viewFullLicense" = "ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — ಏಕ-ಫೋಟೋ ಕೊಠಡಿ ಪುನರ್‌ನಿರ್ಮಾಣಕ್ಕೆ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಆಳ. Small ತೂಕಗಳು Apache License 2.0 (Base/Large/Giant ಬಳಸಲಾಗುವುದಿಲ್ಲ).";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "ಫೋಕಲ್ ಉದ್ದ ಮತ್ತು ಗುರುತ್ವ ಸೂಚನೆಗಳಿಗೆ ಏಕ-ಚಿತ್ರ ಕ್ಯಾಮೆರಾ ಕ್ಯಾಲಿಬ್ರೇಶನ್. Copyright 2024 ETH Zurich. ಕೋಡ್ Apache License 2.0. ಶಿಪ್ ಮಾಡಿದ pinhole ತೂಕಗಳು Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "ಸಾಧನದಲ್ಲಿಯೇ Gaussian splat ರೆಂಡರಿಂಗ್. ಕೃತಿಸ್ವಾಮ್ಯ (c) Sean Cier. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
 "licenses.firebaseTitle" = "Firebase";

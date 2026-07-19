@@ -130,11 +130,13 @@
 "licenses.title" = "ലൈസൻസുകളും അടിസ്ഥാനകാരണങ്ങളും";
 "licenses.openSourceSection" = "ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "CC BY 4.0 ലൈസൻസ് കാണുക";
+"licenses.viewApache2Code" = "Apache 2.0 ലൈസൻസ് (കോഡ്)";
 "licenses.viewFullLicense" = "പൂർണ്ണ ലൈസൻസ് കാണുക";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — ഒറ്റ ഫോട്ടോ മുറി പുനർനിർമ്മാണത്തിനുള്ള മെട്രിക് ഇൻഡോർ ഡെപ്ത്. Small വെയ്റ്റുകൾ Apache License 2.0 (Base/Large/Giant ഉപയോഗിക്കുന്നില്ല).";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "ഫോക്കൽ ദൂരത്തിനും ഗുരുത്വ സൂചനകൾക്കുമുള്ള ഒറ്റ-ചിത്ര ക്യാമറ കാലിബ്രേഷൻ. Copyright 2024 ETH Zurich. കോഡ് Apache License 2.0. ഷിപ്പ് ചെയ്ത pinhole വെയ്റ്റുകൾ Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "ഉപകരണത്തിൽ തന്നെ Gaussian splat rendering. കൃതിസ്വാമ്യം (c) Sean Cier. MIT ലൈസൻസ് പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.";
 "licenses.firebaseTitle" = "Firebase";

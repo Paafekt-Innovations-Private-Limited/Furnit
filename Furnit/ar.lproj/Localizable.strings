@@ -147,11 +147,13 @@
 "licenses.title" = "التراخيص والإسناد";
 "licenses.openSourceSection" = "تراخيص المصدر المفتوح";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
+"licenses.viewCcBy4" = "عرض رخصة CC BY 4.0";
+"licenses.viewApache2Code" = "عرض رخصة Apache 2.0 (الكود)";
 "licenses.viewFullLicense" = "عرض الترخيص الكامل";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "تقدير عمق متري داخلي لإعادة بناء غرفة من صورة واحدة. مرخّص بموجب Apache License 2.0.";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — تقدير عمق متري داخلي لإعادة بناء غرفة من صورة واحدة. أوزان Small مرخّصة بموجب Apache License 2.0 (لا يُستخدم Base/Large/Giant).";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "معايرة كاميرا من صورة واحدة لتقدير الطول البؤري واتجاه الجاذبية. حقوق النشر 2024 ETH Zurich. مرخّص بموجب Apache License 2.0.";
+"licenses.geoCalib" = "معايرة كاميرا من صورة واحدة للبعد البؤري وإشارات الجاذبية. حقوق النشر 2024 ETH Zurich. الكود مرخّص بموجب Apache License 2.0. أوزان pinhole المضمّنة مرخّصة بموجب Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "عرض Gaussian splat على الجهاز. حقوق النشر (c) Sean Cier. مرخّص بموجب ترخيص MIT.";
 "licenses.firebaseTitle" = "Firebase";

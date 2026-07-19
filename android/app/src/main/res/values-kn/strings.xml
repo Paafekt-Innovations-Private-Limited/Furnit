@@ -45,6 +45,8 @@
     <string name="licenses_open_source_section">ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ</string>
+<string name="licenses_view_apache_2_code">Apache 2.0 ಪರವಾನಗಿ (ಕೋಡ್)</string>
+<string name="licenses_view_cc_by_4">CC BY 4.0 ಪರವಾನಗಿ ನೋಡಿ</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -387,11 +389,11 @@
     <string name="camera_wide_unavailable">ವಿಶಾಲ-ಕೋನ ಕ್ಯಾಮೆರಾ ತೆರೆಯಲಾಗಲಿಲ್ಲ</string>
     <string name="camera_ar_photo_failed">AR ಫೋಟೋ ಸೆರೆಹಿಡಿಯಲು ವಿಫಲವಾಗಿದೆ</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">ಒಂದೇ ಫೋಟೋದಿಂದ ಕೊಠಡಿ ಪುನರ್‌ನಿರ್ಮಾಣಕ್ಕೆ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಆಳ ಅಂದಾಜು. Apache License 2.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — ಏಕ-ಫೋಟೋ ಕೊಠಡಿ ಪುನರ್‌ನಿರ್ಮಾಣಕ್ಕೆ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಆಳ. Small ತೂಕಗಳು Apache License 2.0 (Base/Large/Giant ಬಳಸಲಾಗುವುದಿಲ್ಲ).</string>
     <string name="licenses_hypersim_title">Hypersim ಡೇಟಾಸೆಟ್</string>
     <string name="licenses_hypersim">ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಮಾದರಿಯನ್ನು Apple ನ Hypersim ಕೃತಕ ಒಳಾಂಗಣ ಡೇಟಾಸೆಟ್ ಬಳಸಿ ಸೂಕ್ಷ್ಮವಾಗಿ ತರಬೇತುಗೊಳಿಸಲಾಗಿದೆ. Hypersim CC BY-SA 3.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">ಫೋಕಲ್ ಉದ್ದ ಮತ್ತು ಗುರುತ್ವ ಸೂಚನೆಗಳಿಗೆ ಏಕ-ಚಿತ್ರ ಕ್ಯಾಮೆರಾ ಕ್ಯಾಲಿಬ್ರೇಶನ್. ಕೃತಿಸ್ವಾಮ್ಯ 2024 ETH Zurich. Apache License 2.0.</string>
+    <string name="licenses_geo_calib">ಫೋಕಲ್ ಉದ್ದ ಮತ್ತು ಗುರುತ್ವ ಸೂಚನೆಗಳಿಗೆ ಏಕ-ಚಿತ್ರ ಕ್ಯಾಮೆರಾ ಕ್ಯಾಲಿಬ್ರೇಶನ್. Copyright 2024 ETH Zurich. ಕೋಡ್ Apache License 2.0. ಶಿಪ್ ಮಾಡಿದ pinhole ತೂಕಗಳು Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D ಕೊಠಡಿ ವೀಕ್ಷಕಗಳಿಗಾಗಿ ಒಳಗೊಂಡ WebGL ರೆಂಡರಿಂಗ್ ಬೆಂಬಲ. ಕೃತಿಸ್ವಾಮ್ಯ (c) 2010-2024 three.js ಲೇಖಕರು. MIT ಪರವಾನಗಿ.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

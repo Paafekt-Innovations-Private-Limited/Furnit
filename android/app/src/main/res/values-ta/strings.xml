@@ -45,6 +45,8 @@
     <string name="licenses_open_source_section">திறந்த மூல உரிமங்கள்</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">முழு உரிமத்தைக் காண்க</string>
+<string name="licenses_view_apache_2_code">Apache 2.0 உரிமம் (குறியீடு)</string>
+<string name="licenses_view_cc_by_4">CC BY 4.0 உரிமத்தைக் காண்க</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">பதிப்புரிமை (c) Google LLC. Apache உரிமம் 2.0 இன் கீழ் உரிமம் வழங்கப்பட்டது.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -387,11 +389,11 @@
     <string name="camera_wide_unavailable">அகலக் கோண கேமராவைத் திறக்க முடியவில்லை</string>
     <string name="camera_ar_photo_failed">AR புகைப்படப் பிடிப்பு தோல்வியடைந்தது</string>
     <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
-    <string name="licenses_depth_anything">ஒற்றைப் புகைப்பட அறை மறுகட்டமைப்புக்கான மெட்ரிக் உட்புற ஆழ மதிப்பீடு. Apache License 2.0 உரிமம்.</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — ஒற்றைப் புகைப்பட அறை மறுகட்டமைப்புக்கான மெட்ரிக் உட்புற ஆழம். Small எடைகள் Apache License 2.0 (Base/Large/Giant பயன்படுத்தப்படவில்லை).</string>
     <string name="licenses_hypersim_title">Hypersim தரவுத்தொகுப்பு</string>
     <string name="licenses_hypersim">மெட்ரிக் உட்புற மாதிரி Apple-இன் Hypersim செயற்கை உட்புற தரவுத்தொகுப்பால் நுண்பயிற்சி செய்யப்பட்டது. Hypersim CC BY-SA 3.0 உரிமம் பெற்றது.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
-    <string name="licenses_geo_calib">குவியத் தொலைவு மற்றும் ஈர்ப்பு குறிப்புகளுக்கான ஒற்றைப் பட கேமரா அளவுத்திருத்தம். பதிப்புரிமை 2024 ETH Zurich. Apache License 2.0.</string>
+    <string name="licenses_geo_calib">குவியத் தொலைவு மற்றும் ஈர்ப்பு குறிப்புகளுக்கான ஒற்றைப் பட கேமரா அளவுத்திருத்தம். Copyright 2024 ETH Zurich. குறியீடு Apache License 2.0. வழங்கப்படும் pinhole எடைகள் Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D அறை பார்வையாளர்களுக்கான தொகுக்கப்பட்ட WebGL வரைதல் ஆதரவு. பதிப்புரிமை (c) 2010-2024 three.js ஆசிரியர்கள். MIT உரிமம்.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>

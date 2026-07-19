@@ -148,13 +148,15 @@
 "licenses.title" = "许可与归属";
 "licenses.openSourceSection" = "开源许可";
 "licenses.openSourceIntro" = "以下列出了此平台使用的主要开源软件、模型资源、数据集及必要的署名信息。";
+"licenses.viewCcBy4" = "查看 CC BY 4.0 许可";
+"licenses.viewApache2Code" = "查看 Apache 2.0 许可（代码）";
 "licenses.viewFullLicense" = "查看完整许可";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
-"licenses.depthAnything" = "用于单张照片房间重建的室内公制深度估算。依据 Apache License 2.0 授权。";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — 用于单张照片房间重建的室内公制深度。Small 权重依据 Apache License 2.0 授权（未使用 Base/Large/Giant）。";
 "licenses.hypersimTitle" = "Hypersim 数据集";
 "licenses.hypersim" = "室内公制模型使用 Apple 的 Hypersim 合成室内数据集进行微调。Hypersim 依据 CC BY-SA 3.0 授权。";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "用于焦距与重力提示的单图像相机校准。版权所有 2024 ETH Zurich。依据 Apache License 2.0 授权。";
+"licenses.geoCalib" = "用于焦距与重力提示的单图像相机校准。版权所有 2024 ETH Zurich。代码依据 Apache License 2.0 授权。随附的针孔模型权重依据知识共享署名 4.0（CC BY 4.0）授权。";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "设备端 Gaussian splat 渲染。版权所有 (c) Sean Cier。依据 MIT 许可授权。";
 "licenses.firebaseTitle" = "Firebase";

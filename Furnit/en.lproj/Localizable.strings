@@ -151,13 +151,15 @@
 "licenses.title" = "Licenses & Attributions";
 "licenses.openSourceSection" = "Open Source Licenses";
 "licenses.openSourceIntro" = "Key open-source software, model assets, datasets, and required attributions used by this platform are listed below.";
+"licenses.viewCcBy4" = "View CC BY 4.0 license";
+"licenses.viewApache2Code" = "View Apache 2.0 license (code)";
 "licenses.viewFullLicense" = "View full license";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — metric indoor depth for single-photo room reconstruction. Small weights licensed under Apache License 2.0 (Base/Large/Giant not used).";
 "licenses.hypersimTitle" = "Hypersim Dataset";
 "licenses.hypersim" = "The metric indoor model was fine-tuned using Apple's Hypersim synthetic indoor dataset. Hypersim is licensed under CC BY-SA 3.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Code licensed under Apache License 2.0. Shipped pinhole weights licensed under Creative Commons Attribution 4.0 (CC BY 4.0).";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
