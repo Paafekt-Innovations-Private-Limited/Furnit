@@ -487,11 +487,25 @@
 
 "settings.credits" = "நன்றிகள்";
 "credits.title" = "நன்றிகள்";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "Paafekt Apple மற்றும் Google தளத் தொழில்நுட்பங்கள், அறைகளுக்கும் தளபாடங்களுக்கும் திறந்த ஆராய்ச்சி மாதிரிகள், மேலும் மேம்பாட்டின்போது ஆராய்ச்சி, வரைவு மற்றும் பொறியியலுக்கு உதவிய OpenAI மற்றும் Anthropic கருவிகளுடன் உருவாக்கப்பட்டுள்ளது.";
 "credits.disclaimer" = "இந்த அங்கீகாரங்கள் வெளிப்படைத்தன்மைக்காக மட்டுமே வழங்கப்படுகின்றன. மூன்றாம் தரப்பு நிறுவனங்கள், தயாரிப்புகள் அல்லது மாடல்களை குறிப்பிடுவது ஆதரவு, ஒப்புதல் அல்லது அதிகாரப்பூர்வ இணைப்பை குறிக்காது.";
 "credits.visitWebsite" = "இணையதளத்தைப் பார்வையிடவும்";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "Paafekt-இல் ஒற்றை-புகைப்பட அறை மறுகட்டமைப்பை இயக்கும் மெட்ரிக் உள் அறை ஆழ மதிப்பீடு.";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "அறை உருவாக்கத்தில் குவிய நீளம் மற்றும் ஈர்ப்பு குறிப்புகளுக்குப் பயன்படுத்தப்படும் ETH Zurich-இன் ஒற்றை-பட கேமரா அளவீடு.";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "Placement Intelligence மற்றும் அறை உருவாக்கத்தில் பொருள் நங்கூரங்களுக்குப் பயன்படுத்தப்படும் தளபாடக் கண்டறிதல் மற்றும் பிரிவுபடுத்துதல்.";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "iOS-இல் splat அறை பார்வைக்குப் பயன்படுத்தப்படும் சாதனத்திலேயே Gaussian splat ரெண்டரிங்.";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "தொகுக்கப்பட்ட 3D அறை பார்வையாளர்களில் பயன்படுத்தப்படும் WebGL ரெண்டரிங் ஆதரவு.";
+"credits.hypersimTitle" = "Hypersim தரவுத்தொகுப்பு";
+"credits.hypersimBody" = "மெட்ரிக் உள் அறை ஆழ மாதிரியை நுண்துல்லியமாக்கப் பயன்படுத்தப்பட்ட Apple-இன் செயற்கை உள் அறை தரவுத்தொகுப்பு.";
+"credits.cocoTitle" = "COCO தரவுத்தொகுப்பு";
+"credits.cocoBody" = "RTMDet கண்டறிதல் மாதிரியைப் பயிற்றுவிப்பதில் பயன்படுத்தப்பட்ட Common Objects in Context தரவுத்தொகுப்பு.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "ChatGPT உட்பட OpenAI கருவிகள் தயாரிப்பு யோசனை, செயலாக்க உதவி, வரைவு தயாரித்தல் மற்றும் தொழில்நுட்ப ஆய்வுக்காக பயன்படுத்தப்பட்டன.";
 "credits.anthropicTitle" = "Anthropic";
@@ -585,7 +599,7 @@
 "licenses.cocoTitle" = "COCO தரவுத்தொகுப்பு";
 "licenses.coco" = "RTMDet COCO மூலம் பயிற்றுவிக்கப்பட்டது. COCO குறிப்புரைகள் CC BY 4.0 உரிமம் பெற்றவை; தனிப்பட்ட படங்கள் அவற்றின் உரிமையாளர்களின் விதிகளுக்கு உட்பட்டவை.";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "Android, ARCore, Filament, Firebase ஆகியவை Android பயன்பாடு பயன்படுத்தும் தளம், AR, 3D வரைதல் மற்றும் அங்கீகாரத் திறன்களை வழங்குகின்றன.";
+"credits.googleBody" = "Android, ARCore, Filament மற்றும் Firebase ஆகியவை Paafekt முழுவதும் பயன்படுத்தப்படும் தளம், AR, 3D-ரெண்டரிங் மற்றும் அங்கீகார திறன்களை வழங்குகின்றன.";
 "photoRoom.backAlertTitle" = "AI அல்லது Manual மூலம் தொடரவா?";
 "photoRoom.backAlertMessage" = "அறையை உருவாக்க AI அல்லது Manual என்பதைத் தட்டவும்; பின்செல்ல சரி என்பதைத் தட்டவும்.";
 "photoRoom.backAlertAI" = "AI";

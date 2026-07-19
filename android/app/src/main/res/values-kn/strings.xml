@@ -43,7 +43,7 @@
     <string name="settings_licenses">ಪರವಾನಗಿಗಳು</string>
     <string name="licenses_title">ಲೈಸೆನ್ಸ್‌ಗಳು ಮತ್ತು ಆಕೃತಿಗಳು</string>
     <string name="licenses_open_source_section">ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು</string>
-    <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
@@ -254,7 +254,7 @@
     <string name="segment_furniture_action">Segment</string>
     <string name="settings_credits">ಕೃತಜ್ಞತೆಗಳು</string>
     <string name="credits_title">ಕೃತಜ್ಞತೆಗಳು</string>
-    <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.</string>
+    <string name="credits_intro">Paafekt Apple ಮತ್ತು Google ಪ್ಲಾಟ್‌ಫಾರಮ್ ತಂತ್ರಜ್ಞಾನಗಳು, ಕೊಠಡಿಗಳು ಮತ್ತು ಫರ್ನಿಚರ್‌ಗಾಗಿ ತೆರೆದ ಸಂಶೋಧನಾ ಮಾದರಿಗಳು, ಹಾಗೂ ಅಭಿವೃದ್ಧಿಯಸಮಯದಲ್ಲಿ ಸಂಶೋಧನಾ, ಡ್ರಾಫ್ಟಿಂಗ್ ಮತ್ತು ಎಂಜಿನಿಯರಿಂಗ್‌ಗೆ ಸಹಾಯಮಾಡಿದ OpenAI ಮತ್ತು Anthropic ಸಾಧನಗಳೊನದಿಗೆ ನಿರ್ಮಿಸಲಾಗಿದೆ.</string>
     <string name="credits_disclaimer">ಈ ಕೃತಜ್ಞತೆಗಳನ್ನು ಪಾರದರ್ಶಕತೆಗಾಗಿ ಮಾತ್ರ ನೀಡಲಾಗಿದೆ. ತೃತೀಯ ಪಕ್ಷದ ಕಂಪನಿಗಳು, ಉತ್ಪನ್ನಗಳು ಅಥವಾ ಮಾದರಿಗಳ ಉಲ್ಲೇಖವು ಪ್ರಾಯೋಜಕತ್ವ, ಅನುಮೋದನೆ ಅಥವಾ ಅಧಿಕೃತ ಸಂಬಂಧವನ್ನು ಸೂಚಿಸುವುದಿಲ್ಲ.</string>
     <string name="credits_visit_website">ಜಾಲತಾಣಕ್ಕೆ ಭೇಟಿ ನೀಡಿ</string>
     <string name="credits_apple_title">Apple</string>
@@ -301,7 +301,7 @@
     <string name="crash_report_title">ಏನೋ ತಪ್ಪಾಗಿದೆ</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">ವರದಿ ಸಲ್ಲಿಸು</string>
-    <string name="camera_permission_required">Camera permission is required to take photos</string>
+    <string name="camera_permission_required">ಕೊಠಡಿ ಫೋಟೋಗಳಅಣನ ಸೆರೆಹಿಡಿಯಲು ಮತ್ತು AR ಫರ್ನಿಚರ್ ಪತ್ತೆ ಹಾಗೂ ಇರಿಸುವಿಕೆಗೆ ಕ್ಯಾಮೆರ ಪ್ರವೇಶ ಅಗತಯವಿದೆ</string>
     <string name="no_email_app">No email app found</string>
     <string name="email_copied_clipboard">Email copied to clipboard</string>
     <string name="deleted_room">Deleted %s</string>
@@ -310,7 +310,7 @@
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
     <string name="photo_room_back_stay">ಇಲ್ಲೇ ಇರಿ</string>
     <string name="photo_room_back_leave">Go back</string>
-    <string name="settings_legal_summary">ಕೊಠಡಿ ಸಂಸ್ಕರಣೆ ಮತ್ತು ಪೀಠೋಪಕರಣ ವಿಶ್ಲೇಷಣೆ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತವೆ. ನೀವು ಹಂಚಿಕೊಳ್ಳದ ಹೊರತು ಕೊಠಡಿಗಳು ಖಾಸಗಿ ಆಪ್ ಸಂಗ್ರಹಣೆಯಲ್ಲೇ ಇರುತ್ತವೆ. Firebase ಫೋನ್-ಸಂಖ್ಯೆ ದೃಢೀಕರಣ ಮತ್ತು ದುರುಪಯೋಗ ತಡೆ ಡೇಟಾವನ್ನು ಸಂಸ್ಕರಿಸುತ್ತದೆ.</string>
+    <string name="settings_legal_summary">ಕೊಠಡಿ ಪ್ರಕರಿಯೆ ಮತ್ತು ಫರ್ನಿಚರ್ ವಿಶ್ಲೇಷನೆ ಸಾಧನದಲಲೇ ನದೆಯುತತವೆ. ನೀವು ಸ್ಪಷ್ಟವಾಗಿ ಹಂಚಿಕೊಳಲಅದ ಹೊರತು ಉಳಿಸಿದ ಕೊಠಡಿಗಳು ಕಾಸಗಿ ಅಪ್ಲಿಕೇಶನ್ ಸಂಗರಹದಲಲೇ ಇರುತತವೆ. Firebase ಫೋನ್-ಸಂಕ್ಹಯೆ ದಱಧೀಕರನ, ದುರುಪಯೋಗ ತಡೆಗೆ ಸಾಧನ ಸ್ತಾಪನೆ ಗುರುತಿಸುವಿಕೆ, ಮತ್ತು ಸಂಬನ್ಧಿತ ಸೈನ್-ಇನ್ ಡೇತಾವಅಣನ ಪ್ರಕರಿಯೆಗೊಳಿಸುತತದೆ. ಈ ಅಪ್ಲಿಕೇಶನ್ ಜಾಹೀರಾತು ವಿಶ್ಲೇಷನೆಯಅಣನ ಬಳಸುವುದಿಲಲ.</string>
     <string name="settings_delete_account">ಖಾತೆ ಅಳಿಸಿ</string>
     <string name="settings_delete_account_confirm_title">ಖಾತೆಯನ್ನು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸುವುದೇ?</string>
     <string name="settings_delete_account_confirm_message">ಇದು ನಿಮ್ಮ Firebase ದೃಢೀಕರಣ ಖಾತೆಯನ್ನು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸುತ್ತದೆ. ಈ ಸಾಧನದ ಕೊಠಡಿಗಳು ನೀವು ಅಳಿಸುವವರೆಗೆ ಅಥವಾ Paafekt ಅನ್ನು ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡುವವರೆಗೆ ಉಳಿಯುತ್ತವೆ. ಮತ್ತೆ ಸೈನ್ ಇನ್ ಮಾಡಬೇಕಾಗಬಹುದು.</string>
@@ -401,7 +401,7 @@
     <string name="licenses_coco_title">COCO ಡೇಟಾಸೆಟ್</string>
     <string name="licenses_coco">RTMDet ಅನ್ನು COCO ಬಳಸಿ ತರಬೇತುಗೊಳಿಸಲಾಗಿದೆ. COCO ಟಿಪ್ಪಣಿಗಳು CC BY 4.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ; ಚಿತ್ರಗಳು ಅವುಗಳ ಮಾಲೀಕರ ನಿಯಮಗಳಿಗೆ ಒಳಪಟ್ಟಿವೆ.</string>
     <string name="credits_google_title">Google</string>
-    <string name="credits_google_body">Android, ARCore, Filament ಮತ್ತು Firebase Android ಆಪ್ ಬಳಸುವ ಪ್ಲಾಟ್‌ಫಾರ್ಮ್, AR, 3D ರೆಂಡರಿಂಗ್ ಮತ್ತು ದೃಢೀಕರಣ ಸಾಮರ್ಥ್ಯಗಳನ್ನು ಒದಗಿಸುತ್ತವೆ.</string>
+    <string name="credits_google_body">Android, ARCore, Filament ಮತ್ತು Firebase Paafektನಲ್ಲಿ ಬಳಸುವ ಪ್ಲಾಟ್‌ಫಾರಮ್, AR, 3D-ರೆಂಡರಿಂಗ್ ಮತ್ತು ದಱಧೀಕರನ ಸಾಮರ್ಥಯಗಳಅಣನ ಒದಗಿಸುತತವೆ.</string>
     <string name="placement_intelligence_title">Placement Intelligence</string>
     <string name="placement_intelligence_expand">Placement Intelligence ವಿಸ್ತರಿಸಿ</string>
     <string name="placement_intelligence_collapse">Placement Intelligence ಕುಗ್ಗಿಸಿ</string>
@@ -449,4 +449,20 @@
     <string name="room_viewer_ar_sizing_enable">ಕ್ಯಾಮೆರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ</string>
     <string name="room_viewer_segmentation_done">ಮುಗಿಯಿತು</string>
     <string name="room_viewer_furniture_height_estimate">ಪೀಠೋಪಕರಣ ಎತ್ತರ ~ %.2f ಮೀ</string>
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">Paafektನಲ್ಲಿ ಎಕ-ಫೋಟೋ ಕೊಠಡಿ ಪುನರ್ನಿರ್ಮಾಣಅಕಕೆ ಶಕ್ತಿನೀದುವ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗನ ಆಳಅನದಾಜು.</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">ಕೊಠಡಿ ಉತ್ಪಾದನೆಯಲ್ಲಿ ಫೋಕಲ್ ಉದ್ದ ಮತ್ತು ಗುರುತ್ವಾಕರ್ಷನೆ ಸೂಚನೆಗಳಿಗಾಗಿ ಬಳಸುವ ETH Zurichನ ಎಕ-ಚಿತ್ರ ಕ್ಯಾಮೆರ ಕ್ಯಾಲಿಬ್ರೇಶನ್.</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">Placement Intelligence ಮತ್ತು ಕೊಠಡಿ ಉತ್ಪಾದನೆಯಲ್ಲಿ ವಸ್ತು ಆಂಕರ್‌ಗಳಿಗಾಗಿ ಬಳಸುವ ಫರ್ನಿಚರ್ ಪತ್ತೆ ಮತ್ತು ವಿಭಜನೆ.</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">Android ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವ ಸಾಧನದಲಲೇ ನ್ಯೂರಲ್-ನೆಟ್‌ವರ್ಕ್ ಇನ್‌ಫರೆನ್ಸ್ ರನ್‌ಟೈಮ್.</string>
+    <string name="credits_filament_title">SceneView &amp; Filament</string>
+    <string name="credits_filament_body">GLB ಕೊಠಡಿ ವೀಕ್ಷನೆಗಾಗಿ ಬಳಸುವ ಸ್ತಳೀಯ Android 3D ರೆಂಡರಿಂಗ್.</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">ಬಂಡಲ್ ಮಾಡಿದ 3D ಕೊಠಡಿ ವೀವರ್‌ಗಳಲ್ಲಿ ಬಳಸುವ WebGL ರೆಂಡರಿಂಗ್ ಬೆಂಬಲ.</string>
+    <string name="credits_hypersim_title">Hypersim ಡೇಟಾಸೆಟ್</string>
+    <string name="credits_hypersim_body">ಮೆಟ್ರಿಕ್ ಒಳಾಂಗನ ಆಳ ಮಾದರಿಯಅಣನ ಫೈನ್-ಟ್ಯೂನ್ ಮಾಡಲು ಬಳಸಿದ Appleನ ಸಂಶ್ಲೇಷಿತ ಒಳಾಂಗನ ಡೇಟಾಸೆಟ್.</string>
+    <string name="credits_coco_title">COCO ಡೇಟಾಸೆಟ್</string>
+    <string name="credits_coco_body">RTMDet ಪತ್ತೆ ಮಾದರಿ ತರಬೇತಿಯಲ್ಲಿ ಬಳಸಿದ Common Objects in Context ಡೇಟಾಸೆಟ್.</string>
 </resources>

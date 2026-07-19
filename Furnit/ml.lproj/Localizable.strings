@@ -487,11 +487,25 @@
 
 "settings.credits" = "കൃതജ്ഞതകൾ";
 "credits.title" = "കൃതജ്ഞതകൾ";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "Paafekt Apple, Google പ്ലാറ്റ്‌ഫോം സാങ്കേതികവിദ്യകൾ, മുറികൾക്കും ഫർണിച്ചറിനുമുള്ള ഓപ്പൺ റിസർച്ച് മോഡലുകൾ, വികസനത്തിൽ ഗവേഷണം, ഡ്രാഫ്റ്റിംഗ്, എഞ്ചിനീയറിംഗ് എന്നിവയ്ക്ക് സഹായിച്ച OpenAI, Anthropic ഉപകരണങ്ങൾ എന്നിവയിൽ നിർമ്മിച്ചതാണ്.";
 "credits.disclaimer" = "ഈ അംഗീകാരങ്ങൾ പരസ്യതയ്ക്കായി മാത്രമാണ് നൽകുന്നത്. മൂന്നാം കക്ഷി കമ്പനികൾ, ഉൽപ്പന്നങ്ങൾ, മോഡലുകൾ എന്നിവയിലേക്കുള്ള പരാമർശങ്ങൾ പ്രായോജകത്വം, പിന്തുണ, അല്ലെങ്കിൽ ഔദ്യോഗിക ബന്ധം സൂചിപ്പിക്കുന്നതല്ല.";
 "credits.visitWebsite" = "വെബ്സൈറ്റ് സന്ദർശിക്കുക";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.appleBody" = "Apple frameworks iOS ആപ്പിൽ ക്യാമറ ക്യാപ്‌ചർ, Core ML, AR/ഡെപ്ത് പ്രോസസ്സിംഗ്, ഓൺ-ഡിവൈസ് 3D റെൻഡറിംഗ് എന്നിവ നൽകുന്നു.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "Paafekt-ൽ ഒറ്റ ഫോട്ടോയിൽ നിന്നുള്ള മുറി പുനർനിർമ്മാണത്തിന് ശക്തി നൽകുന്ന മെട്രിക് ഇൻഡോർ ഡെപ്ത് എസ്റ്റിമേഷൻ.";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "മുറി ജനറേഷനിൽ ഫോക്കൽ ദൂരത്തിനും ഗുരുത്വ സൂചനകൾക്കും ഉപയോഗിക്കുന്ന ETH Zurich ഒറ്റ-ചിത്ര ക്യാമറ കാലിബ്രേഷൻ.";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "Placement Intelligence യ്ക്കും മുറി ജനറേഷനിലെ ഒബ്ജക്റ്ട് ആങ്കറുകൾക്കും ഉപയോഗിക്കുന്ന ഫർണിച്ചർ കണ്ടെത്തലും സെഗ്മെന്റേഷനും.";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "iOS-ൽ സ്പ്ലാറ്റ് മുറി കാഴ്ചയ്ക്കുള്ള ഉപകരണത്തിലെ Gaussian splat റെൻഡറിംഗ്.";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "ബണ്ടിൽ ചെയ്ത 3D മുറി വ്യൂവറുകളിലെ WebGL റെൻഡറിംഗ് പിന്തുണ.";
+"credits.hypersimTitle" = "Hypersim ഡാറ്റാസെറ്റ്";
+"credits.hypersimBody" = "മെട്രിക് ഇൻഡോർ ഡെപ്ത് മോഡൽ ഫൈൻ-ട്യൂൺ ചെയ്യാൻ ഉപയോഗിച്ച Apple-ന്റെ സിന്ത്തറിക് ഇൻഡോർ ഡാറ്റാസെറ്റ്.";
+"credits.cocoTitle" = "COCO ഡാറ്റാസെറ്റ്";
+"credits.cocoBody" = "RTMDet ഡിറ്റക്ഷൻ മോഡൽ പരിശീലിപ്പിക്കാൻ ഉപയോഗിച്ച Common Objects in Context ഡാറ്റാസെറ്റ്.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "ChatGPT ഉൾപ്പെടെയുള്ള OpenAI ഉപകരണങ്ങൾ ഉൽപ്പന്ന ആശയവത്കരണം, ഇംപ്ലിമെന്റേഷൻ സഹായം, കരട് തയ്യാറാക്കൽ, സാങ്കേതിക അന്വേഷണങ്ങൾ എന്നിവയിൽ ഉപയോഗിച്ചു.";
 "credits.anthropicTitle" = "Anthropic";
@@ -585,7 +599,7 @@
 "licenses.cocoTitle" = "COCO ഡാറ്റാസെറ്റ്";
 "licenses.coco" = "RTMDet COCO ഉപയോഗിച്ച് പരിശീലിപ്പിച്ചു. COCO അനോട്ടേഷനുകൾ CC BY 4.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു; ചിത്രങ്ങൾ അവയുടെ ഉടമകളുടെ നിബന്ധനകൾക്ക് വിധേയമാണ്.";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "Android, ARCore, Filament, Firebase എന്നിവ Android ആപ്പ് ഉപയോഗിക്കുന്ന പ്ലാറ്റ്‌ഫോം, AR, 3D റെൻഡറിംഗ്, ഓതന്റിക്കേഷൻ ശേഷികൾ നൽകുന്നു.";
+"credits.googleBody" = "Android, ARCore, Filament, Firebase എന്നിവ Paafekt-ൽ ഉപയോഗിക്കുന്ന പ്ലാറ്റ്‌ഫോം, AR, 3D റെൻഡറിംഗ്, പ്രാമാണീകരണ ശേഷികൾ നൽകുന്നു.";
 "photoRoom.backAlertTitle" = "AI അല്ലെങ്കിൽ Manual ഉപയോഗിച്ച് തുടരണോ?";
 "photoRoom.backAlertMessage" = "മുറി സൃഷ്ടിക്കാൻ AI അല്ലെങ്കിൽ Manual ടാപ്പ് ചെയ്യുക; പിന്നോട്ട് പോകാൻ ശരി ടാപ്പ് ചെയ്യുക.";
 "photoRoom.backAlertAI" = "AI";

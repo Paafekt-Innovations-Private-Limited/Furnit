@@ -62,7 +62,7 @@
     <string name="settings_privacy_policy">Política de Privacidad</string>
     <string name="settings_terms_of_service">Términos de Servicio</string>
     <string name="settings_support">Ayuda y soporte</string>
-    <string name="settings_legal_summary">El procesamiento de habitaciones y el análisis de muebles se realizan en el dispositivo. Las habitaciones guardadas permanecen en el almacenamiento privado de la app salvo que las compartas expresamente. Firebase procesa el número de teléfono para la autenticación y datos para prevenir abusos.</string>
+    <string name="settings_legal_summary">El procesamiento de habitaciones y el análisis de muebles se ejecutan en el dispositivo. Las habitaciones guardadas permanecen en el almacenamiento privado de la aplicación a menos que las compartas explícitamente. Firebase procesa la autenticación por número de teléfono, un identificador de instalación del dispositivo para prevenir abusos y datos de inicio de sesión relacionados. Esta aplicación no usa analítica publicitaria.</string>
     <string name="settings_open_link_failed">No hay ningún navegador disponible para abrir este enlace.</string>
     <string name="settings_credits">Créditos</string>
     <string name="settings_auto_orbit">Órbita automática</string>
@@ -83,7 +83,7 @@
     <string name="settings_licenses">Licencias</string>
     <string name="licenses_title">Licencias y atribuciones</string>
     <string name="licenses_open_source_section">Licencias de código abierto</string>
-    <string name="licenses_open_source_intro">A continuación se enumeran el software de código abierto, los recursos de modelos, los conjuntos de datos y las atribuciones obligatorias que utiliza Android.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_depth_anything_title">Depth Anything V2</string>
     <string name="licenses_depth_anything">Estimación métrica de profundidad en interiores para reconstruir habitaciones a partir de una sola foto. Bajo la licencia Apache 2.0.</string>
     <string name="licenses_hypersim_title">Conjunto de datos Hypersim</string>
@@ -104,13 +104,13 @@
     <string name="licenses_coco_title">Conjunto de datos COCO</string>
     <string name="licenses_coco">RTMDet se entrenó con COCO. Las anotaciones de COCO se distribuyen bajo la licencia CC BY 4.0; cada imagen sigue sujeta a las condiciones de su propietario.</string>
     <string name="credits_title">Tecnología y créditos de desarrollo</string>
-    <string name="credits_intro">Paafekt se basa en tecnologías de las plataformas de Apple y Google. Las herramientas de OpenAI y Anthropic también ayudaron en la investigación, la redacción y la ingeniería durante el desarrollo.</string>
+    <string name="credits_intro">Paafekt se construye con tecnologías de las plataformas Apple y Google, modelos de investigación abiertos para habitaciones y muebles, y herramientas de OpenAI y Anthropic que asistieron en la investigación, la redacción y la ingeniería durante el desarrollo.</string>
     <string name="credits_disclaimer">Estos reconocimientos se proporcionan únicamente por transparencia. Las referencias a empresas, productos o modelos de terceros no implican patrocinio, respaldo ni afiliación.</string>
     <string name="credits_visit_website">Visitar sitio web</string>
     <string name="credits_apple_title">Apple</string>
     <string name="credits_apple_body">Los frameworks de Apple proporcionan captura con cámara, Core ML, procesamiento de AR/profundidad y renderizado 3D en el dispositivo para la app de iOS.</string>
     <string name="credits_google_title">Google</string>
-    <string name="credits_google_body">Android, ARCore, Filament y Firebase proporcionan las funciones de plataforma, AR, renderizado 3D y autenticación que utiliza la app de Android.</string>
+    <string name="credits_google_body">Android, ARCore, Filament y Firebase aportan capacidades de plataforma, RA, renderizado 3D y autenticación usadas en Paafekt.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">Las herramientas de OpenAI, incluido ChatGPT, se utilizaron para apoyar la ideación de producto, la ayuda de implementación, la redacción y la exploración técnica durante el desarrollo.</string>
     <string name="credits_anthropic_title">Anthropic</string>
@@ -282,7 +282,7 @@
     <string name="orientation_held_vertically">sostenido verticalmente</string>
     <string name="orientation_held_horizontally">sostenido horizontalmente</string>
     <!-- Camera Capture -->
-    <string name="camera_permission_required">Se necesita permiso para usar la cámara y hacer fotos</string>
+    <string name="camera_permission_required">Se requiere acceso a la cámara para capturar fotos de habitaciones y para la detección y colocación de muebles en RA</string>
     <!-- General Messages -->
     <string name="no_email_app">No se encontró ninguna app de correo</string>
     <string name="email_copied_clipboard">Correo copiado al portapapeles</string>
@@ -482,4 +482,20 @@ Arrastra para mirar alrededor y pellizca para ampliar.</string>
     <!-- ARCore distance measure (beta) -->
     <!-- Single photo / AI room generation -->
     <!-- Placement intelligence -->
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">Estimación métrica de profundidad en interiores que impulsa la reconstrucción de habitaciones a partir de una sola foto en Paafekt.</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">Calibración de cámara a partir de una sola imagen de ETH Zurich, usada para pistas de distancia focal y gravedad en la generación de habitaciones.</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">Detección y segmentación de muebles usadas para Placement Intelligence y anclas de objetos en la generación de habitaciones.</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">Runtime de inferencia de redes neuronales en el dispositivo usado por la aplicación Android.</string>
+    <string name="credits_filament_title">SceneView y Filament</string>
+    <string name="credits_filament_body">Renderizado 3D nativo de Android usado para ver habitaciones GLB.</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">Compatibilidad con renderizado WebGL usada en los visores 3D de habitaciones incluidos.</string>
+    <string name="credits_hypersim_title">Conjunto de datos Hypersim</string>
+    <string name="credits_hypersim_body">Conjunto de datos sintético de interiores de Apple usado para ajustar el modelo métrico de profundidad en interiores.</string>
+    <string name="credits_coco_title">Conjunto de datos COCO</string>
+    <string name="credits_coco_body">Conjunto de datos Common Objects in Context usado en el entrenamiento del modelo de detección RTMDet.</string>
 </resources>

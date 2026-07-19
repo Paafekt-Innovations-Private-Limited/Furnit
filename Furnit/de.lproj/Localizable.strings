@@ -554,11 +554,25 @@
 
 "settings.credits" = "Danksagungen";
 "credits.title" = "Danksagungen";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "Paafekt basiert auf Apple- und Google-Plattformtechnologien, offenen Forschungsmodellen für Räume und Möbel sowie OpenAI- und Anthropic-Werkzeugen, die bei Recherche, Entwurf und Entwicklung unterstützt haben.";
 "credits.disclaimer" = "Diese Danksagungen dienen ausschließlich der Transparenz. Verweise auf Drittunternehmen, Produkte oder Modelle bedeuten keine Förderung, Empfehlung oder Zugehörigkeit.";
 "credits.visitWebsite" = "Website besuchen";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "Metrische Tiefenschätzung für Innenräume, die die Einzelbild-Raumrekonstruktion in Paafekt ermöglicht.";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "Einzelbild-Kamerakalibrierung der ETH Zürich für Brennweiten- und Schwerkrafthinweise bei der Raumgenerierung.";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "Möbelerkennung und -segmentierung für Placement Intelligence und Objektanker bei der Raumgenerierung.";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "On-Device-Gaussian-Splat-Rendering für die Anzeige von Splat-Räumen unter iOS.";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "WebGL-Rendering-Unterstützung in den gebündelten 3D-Raumansichten.";
+"credits.hypersimTitle" = "Hypersim-Datensatz";
+"credits.hypersimBody" = "Apples synthetischer Indoor-Datensatz zur Feinabstimmung des metrischen Indoor-Tiefenmodells.";
+"credits.cocoTitle" = "COCO-Datensatz";
+"credits.cocoBody" = "Common Objects in Context-Datensatz, der beim Training des RTMDet-Erkennungsmodells verwendet wurde.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI-Tools, einschließlich ChatGPT, wurden zur Unterstützung von Produktideen, Implementierungshilfe, Formulierungen und technischer Exploration während der Entwicklung eingesetzt.";
 "credits.anthropicTitle" = "Anthropic";
@@ -590,4 +604,4 @@
 "camera.wideAngle.holdSteady" = "Ruhig halten • Das Ultraweitwinkelobjektiv erfasst mehr";
 "roomViewer.furnitureHeightEstimate" = "Möbelhöhe ~ %.2f m";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "Android, ARCore, Filament und Firebase stellen Plattform-, AR-, 3D-Rendering- und Authentifizierungsfunktionen für die Android-App bereit.";
+"credits.googleBody" = "Android, ARCore, Filament und Firebase stellen Plattform-, AR-, 3D-Rendering- und Authentifizierungsfunktionen bereit, die in Paafekt genutzt werden.";

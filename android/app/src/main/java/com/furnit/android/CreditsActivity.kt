@@ -11,10 +11,11 @@ import com.furnit.android.theme.PaafektScreenViews
 
 class CreditsActivity : AppCompatActivity() {
 
-    private val appleUrl = "https://www.apple.com/"
-    private val googleUrl = "https://about.google/"
-    private val openAiUrl = "https://openai.com/"
-    private val anthropicUrl = "https://www.anthropic.com/"
+    private data class CreditEntry(
+        val titleRes: Int,
+        val bodyRes: Int,
+        val websiteUrl: String,
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,10 +28,54 @@ class CreditsActivity : AppCompatActivity() {
 
         addSection(layout, getString(R.string.credits_intro), isBold = true)
         addSection(layout, getString(R.string.credits_disclaimer))
-        addSection(layout, getString(R.string.credits_apple_title), getString(R.string.credits_apple_body), appleUrl)
-        addSection(layout, getString(R.string.credits_google_title), getString(R.string.credits_google_body), googleUrl)
-        addSection(layout, getString(R.string.credits_openai_title), getString(R.string.credits_openai_body), openAiUrl)
-        addSection(layout, getString(R.string.credits_anthropic_title), getString(R.string.credits_anthropic_body), anthropicUrl)
+
+        val creditEntries = listOf(
+            CreditEntry(R.string.credits_apple_title, R.string.credits_apple_body, "https://www.apple.com/"),
+            CreditEntry(R.string.credits_google_title, R.string.credits_google_body, "https://about.google/"),
+            CreditEntry(
+                R.string.credits_depth_anything_title,
+                R.string.credits_depth_anything_body,
+                "https://github.com/DepthAnything/Depth-Anything-V2",
+            ),
+            CreditEntry(
+                R.string.credits_geo_calib_title,
+                R.string.credits_geo_calib_body,
+                "https://github.com/cvg/GeoCalib",
+            ),
+            CreditEntry(
+                R.string.credits_rtmdet_title,
+                R.string.credits_rtmdet_body,
+                "https://github.com/open-mmlab/mmdetection",
+            ),
+            CreditEntry(
+                R.string.credits_onnx_runtime_title,
+                R.string.credits_onnx_runtime_body,
+                "https://onnxruntime.ai/",
+            ),
+            CreditEntry(
+                R.string.credits_filament_title,
+                R.string.credits_filament_body,
+                "https://google.github.io/filament/",
+            ),
+            CreditEntry(R.string.credits_three_title, R.string.credits_three_body, "https://threejs.org/"),
+            CreditEntry(
+                R.string.credits_hypersim_title,
+                R.string.credits_hypersim_body,
+                "https://github.com/apple/ml-hypersim",
+            ),
+            CreditEntry(R.string.credits_coco_title, R.string.credits_coco_body, "https://cocodataset.org/"),
+            CreditEntry(R.string.credits_openai_title, R.string.credits_openai_body, "https://openai.com/"),
+            CreditEntry(R.string.credits_anthropic_title, R.string.credits_anthropic_body, "https://www.anthropic.com/"),
+        )
+
+        for (entry in creditEntries) {
+            addSection(
+                layout,
+                getString(entry.titleRes),
+                getString(entry.bodyRes),
+                entry.websiteUrl,
+            )
+        }
 
         PaafektScreenViews.createScreenScrollView(this).apply {
             addView(layout)

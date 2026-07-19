@@ -39,13 +39,13 @@
     <string name="settings_privacy_policy">Datenschutzrichtlinie</string>
     <string name="settings_terms_of_service">Nutzungsbedingungen</string>
     <string name="settings_support">Hilfe &amp; Support</string>
-    <string name="settings_legal_summary">Raumverarbeitung und Möbelanalyse erfolgen auf dem Gerät. Gespeicherte Räume verbleiben im privaten App-Speicher, sofern Sie sie nicht ausdrücklich teilen. Firebase verarbeitet die Telefonnummernauthentifizierung und Daten zur Missbrauchsprävention.</string>
+    <string name="settings_legal_summary">Raumverarbeitung und Möbelanalyse laufen auf dem Gerät. Gespeicherte Räume bleiben im privaten App-Speicher, sofern Sie sie nicht ausdrücklich teilen. Firebase verarbeitet die Telefonnummern-Authentifizierung, eine Geräteinstallationskennung zur Missbrauchsprävention und zugehörige Anmeldedaten. Diese App verwendet keine Werbeanalytik.</string>
     <string name="settings_auto_orbit">Auto-Rotation</string>
     <string name="settings_auto_orbit_description">Kamera langsam drehen, wenn inaktiv</string>
     <string name="settings_licenses">Lizenzen</string>
     <string name="licenses_title">Lizenzen &amp; Zuschreibungen</string>
     <string name="licenses_open_source_section">Open-Source-Lizenzen</string>
-    <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">Vollständige Lizenz anzeigen</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Lizenziert unter der Apache-Lizenz 2.0.</string>
@@ -304,7 +304,7 @@
     <string name="segment_furniture_action">Segment</string>
     <string name="settings_credits">Danksagungen</string>
     <string name="credits_title">Danksagungen</string>
-    <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.</string>
+    <string name="credits_intro">Paafekt basiert auf Apple- und Google-Plattformtechnologien, offenen Forschungsmodellen für Räume und Möbel sowie OpenAI- und Anthropic-Werkzeugen, die bei Recherche, Entwurf und Entwicklung unterstützt haben.</string>
     <string name="credits_disclaimer">Diese Danksagungen dienen ausschließlich der Transparenz. Verweise auf Drittunternehmen, Produkte oder Modelle bedeuten keine Förderung, Empfehlung oder Zugehörigkeit.</string>
     <string name="credits_visit_website">Website besuchen</string>
     <string name="credits_apple_title">Apple</string>
@@ -351,7 +351,7 @@
     <string name="crash_report_title">Etwas ist schiefgelaufen</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">Bericht senden</string>
-    <string name="camera_permission_required">Camera permission is required to take photos</string>
+    <string name="camera_permission_required">Kamerazugriff ist erforderlich, um Raumbilder aufzunehmen sowie für AR-Möbelerkennung und -platzierung</string>
     <string name="no_email_app">No email app found</string>
     <string name="email_copied_clipboard">Email copied to clipboard</string>
     <string name="deleted_room">Deleted %s</string>
@@ -381,7 +381,7 @@
     <string name="licenses_coco_title">COCO-Datensatz</string>
     <string name="licenses_coco">RTMDet wurde mit COCO trainiert. COCO-Annotationen sind unter CC BY 4.0 lizenziert; einzelne Bilder unterliegen weiterhin den Bedingungen ihrer jeweiligen Rechteinhaber.</string>
     <string name="credits_google_title">Google</string>
-    <string name="credits_google_body">Android, ARCore, Filament und Firebase stellen Plattform-, AR-, 3D-Rendering- und Authentifizierungsfunktionen für die Android-App bereit.</string>
+    <string name="credits_google_body">Android, ARCore, Filament und Firebase stellen Plattform-, AR-, 3D-Rendering- und Authentifizierungsfunktionen bereit, die in Paafekt genutzt werden.</string>
 
     <string name="camera_title">Kamera</string>
     <string name="camera_choose_mode">Kameramodus auswählen</string>
@@ -458,4 +458,20 @@
     <string name="room_viewer_measuring_room">Raum wird vermessen…</string>
     <string name="room_viewer_saving_room">Raum wird gespeichert</string>
     <string name="room_viewer_saving_room_ellipsis">Raum wird gespeichert…</string>
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">Metrische Tiefenschätzung für Innenräume, die die Einzelbild-Raumrekonstruktion in Paafekt ermöglicht.</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">Einzelbild-Kamerakalibrierung der ETH Zürich für Brennweiten- und Schwerkrafthinweise bei der Raumgenerierung.</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">Möbelerkennung und -segmentierung für Placement Intelligence und Objektanker bei der Raumgenerierung.</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">On-Device-Laufzeit für neuronale Netze, die von der Android-App genutzt wird.</string>
+    <string name="credits_filament_title">SceneView &amp; Filament</string>
+    <string name="credits_filament_body">Natives Android-3D-Rendering für die Anzeige von GLB-Räumen.</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">WebGL-Rendering-Unterstützung in den gebündelten 3D-Raumansichten.</string>
+    <string name="credits_hypersim_title">Hypersim-Datensatz</string>
+    <string name="credits_hypersim_body">Apples synthetischer Indoor-Datensatz zur Feinabstimmung des metrischen Indoor-Tiefenmodells.</string>
+    <string name="credits_coco_title">COCO-Datensatz</string>
+    <string name="credits_coco_body">Common Objects in Context-Datensatz, der beim Training des RTMDet-Erkennungsmodells verwendet wurde.</string>
 </resources>

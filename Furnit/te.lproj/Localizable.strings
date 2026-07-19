@@ -487,11 +487,25 @@
 
 "settings.credits" = "కృతజ్ఞతలు";
 "credits.title" = "కృతజ్ఞతలు";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "Paafekt Apple మరియు Google ప్లాట్‌ఫామ్ సాంకేతికతలు, గదులు మరియు ఫర్నిచర్ కోసం బహిరంగ పరిశోధన నమూనాలు, అలాగే అభివృద్ధి సమయంలో పరిశోధన, డ్రాఫ్టింగ్ మరియు ఇంజనీరింగ్‌కు సహాయపడిన OpenAI మరియు Anthropic సాధనాలతో నిర్మించబడింది.";
 "credits.disclaimer" = "ఈ గుర్తింపులు పారదర్శకత కోసం మాత్రమే ఇవ్వబడ్డాయి. మూడవ పక్ష సంస్థలు, ఉత్పత్తులు లేదా మోడళ్ల ప్రస్తావన స్పాన్సర్‌షిప్, మద్దతు లేదా అధికారిక అనుబంధాన్ని సూచించదు.";
 "credits.visitWebsite" = "వెబ్‌సైట్‌ను సందర్శించండి";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "Paafektలో ఒకే ఫోటోతో గది పునర్నిర్మాణానికి శక్తినిచ్చే మెట్రిక్ ఇండోర్ లోతు అంచనా.";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "గది ఉత్పత్తిలో ఫోకల్ పొడవు మరియు గురుత్వాకర్షణ సూచనల కోసం ఉపయోగించే ETH Zurich యొక్క ఒకే-చిత్ర కెమెరా క్యాలిబ్రేషన్.";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "Placement Intelligence మరియు గది ఉత్పత్తిలో వస్తు యాంకర్ల కోసం ఉపయోగించే ఫర్నిచర్ గుర్తింపు మరియు విభజన.";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "iOSలో splat గదులను చూడటానికి ఉపయోగించే పరికరంపైనే Gaussian splat రెండరింగ్.";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "బండిల్ చేయబడిన 3D గది వ్యూయర్లలో ఉపయోగించే WebGL రెండరింగ్ మద్దతు.";
+"credits.hypersimTitle" = "Hypersim డేటాసెట్";
+"credits.hypersimBody" = "మెట్రిక్ ఇండోర్ లోతు నమూనాను ఫైన్-ట్యూన్ చేయడానికి ఉపయోగించిన Apple యొక్క సింథటిక్ ఇండోర్ డేటాసెట్.";
+"credits.cocoTitle" = "COCO డేటాసెట్";
+"credits.cocoBody" = "RTMDet గుర్తింపు నమూనా శిక్షణలో ఉపయోగించిన Common Objects in Context డేటాసెట్.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "ChatGPT సహా OpenAI సాధనాలు ఉత్పత్తి ఆలోచన, అమలు సహాయం, ముసాయిదా రచన మరియు సాంకేతిక పరిశీలన కోసం ఉపయోగించబడ్డాయి.";
 "credits.anthropicTitle" = "Anthropic";
@@ -585,7 +599,7 @@
 "licenses.cocoTitle" = "COCO డేటాసెట్";
 "licenses.coco" = "RTMDet ను COCOతో శిక్షణ ఇచ్చారు. COCO అనోటేషన్లు CC BY 4.0 కింద లైసెన్స్ పొందాయి; వ్యక్తిగత చిత్రాలు వాటి యజమానుల నిబంధనలకు లోబడి ఉంటాయి.";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "Android, ARCore, Filament, Firebase Android యాప్ ఉపయోగించే ప్లాట్‌ఫార్మ్, AR, 3D రెండరింగ్ మరియు ధృవీకరణ సామర్థ్యాలను అందిస్తాయి.";
+"credits.googleBody" = "Android, ARCore, Filament మరియు Firebase Paafekt అంతటా ఉపయోగించే ప్లాట్‌ఫామ్, AR, 3D-రెండరింగ్ మరియు ప్రమాణీకరణ సామర్థ్యాలను అందిస్తాయి.";
 "photoRoom.backAlertTitle" = "AI లేదా Manualతో కొనసాగాలా?";
 "photoRoom.backAlertMessage" = "గది సృష్టించడానికి AI లేదా Manual ట్యాప్ చేయండి; వెనక్కి వెళ్లడానికి సరే ట్యాప్ చేయండి.";
 "photoRoom.backAlertAI" = "AI";

@@ -552,11 +552,25 @@
 
 "settings.credits" = "श्रेय";
 "credits.title" = "श्रेय";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "Paafekt Apple और Google प्लेटफ़ॉर्म तकनीकों, कमरों और फ़र्नीचर के लिए खुले शोध मॉडल, तथा OpenAI और Anthropic टूल से बना है, जिन्होंने विकास के दौरान शोध, ड्राफ्टिंग और इंजीनियरिंग में सहायता की।";
 "credits.disclaimer" = "ये उल्लेख केवल पारदर्शिता के लिए दिए गए हैं। तृतीय-पक्ष कंपनियों, उत्पादों या मॉडलों का संदर्भ किसी प्रायोजन, समर्थन या औपचारिक संबद्धता का संकेत नहीं देता।";
 "credits.visitWebsite" = "वेबसाइट देखें";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "मीट्रिक इनडोर डेप्थ अनुमान जो Paafekt में एकल-फ़ोटो रूम पुनर्निर्माण को शक्ति देता है।";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "ETH Zurich की एकल-छवि कैमरा कैलिब्रेशन, जिसका उपयोग रूम जनरेशन में फ़ोकल लंबाई और गुरुत्वाकर्षण संकेतों के लिए किया जाता है।";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "फ़र्नीचर पहचान और सेगमेंटेशन, जिसका उपयोग Placement Intelligence और रूम जनरेशन में ऑब्जेक्ट एंकर के लिए किया जाता है।";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "ऑन-डिवाइस Gaussian splat रेंडरिंग, जिसका उपयोग iOS पर splat रूम देखने के लिए किया जाता है।";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "बंडल किए गए 3D रूम व्यूअर में उपयोग किया जाने वाला WebGL रेंडरिंग समर्थन।";
+"credits.hypersimTitle" = "Hypersim डेटासेट";
+"credits.hypersimBody" = "Apple का सिंथेटिक इनडोर डेटासेट, जिसका उपयोग मीट्रिक इनडोर डेप्थ मॉडल को फाइन-ट्यून करने के लिए किया गया।";
+"credits.cocoTitle" = "COCO डेटासेट";
+"credits.cocoBody" = "Common Objects in Context डेटासेट, जिसका उपयोग RTMDet डिटेक्शन मॉडल के प्रशिक्षण में किया गया।";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI के टूल्स, जिनमें ChatGPT शामिल है, का उपयोग उत्पाद विचार, इम्प्लीमेंटेशन सहायता, ड्राफ्टिंग और तकनीकी अन्वेषण के लिए किया गया।";
 "credits.anthropicTitle" = "Anthropic";
@@ -586,4 +600,4 @@
 "camera.captureWideAngle" = "वाइड फ़ोटो लें";
 "camera.wideAngle.holdSteady" = "स्थिर रखें • अल्ट्रा-वाइड लेंस अधिक क्षेत्र कैप्चर करता है";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "Android, ARCore, Filament और Firebase Android ऐप में उपयोग होने वाली प्लेटफ़ॉर्म, AR, 3D रेंडरिंग और प्रमाणीकरण क्षमताएँ प्रदान करते हैं।";
+"credits.googleBody" = "Android, ARCore, Filament और Firebase Paafekt में उपयोग की जाने वाली प्लेटफ़ॉर्म, AR, 3D-रेंडरिंग और प्रमाणीकरण क्षमताएँ प्रदान करते हैं।";

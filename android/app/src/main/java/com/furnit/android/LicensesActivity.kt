@@ -28,6 +28,7 @@ class LicensesActivity : AppCompatActivity() {
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
         addSection(layout, getString(R.string.licenses_depth_anything_title), getString(R.string.licenses_depth_anything), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_hypersim_title), getString(R.string.licenses_hypersim), licenseUrl = urlHypersim)
+        addSection(layout, getString(R.string.licenses_geo_calib_title), getString(R.string.licenses_geo_calib), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_coco_title), getString(R.string.licenses_coco), licenseUrl = urlCoco)

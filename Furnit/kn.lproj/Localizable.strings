@@ -487,11 +487,25 @@
 
 "settings.credits" = "ಕೃತಜ್ಞತೆಗಳು";
 "credits.title" = "ಕೃತಜ್ಞತೆಗಳು";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "Paafekt Apple ಮತ್ತು Google ಪ್ಲಾಟ್‌ಫಾರಮ್ ತಂತ್ರಜ್ಞಾನಗಳು, ಕೊಠಡಿಗಳು ಮತ್ತು ಫರ್ನಿಚರ್‌ಗಾಗಿ ತೆರೆದ ಸಂಶೋಧನಾ ಮಾದರಿಗಳು, ಹಾಗೂ ಅಭಿವೃದ್ಧಿಯಸಮಯದಲ್ಲಿ ಸಂಶೋಧನಾ, ಡ್ರಾಫ್ಟಿಂಗ್ ಮತ್ತು ಎಂಜಿನಿಯರಿಂಗ್‌ಗೆ ಸಹಾಯಮಾಡಿದ OpenAI ಮತ್ತು Anthropic ಸಾಧನಗಳೊನದಿಗೆ ನಿರ್ಮಿಸಲಾಗಿದೆ.";
 "credits.disclaimer" = "ಈ ಕೃತಜ್ಞತೆಗಳನ್ನು ಪಾರದರ್ಶಕತೆಗಾಗಿ ಮಾತ್ರ ನೀಡಲಾಗಿದೆ. ತೃತೀಯ ಪಕ್ಷದ ಕಂಪನಿಗಳು, ಉತ್ಪನ್ನಗಳು ಅಥವಾ ಮಾದರಿಗಳ ಉಲ್ಲೇಖವು ಪ್ರಾಯೋಜಕತ್ವ, ಅನುಮೋದನೆ ಅಥವಾ ಅಧಿಕೃತ ಸಂಬಂಧವನ್ನು ಸೂಚಿಸುವುದಿಲ್ಲ.";
 "credits.visitWebsite" = "ಜಾಲತಾಣಕ್ಕೆ ಭೇಟಿ ನೀಡಿ";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "Paafektನಲ್ಲಿ ಎಕ-ಫೋಟೋ ಕೊಠಡಿ ಪುನರ್ನಿರ್ಮಾಣಅಕಕೆ ಶಕ್ತಿನೀದುವ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗನ ಆಳಅನದಾಜು.";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "ಕೊಠಡಿ ಉತ್ಪಾದನೆಯಲ್ಲಿ ಫೋಕಲ್ ಉದ್ದ ಮತ್ತು ಗುರುತ್ವಾಕರ್ಷನೆ ಸೂಚನೆಗಳಿಗಾಗಿ ಬಳಸುವ ETH Zurichನ ಎಕ-ಚಿತ್ರ ಕ್ಯಾಮೆರ ಕ್ಯಾಲಿಬ್ರೇಶನ್.";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "Placement Intelligence ಮತ್ತು ಕೊಠಡಿ ಉತ್ಪಾದನೆಯಲ್ಲಿ ವಸ್ತು ಆಂಕರ್‌ಗಳಿಗಾಗಿ ಬಳಸುವ ಫರ್ನಿಚರ್ ಪತ್ತೆ ಮತ್ತು ವಿಭಜನೆ.";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "iOSನಲ್ಲಿ splat ಕೊಠಡಿ ವೀಕ್ಷನೆಗಾಗಿ ಬಳಸುವ ಸಾಧನದಲಲೇ Gaussian splat ರೆಂಡರಿಂಗ್.";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "ಬಂಡಲ್ ಮಾಡಿದ 3D ಕೊಠಡಿ ವೀವರ್‌ಗಳಲ್ಲಿ ಬಳಸುವ WebGL ರೆಂಡರಿಂಗ್ ಬೆಂಬಲ.";
+"credits.hypersimTitle" = "Hypersim ಡೇಟಾಸೆಟ್";
+"credits.hypersimBody" = "ಮೆಟ್ರಿಕ್ ಒಳಾಂಗನ ಆಳ ಮಾದರಿಯಅಣನ ಫೈನ್-ಟ್ಯೂನ್ ಮಾಡಲು ಬಳಸಿದ Appleನ ಸಂಶ್ಲೇಷಿತ ಒಳಾಂಗನ ಡೇಟಾಸೆಟ್.";
+"credits.cocoTitle" = "COCO ಡೇಟಾಸೆಟ್";
+"credits.cocoBody" = "RTMDet ಪತ್ತೆ ಮಾದರಿ ತರಬೇತಿಯಲ್ಲಿ ಬಳಸಿದ Common Objects in Context ಡೇಟಾಸೆಟ್.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "ChatGPT ಸೇರಿದಂತೆ OpenAI ಸಾಧನಗಳನ್ನು ಉತ್ಪನ್ನ ಕಲ್ಪನೆ, ಅನುಷ್ಠಾನ ಸಹಾಯ, ಕರಡು ರೂಪಿಕೆ ಮತ್ತು ತಾಂತ್ರಿಕ ಅನ್ವೇಷಣೆಗೆ ಬಳಸಲಾಗಿದೆ.";
 "credits.anthropicTitle" = "Anthropic";
@@ -585,7 +599,7 @@
 "licenses.cocoTitle" = "COCO ಡೇಟಾಸೆಟ್";
 "licenses.coco" = "RTMDet ಅನ್ನು COCO ಬಳಸಿ ತರಬೇತುಗೊಳಿಸಲಾಗಿದೆ. COCO ಟಿಪ್ಪಣಿಗಳು CC BY 4.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿವೆ; ಪ್ರತ್ಯೇಕ ಚಿತ್ರಗಳು ಅವುಗಳ ಮಾಲೀಕರ ನಿಯಮಗಳಿಗೆ ಒಳಪಟ್ಟಿವೆ.";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "Android, ARCore, Filament ಮತ್ತು Firebase Android ಆಪ್ ಬಳಸುವ ಪ್ಲಾಟ್‌ಫಾರ್ಮ್, AR, 3D ರೆಂಡರಿಂಗ್ ಮತ್ತು ದೃಢೀಕರಣ ಸಾಮರ್ಥ್ಯಗಳನ್ನು ಒದಗಿಸುತ್ತವೆ.";
+"credits.googleBody" = "Android, ARCore, Filament ಮತ್ತು Firebase Paafektನಲ್ಲಿ ಬಳಸುವ ಪ್ಲಾಟ್‌ಫಾರಮ್, AR, 3D-ರೆಂಡರಿಂಗ್ ಮತ್ತು ದಱಧೀಕರನ ಸಾಮರ್ಥಯಗಳಅಣನ ಒದಗಿಸುತತವೆ.";
 "photoRoom.backAlertTitle" = "AI ಅಥವಾ Manual ಮೂಲಕ ಮುಂದುವರಿಸುವುದೇ?";
 "photoRoom.backAlertMessage" = "ನಿಮ್ಮ ಕೊಠಡಿ ರಚಿಸಲು AI ಅಥವಾ Manual ಟ್ಯಾಪ್ ಮಾಡಿ, ಅಥವಾ ಹಿಂದಿರುಗಲು ಸರಿ ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "photoRoom.backAlertAI" = "AI";

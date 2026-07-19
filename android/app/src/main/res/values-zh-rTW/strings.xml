@@ -39,13 +39,13 @@
     <string name="settings_privacy_policy">隱私政策</string>
     <string name="settings_terms_of_service">服務條款</string>
     <string name="settings_support">幫助與支援</string>
-    <string name="settings_legal_summary">房間處理與家具分析均在裝置上執行。除非您明確分享，否則已儲存的房間會保留在 App 的私人儲存空間中。Firebase 會處理手機號碼驗證與防止濫用的資料。</string>
+    <string name="settings_legal_summary">房間處理與家具分析在裝置上執行。除非您明確分享，已儲存的房間會保留在應用程式的私人儲存空間中。Firebase 會處理電話號碼身分驗證、用於防濫用的裝置安裝識別碼以及相關登入資料。本應用程式不使用廣告分析。</string>
     <string name="settings_auto_orbit">自動旋轉</string>
     <string name="settings_auto_orbit_description">閒置時緩慢旋轉相機</string>
     <string name="settings_licenses">授權條款</string>
     <string name="licenses_title">授權與歸屬</string>
     <string name="licenses_open_source_section">開源授權</string>
-    <string name="licenses_open_source_intro">以下列出 Android 使用的主要開源軟體、模型資源、資料集及必要的署名資訊。</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">檢視完整授權</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">版權所有 (c) Google LLC。依 Apache 2.0 授權條款授權。</string>
@@ -303,7 +303,7 @@
     <string name="segment_furniture_action">Segment</string>
     <string name="settings_credits">鳴謝</string>
     <string name="credits_title">技術與開發鳴謝</string>
-    <string name="credits_intro">Paafekt 以 Apple 與 Google 平台技術打造。OpenAI 和 Anthropic 工具也在開發過程中協助研究、內容草擬與工程工作。</string>
+    <string name="credits_intro">Paafekt 以 Apple 與 Google 平台技術、面向房間與家具的開放研究模型，以及在開發過程中協助研究、起草與工程工作的 OpenAI 和 Anthropic 工具建構而成。</string>
     <string name="credits_disclaimer">這些鳴謝僅用於透明說明。提及第三方公司、產品或模型，並不表示存在贊助、背書或正式關聯。</string>
     <string name="credits_visit_website">造訪網站</string>
     <string name="credits_apple_title">Apple</string>
@@ -350,7 +350,7 @@
     <string name="crash_report_title">發生問題</string>
     <string name="crash_report_message">App 發生錯誤。您可以傳送報告，協助我們修正問題。</string>
     <string name="crash_report_submit">提交報告</string>
-    <string name="camera_permission_required">拍照需要相機權限</string>
+    <string name="camera_permission_required">需要相機權限以拍攝房間照片，並用於 AR 家具偵測與放置</string>
     <string name="no_email_app">找不到電子郵件 App</string>
     <string name="email_copied_clipboard">電子郵件地址已複製到剪貼簿</string>
     <string name="deleted_room">已刪除 %s</string>
@@ -438,7 +438,7 @@
     <string name="camera_zoom_ultra_wide">0.5x 超廣角</string>
     <string name="placement_intelligence_recommendation_compatible">取樣顏色與整體風格彼此協調。</string>
     <string name="placement_intelligence_measure_with_ar">啟用 AR 尺寸測量以取得尺寸適配結果。</string>
-    <string name="credits_google_body">Android、ARCore、Filament 與 Firebase 為 Android App 提供平台、AR、3D 渲染及驗證功能。</string>
+    <string name="credits_google_body">Android、ARCore、Filament 與 Firebase 為 Paafekt 提供平台、AR、3D 渲染與身分驗證能力。</string>
     <string name="placement_intelligence_recommendation_soften_contrast">較柔和的飾面可減弱過強的對比。</string>
     <string name="placement_intelligence_expand">展開 Placement Intelligence</string>
     <string name="placement_intelligence_recommendation_style">可考慮更貼近房間風格的飾面或輪廓。</string>
@@ -452,4 +452,20 @@
     <string name="placement_intelligence_recommendation_rotate">旋轉占地範圍可取得較佳的尺寸適配。</string>
     <string name="room_viewer_measuring_room">正在測量房間…</string>
     <string name="placement_intelligence_style_only">僅提供風格指引</string>
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">度量室內深度估計，為 Paafekt 的單張照片房間重建提供支援。</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">來自蘇黎世聯邦理工學院（ETH Zurich）的單影像相機校正，用於房間生成中的焦距與重力提示。</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">家具偵測與分割，用於 Placement Intelligence 以及房間生成中的物件錨點。</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">Android 應用程式使用的裝置端神經網路推論執行階段。</string>
+    <string name="credits_filament_title">SceneView 與 Filament</string>
+    <string name="credits_filament_body">用於檢視 GLB 房間的原生 Android 3D 渲染。</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">隨附的 3D 房間檢視器中使用的 WebGL 渲染支援。</string>
+    <string name="credits_hypersim_title">Hypersim 資料集</string>
+    <string name="credits_hypersim_body">Apple 的合成室內資料集，用於微調度量室內深度模型。</string>
+    <string name="credits_coco_title">COCO 資料集</string>
+    <string name="credits_coco_body">Common Objects in Context 資料集，用於訓練 RTMDet 偵測模型。</string>
 </resources>

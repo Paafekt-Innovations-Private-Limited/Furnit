@@ -43,7 +43,7 @@
     <string name="settings_licenses">உரிமங்கள்</string>
     <string name="licenses_title">உரிமங்கள் மற்றும் அடிப்படைகள்</string>
     <string name="licenses_open_source_section">திறந்த மூல உரிமங்கள்</string>
-    <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">முழு உரிமத்தைக் காண்க</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">பதிப்புரிமை (c) Google LLC. Apache உரிமம் 2.0 இன் கீழ் உரிமம் வழங்கப்பட்டது.</string>
@@ -254,7 +254,7 @@
     <string name="segment_furniture_action">Segment</string>
     <string name="settings_credits">நன்றிகள்</string>
     <string name="credits_title">நன்றிகள்</string>
-    <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.</string>
+    <string name="credits_intro">Paafekt Apple மற்றும் Google தளத் தொழில்நுட்பங்கள், அறைகளுக்கும் தளபாடங்களுக்கும் திறந்த ஆராய்ச்சி மாதிரிகள், மேலும் மேம்பாட்டின்போது ஆராய்ச்சி, வரைவு மற்றும் பொறியியலுக்கு உதவிய OpenAI மற்றும் Anthropic கருவிகளுடன் உருவாக்கப்பட்டுள்ளது.</string>
     <string name="credits_disclaimer">இந்த அங்கீகாரங்கள் வெளிப்படைத்தன்மைக்காக மட்டுமே வழங்கப்படுகின்றன. மூன்றாம் தரப்பு நிறுவனங்கள், தயாரிப்புகள் அல்லது மாடல்களை குறிப்பிடுவது ஆதரவு, ஒப்புதல் அல்லது அதிகாரப்பூர்வ இணைப்பை குறிக்காது.</string>
     <string name="credits_visit_website">இணையதளத்தைப் பார்வையிடவும்</string>
     <string name="credits_apple_title">Apple</string>
@@ -301,7 +301,7 @@
     <string name="crash_report_title">ஏதோ தவறு நடந்தது</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">அறிக்கை சமர்ப்பி</string>
-    <string name="camera_permission_required">Camera permission is required to take photos</string>
+    <string name="camera_permission_required">அறை புகைப்படங்களைப் பிடிக்கவும் AR தளபாடக் கண்டறிதல் மற்றும் வைப்பிற்கும் கேமரா அணுகல் தேவை</string>
     <string name="no_email_app">No email app found</string>
     <string name="email_copied_clipboard">Email copied to clipboard</string>
     <string name="deleted_room">Deleted %s</string>
@@ -310,7 +310,7 @@
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
     <string name="photo_room_back_stay">இருங்கள்</string>
     <string name="photo_room_back_leave">Go back</string>
-    <string name="settings_legal_summary">அறை செயலாக்கமும் மரச்சாமான் பகுப்பாய்வும் சாதனத்திலேயே நடக்கின்றன. பகிராத வரை அறைகள் தனிப்பட்ட பயன்பாட்டுச் சேமிப்பகத்தில் இருக்கும். Firebase தொலைபேசி-எண் அங்கீகாரம் மற்றும் முறைகேடு-தடுப்புத் தரவைச் செயலாக்குகிறது.</string>
+    <string name="settings_legal_summary">அறை செயலாக்கம் மற்றும் தளபாடப் பகுப்பாய்வு சாதனத்திலேயே இயங்குகின்றன. நீங்கள் வெளிப்படையாகப் பகிராத வரை சேமித்த அறைகள் தனிப்பட்ட செயலி சேமிப்பகத்தில் இருக்கும். Firebase தொலைபேசி-எண் அங்கீகாரம், தவறான பயன்பாட்டைத் தடுக்க சாதன நிறுவல் அடையாளங்காட்டி, மற்றும் தொடர்புடைய உள்நுழைவுத் தரவைச் செயலாக்குகிறது. இந்தச் செயலி விளம்பர பகுப்பாய்வைப் பயன்படுத்துவதில்லை.</string>
     <string name="settings_delete_account">கணக்கை நீக்கு</string>
     <string name="settings_delete_account_confirm_title">கணக்கை நிரந்தரமாக நீக்கவா?</string>
     <string name="settings_delete_account_confirm_message">இது Firebase அங்கீகாரக் கணக்கை நிரந்தரமாக நீக்கும். உள்ளூர் அறைகள் நீங்கள் நீக்கும் வரை அல்லது Paafekt-ஐ நிறுவல் நீக்கும் வரை இருக்கும். மீண்டும் உள்நுழைய வேண்டியிருக்கலாம்.</string>
@@ -401,7 +401,7 @@
     <string name="licenses_coco_title">COCO தரவுத்தொகுப்பு</string>
     <string name="licenses_coco">RTMDet COCO மூலம் பயிற்றுவிக்கப்பட்டது. COCO குறிப்புரைகள் CC BY 4.0 உரிமம் பெற்றவை; படங்கள் அவற்றின் உரிமையாளர்களின் விதிகளுக்கு உட்பட்டவை.</string>
     <string name="credits_google_title">Google</string>
-    <string name="credits_google_body">Android, ARCore, Filament, Firebase ஆகியவை Android பயன்பாடு பயன்படுத்தும் தளம், AR, 3D வரைதல் மற்றும் அங்கீகாரத் திறன்களை வழங்குகின்றன.</string>
+    <string name="credits_google_body">Android, ARCore, Filament மற்றும் Firebase ஆகியவை Paafekt முழுவதும் பயன்படுத்தப்படும் தளம், AR, 3D-ரெண்டரிங் மற்றும் அங்கீகார திறன்களை வழங்குகின்றன.</string>
     <string name="placement_intelligence_title">Placement Intelligence</string>
     <string name="placement_intelligence_expand">Placement Intelligence-ஐ விரிவாக்கு</string>
     <string name="placement_intelligence_collapse">Placement Intelligence-ஐ சுருக்கு</string>
@@ -449,4 +449,20 @@
     <string name="room_viewer_ar_sizing_enable">கேமரா உதவித் மரச்சாமான் அளவை இயக்கு</string>
     <string name="room_viewer_segmentation_done">முடிந்தது</string>
     <string name="room_viewer_furniture_height_estimate">மரச்சாமான் உயரம் ~ %.2f மீ</string>
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">Paafekt-இல் ஒற்றை-புகைப்பட அறை மறுகட்டமைப்பை இயக்கும் மெட்ரிக் உள் அறை ஆழ மதிப்பீடு.</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">அறை உருவாக்கத்தில் குவிய நீளம் மற்றும் ஈர்ப்பு குறிப்புகளுக்குப் பயன்படுத்தப்படும் ETH Zurich-இன் ஒற்றை-பட கேமரா அளவீடு.</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">Placement Intelligence மற்றும் அறை உருவாக்கத்தில் பொருள் நங்கூரங்களுக்குப் பயன்படுத்தப்படும் தளபாடக் கண்டறிதல் மற்றும் பிரிவுபடுத்துதல்.</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">Android செயலி பயன்படுத்தும் சாதனத்திலேயே நரம்பியல் வலைப்பின்னல் அனுமான இயக்கநேரம்.</string>
+    <string name="credits_filament_title">SceneView &amp; Filament</string>
+    <string name="credits_filament_body">GLB அறை பார்வைக்குப் பயன்படுத்தப்படும் சொந்த Android 3D ரெண்டரிங்.</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">தொகுக்கப்பட்ட 3D அறை பார்வையாளர்களில் பயன்படுத்தப்படும் WebGL ரெண்டரிங் ஆதரவு.</string>
+    <string name="credits_hypersim_title">Hypersim தரவுத்தொகுப்பு</string>
+    <string name="credits_hypersim_body">மெட்ரிக் உள் அறை ஆழ மாதிரியை நுண்துல்லியமாக்கப் பயன்படுத்தப்பட்ட Apple-இன் செயற்கை உள் அறை தரவுத்தொகுப்பு.</string>
+    <string name="credits_coco_title">COCO தரவுத்தொகுப்பு</string>
+    <string name="credits_coco_body">RTMDet கண்டறிதல் மாதிரியைப் பயிற்றுவிப்பதில் பயன்படுத்தப்பட்ட Common Objects in Context தரவுத்தொகுப்பு.</string>
 </resources>

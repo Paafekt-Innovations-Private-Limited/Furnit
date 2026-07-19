@@ -39,13 +39,13 @@
     <string name="settings_privacy_policy">গোপনীয়তা নীতি</string>
     <string name="settings_terms_of_service">সেবার শর্তাবলী</string>
     <string name="settings_support">সাহায্য ও সহায়তা</string>
-    <string name="settings_legal_summary">রুম প্রসেসিং ও ফার্নিচার বিশ্লেষণ ডিভাইসেই হয়। আপনি স্পষ্টভাবে শেয়ার না করলে সেভ করা রুম ব্যক্তিগত অ্যাপ স্টোরেজেই থাকে। Firebase ফোন নম্বরের প্রমাণীকরণ ও অপব্যবহার প্রতিরোধের ডেটা প্রসেস করে।</string>
+    <string name="settings_legal_summary">রুম প্রক্রিয়াকরণ ও আসবাব বিশ্লেষণ ডিভাইসে চলে। সংরক্ষিত ঘর ব্যক্তিগত অ্যাপ স্টোরেজে থাকে, যদি না আপনি সেগুলো স্পষ্টভাবে শেয়ার করেন। Firebase ফোন-নম্বর প্রমাণীকরণ, অপব্যবহার প্রতিরোধের জন্য একটি ডিভাইস ইনস্টলেশন শনাক্তকারী, এবং সম্পর্কিত সাইন-ইন ডেটা প্রক্রিয়া করে। এই অ্যাপ বিজ্ঞাপন অ্যানালিটিক্স ব্যবহার করে না।</string>
     <string name="settings_auto_orbit">অটো অরবিট</string>
     <string name="settings_auto_orbit_description">নিষ্ক্রিয় থাকলে ক্যামেরা ধীরে ধীরে ঘোরান</string>
     <string name="settings_licenses">লাইসেন্স</string>
     <string name="licenses_title">লাইসেন্স এবং অ্যাট্রিবিউশন</string>
     <string name="licenses_open_source_section">ওপেন সোর্স লাইসেন্স</string>
-    <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">সম্পূর্ণ লাইসেন্স দেখুন</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">কপিরাইট (c) Google LLC। Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
@@ -303,7 +303,7 @@
     <string name="segment_furniture_action">সেগমেন্ট</string>
     <string name="settings_credits">কৃতজ্ঞতা</string>
     <string name="credits_title">কৃতজ্ঞতা</string>
-    <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.</string>
+    <string name="credits_intro">Paafekt Apple ও Google প্ল্যাটফর্ম প্রযুক্তি, ঘর ও আসবাবের জন্য উন্মুক্ত গবেষণা মডেল, এবং OpenAI ও Anthropic টুল দিয়ে তৈরি, যা উন্নয়নের সময় গবেষণা, খসড়া ও প্রকৌশলে সহায়তা করেছে।</string>
     <string name="credits_disclaimer">এই স্বীকৃতিগুলো শুধু স্বচ্ছতার জন্য দেওয়া হয়েছে। তৃতীয় পক্ষের কোম্পানি, পণ্য বা মডেলের উল্লেখ কোনো স্পনসরশিপ, অনুমোদন বা আনুষ্ঠানিক সম্পর্ক নির্দেশ করে না।</string>
     <string name="credits_visit_website">ওয়েবসাইট দেখুন</string>
     <string name="credits_apple_title">Apple</string>
@@ -353,7 +353,7 @@
     <string name="crash_report_title">কিছু ভুল হয়েছে</string>
     <string name="crash_report_message">অ্যাপে একটি ত্রুটি হয়েছে। এটি ঠিক করতে সাহায্যের জন্য আপনি রিপোর্ট পাঠাতে পারেন।</string>
     <string name="crash_report_submit">রিপোর্ট জমা দিন</string>
-    <string name="camera_permission_required">ছবি তুলতে ক্যামেরার অনুমতি প্রয়োজন</string>
+    <string name="camera_permission_required">ঘরের ছবি তোলা এবং AR আসবাব সনাক্তকরণ ও স্থাপনের জন্য ক্যামেরা অ্যাক্সেস প্রয়োজন</string>
     <string name="no_email_app">কোনো ইমেইল অ্যাপ পাওয়া যায়নি</string>
     <string name="email_copied_clipboard">ইমেইল ক্লিপবোর্ডে কপি হয়েছে</string>
     <string name="deleted_room">%s মুছে ফেলা হয়েছে</string>
@@ -379,7 +379,7 @@
     <string name="licenses_coco_title">COCO ডেটাসেট</string>
     <string name="licenses_coco">RTMDet-কে COCO ব্যবহার করে প্রশিক্ষণ দেওয়া হয়েছে। COCO অ্যানোটেশন CC BY 4.0-এর অধীনে লাইসেন্সপ্রাপ্ত; পৃথক ছবি তাদের মালিকদের শর্তাধীন।</string>
     <string name="credits_google_title">Google</string>
-    <string name="credits_google_body">Android, ARCore, Filament ও Firebase Android অ্যাপে ব্যবহৃত প্ল্যাটফর্ম, AR, 3D রেন্ডারিং ও প্রমাণীকরণ সুবিধা প্রদান করে।</string>
+    <string name="credits_google_body">Android, ARCore, Filament এবং Firebase Paafekt জুড়ে ব্যবহৃত প্ল্যাটফর্ম, AR, 3D-রেন্ডারিং এবং প্রমাণীকরণ ক্ষমতা প্রদান করে।</string>
     <string name="camera_title">ক্যামেরা</string>
     <string name="camera_choose_mode">ক্যামেরা মোড বেছে নিন</string>
     <string name="camera_choose_mode_hint">আপনার রুমের জন্য ক্যামেরা লেন্স বেছে নিন</string>
@@ -453,4 +453,20 @@
     <string name="room_viewer_recenter">দৃশ্য আবার কেন্দ্রে আনুন</string>
     <string name="room_viewer_display_all_helpers">জেসচার নির্দেশনা দেখান</string>
     <string name="room_viewer_ar_sizing_enable">ক্যামেরা-সহায়িত ফার্নিচার সাইজিং চালু করুন</string>
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">মেট্রিক ইনডোর গভীরতা অনুমান যা Paafekt-এ একক-ছবির রুম পুনর্গঠন চালায়।</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">ETH Zurich-এর একক-চিত্র ক্যামেরা ক্যালিব্রেশন, যা রুম জেনারেশনে ফোকাল দৈর্ঘ্য ও মাধ্যাকর্ষণ ইঙ্গিতের জন্য ব্যবহৃত হয়।</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">আসবাব সনাক্তকরণ ও সেগমেন্টেশন, যা Placement Intelligence এবং রুম জেনারেশনে অবজেক্ট অ্যাঙ্করের জন্য ব্যবহৃত হয়।</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">অন-ডিভাইস নিউরাল-নেটওয়ার্ক ইনফারেন্স রানটাইম, যা Android অ্যাপ ব্যবহার করে।</string>
+    <string name="credits_filament_title">SceneView ও Filament</string>
+    <string name="credits_filament_body">GLB রুম দেখার জন্য ব্যবহৃত নেটিভ Android 3D রেন্ডারিং।</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">বান্ডল করা 3D রুম ভিউয়ারে ব্যবহৃত WebGL রেন্ডারিং সমর্থন।</string>
+    <string name="credits_hypersim_title">Hypersim ডেটাসেট</string>
+    <string name="credits_hypersim_body">Apple-এর সিন্থেটিক ইনডোর ডেটাসেট, যা মেট্রিক ইনডোর গভীরতা মডেল ফাইন-টিউন করতে ব্যবহৃত হয়েছে।</string>
+    <string name="credits_coco_title">COCO ডেটাসেট</string>
+    <string name="credits_coco_body">Common Objects in Context ডেটাসেট, যা RTMDet সনাক্তকরণ মডেল প্রশিক্ষণে ব্যবহৃত হয়েছে।</string>
 </resources>

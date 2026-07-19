@@ -73,7 +73,7 @@
     <string name="settings_privacy_policy">Privacy Policy</string>
     <string name="settings_terms_of_service">Terms of Service</string>
     <string name="settings_support">Help &amp; Support</string>
-    <string name="settings_legal_summary">Room processing and furniture analysis run on device. Saved rooms stay in private app storage unless you explicitly share them. Firebase processes phone-number authentication and abuse-prevention data.</string>
+    <string name="settings_legal_summary">Room processing and furniture analysis run on device. Saved rooms stay in private app storage unless you explicitly share them. Firebase processes phone-number authentication, a device installation identifier for abuse prevention, and related sign-in data. This app does not use advertising analytics.</string>
     <string name="settings_open_link_failed">No browser is available to open this link.</string>
     <string name="settings_credits">Credits</string>
     <string name="settings_auto_orbit">Auto Orbit</string>
@@ -94,7 +94,7 @@
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
     <string name="licenses_open_source_section">Open Source Licenses</string>
-    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by Android are listed below.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_depth_anything_title">Depth Anything V2</string>
     <string name="licenses_depth_anything">Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.</string>
     <string name="licenses_hypersim_title">Hypersim Dataset</string>
@@ -115,13 +115,29 @@
     <string name="licenses_coco_title">COCO Dataset</string>
     <string name="licenses_coco">RTMDet was trained using COCO. COCO annotations are licensed under CC BY 4.0; individual images remain subject to their owners\' terms.</string>
     <string name="credits_title">Technology &amp; Development Credits</string>
-    <string name="credits_intro">Paafekt is built on Apple and Google platform technologies. OpenAI and Anthropic tools also assisted research, drafting, and engineering during development.</string>
+    <string name="credits_intro">Paafekt is built with Apple and Google platform technologies, open research models for rooms and furniture, and OpenAI and Anthropic tools that assisted research, drafting, and engineering during development.</string>
     <string name="credits_disclaimer">These acknowledgements are provided for transparency only. References to third-party companies, products, or models do not imply sponsorship, endorsement, or affiliation.</string>
     <string name="credits_visit_website">Visit website</string>
     <string name="credits_apple_title">Apple</string>
     <string name="credits_apple_body">Apple frameworks provide camera capture, Core ML, AR/depth processing, and on-device 3D rendering in the iOS app.</string>
     <string name="credits_google_title">Google</string>
-    <string name="credits_google_body">Android, ARCore, Filament, and Firebase provide platform, AR, 3D-rendering, and authentication capabilities used by the Android app.</string>
+    <string name="credits_google_body">Android, ARCore, Filament, and Firebase provide platform, AR, 3D-rendering, and authentication capabilities used across Paafekt.</string>
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">Metric indoor depth estimation that powers single-photo room reconstruction in Paafekt.</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">Single-image camera calibration from ETH Zurich used for focal length and gravity hints in room generation.</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">Furniture detection and segmentation used for Placement Intelligence and object anchors in room generation.</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">On-device neural-network inference runtime used by the Android app.</string>
+    <string name="credits_filament_title">SceneView &amp; Filament</string>
+    <string name="credits_filament_body">Native Android 3D rendering used for GLB room viewing.</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">WebGL rendering support used in bundled 3D room viewers.</string>
+    <string name="credits_hypersim_title">Hypersim Dataset</string>
+    <string name="credits_hypersim_body">Apple\'s synthetic indoor dataset used to fine-tune the metric indoor depth model.</string>
+    <string name="credits_coco_title">COCO Dataset</string>
+    <string name="credits_coco_body">Common Objects in Context dataset used in training the RTMDet detection model.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">OpenAI tools, including ChatGPT, were used to support product ideation, implementation assistance, drafting, and technical exploration during development.</string>
     <string name="credits_anthropic_title">Anthropic</string>
@@ -310,7 +326,7 @@
     <string name="orientation_held_horizontally">held horizontally</string>
 
     <!-- Camera Capture -->
-    <string name="camera_permission_required">Camera permission is required to take photos</string>
+    <string name="camera_permission_required">Camera access is required to capture room photos and for AR furniture detection and placement</string>
 
     <!-- General Messages -->
     <string name="no_email_app">No email app found</string>

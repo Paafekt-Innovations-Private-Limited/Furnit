@@ -544,11 +544,25 @@
 
 "settings.credits" = "الشكر والتقدير";
 "credits.title" = "الشكر والتقدير";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "يُبنى Paafekt بتقنيات منصتي Apple وGoogle، ونماذج بحث مفتوحة للغرف والأثاث، وأدوات OpenAI وAnthropic التي ساعدت في البحث والصياغة والهندسة أثناء التطوير.";
 "credits.disclaimer" = "تُعرض هذه الإشارات لأغراض الشفافية فقط. ولا تعني الإشارة إلى شركات أو منتجات أو نماذج خارجية وجود رعاية أو تأييد أو ارتباط رسمي.";
 "credits.visitWebsite" = "زيارة الموقع";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "تقدير عمق داخلي متري يشغّل إعادة بناء الغرفة من صورة واحدة في Paafekt.";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "معايرة كاميرا من صورة واحدة من ETH Zurich تُستخدم لإشارات البعد البؤري والجاذبية في توليد الغرف.";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "كشف الأثاث وتقسيمه المستخدمان في Placement Intelligence ومراسي الكائنات أثناء توليد الغرف.";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "عرض Gaussian splat على الجهاز يُستخدم لعرض غرف الـ splat على iOS.";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "دعم عرض WebGL المستخدم في عارضات الغرف ثلاثية الأبعاد المضمّنة.";
+"credits.hypersimTitle" = "مجموعة بيانات Hypersim";
+"credits.hypersimBody" = "مجموعة بيانات داخلية اصطناعية من Apple تُستخدم لضبط نموذج العمق الداخلي المتري.";
+"credits.cocoTitle" = "مجموعة بيانات COCO";
+"credits.cocoBody" = "مجموعة بيانات Common Objects in Context المستخدمة في تدريب نموذج الكشف RTMDet.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "استُخدمت أدوات OpenAI، بما في ذلك ChatGPT، لدعم تصور المنتج، والمساعدة في التنفيذ، والصياغة، والاستكشاف التقني أثناء التطوير.";
 "credits.anthropicTitle" = "Anthropic";
@@ -578,4 +592,4 @@
 "camera.captureWideAngle" = "التقط صورة واسعة";
 "camera.wideAngle.holdSteady" = "حافظ على ثبات الجهاز • العدسة فائقة الاتساع تلتقط مساحة أكبر";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "توفر Android وARCore وFilament وFirebase إمكانات المنصة وAR والعرض ثلاثي الأبعاد والمصادقة المستخدمة في تطبيق Android.";
+"credits.googleBody" = "توفر Android وARCore وFilament وFirebase قدرات المنصة والواقع المعزز والعرض ثلاثي الأبعاد والمصادقة المستخدمة في Paafekt.";

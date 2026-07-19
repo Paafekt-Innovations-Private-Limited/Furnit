@@ -803,11 +803,82 @@ struct LicensesView: View {
 }
 
 struct CreditsView: View {
-    private enum CreditURL {
-        static let apple = URL(string: "https://www.apple.com/")!
-        static let google = URL(string: "https://about.google/")!
-        static let openAI = URL(string: "https://openai.com/")!
-        static let anthropic = URL(string: "https://www.anthropic.com/")!
+    private struct CreditEntry: Identifiable {
+        let id: String
+        let title: String
+        let body: String
+        let url: URL
+    }
+
+    private var creditEntries: [CreditEntry] {
+        [
+            CreditEntry(
+                id: "apple",
+                title: L10n.Credits.appleTitle,
+                body: L10n.Credits.appleBody,
+                url: URL(string: "https://www.apple.com/")!
+            ),
+            CreditEntry(
+                id: "google",
+                title: L10n.Credits.googleTitle,
+                body: L10n.Credits.googleBody,
+                url: URL(string: "https://about.google/")!
+            ),
+            CreditEntry(
+                id: "depthAnything",
+                title: L10n.Credits.depthAnythingTitle,
+                body: L10n.Credits.depthAnythingBody,
+                url: URL(string: "https://github.com/DepthAnything/Depth-Anything-V2")!
+            ),
+            CreditEntry(
+                id: "geoCalib",
+                title: L10n.Credits.geoCalibTitle,
+                body: L10n.Credits.geoCalibBody,
+                url: URL(string: "https://github.com/cvg/GeoCalib")!
+            ),
+            CreditEntry(
+                id: "rtmdet",
+                title: L10n.Credits.rtmdetTitle,
+                body: L10n.Credits.rtmdetBody,
+                url: URL(string: "https://github.com/open-mmlab/mmdetection")!
+            ),
+            CreditEntry(
+                id: "metalSplatter",
+                title: L10n.Credits.metalSplatterTitle,
+                body: L10n.Credits.metalSplatterBody,
+                url: URL(string: "https://github.com/scier/MetalSplatter")!
+            ),
+            CreditEntry(
+                id: "three",
+                title: L10n.Credits.threeTitle,
+                body: L10n.Credits.threeBody,
+                url: URL(string: "https://threejs.org/")!
+            ),
+            CreditEntry(
+                id: "hypersim",
+                title: L10n.Credits.hypersimTitle,
+                body: L10n.Credits.hypersimBody,
+                url: URL(string: "https://github.com/apple/ml-hypersim")!
+            ),
+            CreditEntry(
+                id: "coco",
+                title: L10n.Credits.cocoTitle,
+                body: L10n.Credits.cocoBody,
+                url: URL(string: "https://cocodataset.org/")!
+            ),
+            CreditEntry(
+                id: "openAI",
+                title: L10n.Credits.openAITitle,
+                body: L10n.Credits.openAIBody,
+                url: URL(string: "https://openai.com/")!
+            ),
+            CreditEntry(
+                id: "anthropic",
+                title: L10n.Credits.anthropicTitle,
+                body: L10n.Credits.anthropicBody,
+                url: URL(string: "https://www.anthropic.com/")!
+            ),
+        ]
     }
 
     var body: some View {
@@ -826,62 +897,21 @@ struct CreditsView: View {
                     .foregroundColor(.secondary)
             }
 
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.appleTitle)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text(L10n.Credits.appleBody)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.apple)
-                        .font(.caption)
+            ForEach(creditEntries) { entry in
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(entry.title)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text(entry.body)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Link(L10n.Credits.visitWebsite, destination: entry.url)
+                            .font(.caption)
+                    }
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
             }
-
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.googleTitle)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text(L10n.Credits.googleBody)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.google)
-                        .font(.caption)
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.openAITitle)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text(L10n.Credits.openAIBody)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.openAI)
-                        .font(.caption)
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.anthropicTitle)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text(L10n.Credits.anthropicBody)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.anthropic)
-                        .font(.caption)
-                }
-                .padding(.vertical, 4)
-            }
-
         }
         .navigationTitle(L10n.Credits.title)
         .navigationBarTitleDisplayMode(.inline)

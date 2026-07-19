@@ -39,13 +39,13 @@
     <string name="settings_privacy_policy">Politique de Confidentialité</string>
     <string name="settings_terms_of_service">Conditions d\'Utilisation</string>
     <string name="settings_support">Aide et support</string>
-    <string name="settings_legal_summary">Le traitement des pièces et l\'analyse des meubles s\'effectuent sur l\'appareil. Les pièces enregistrées restent dans le stockage privé de l\'app, sauf si vous les partagez explicitement. Firebase traite l\'authentification par numéro de téléphone et les données de prévention des abus.</string>
+    <string name="settings_legal_summary">Le traitement des pièces et l\'analyse du mobilier s\'exécutent sur l\'appareil. Les pièces enregistrées restent dans le stockage privé de l\'application sauf si vous les partagez explicitement. Firebase traite l\'authentification par numéro de téléphone, un identifiant d\'installation de l\'appareil pour la prévention des abus, et les données de connexion associées. Cette application n\'utilise pas d\'analytique publicitaire.</string>
     <string name="settings_auto_orbit">Rotation automatique</string>
     <string name="settings_auto_orbit_description">Faire pivoter lentement la caméra en veille</string>
     <string name="settings_licenses">Licences</string>
     <string name="licenses_title">Licences et attributions</string>
     <string name="licenses_open_source_section">Licences open source</string>
-    <string name="licenses_open_source_intro">This app uses the following open source software and model assets.</string>
+    <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
     <string name="licenses_view_full_license">Voir la licence complète</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Sous licence Apache 2.0.</string>
@@ -304,7 +304,7 @@
     <string name="segment_furniture_action">Segment</string>
     <string name="settings_credits">Crédits</string>
     <string name="credits_title">Crédits</string>
-    <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.</string>
+    <string name="credits_intro">Paafekt s\'appuie sur les technologies des plateformes Apple et Google, des modèles de recherche ouverts pour les pièces et le mobilier, ainsi que des outils OpenAI et Anthropic qui ont aidé à la recherche, à la rédaction et à l\'ingénierie pendant le développement.</string>
     <string name="credits_disclaimer">Ces remerciements sont fournis uniquement à titre de transparence. Les références à des entreprises, produits ou modèles tiers n’impliquent aucun parrainage, soutien ou affiliation.</string>
     <string name="credits_visit_website">Visiter le site</string>
     <string name="credits_apple_title">Apple</string>
@@ -351,7 +351,7 @@
     <string name="crash_report_title">Un problème est survenu</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">Soumettre le rapport</string>
-    <string name="camera_permission_required">Camera permission is required to take photos</string>
+    <string name="camera_permission_required">L\'accès à la caméra est requis pour capturer des photos de pièce et pour la détection et le placement de mobilier en RA</string>
     <string name="no_email_app">No email app found</string>
     <string name="email_copied_clipboard">Email copied to clipboard</string>
     <string name="deleted_room">Deleted %s</string>
@@ -381,7 +381,7 @@
     <string name="licenses_coco_title">Jeu de données COCO</string>
     <string name="licenses_coco">RTMDet a été entraîné avec COCO. Les annotations COCO sont sous licence CC BY 4.0 ; les images individuelles restent soumises aux conditions de leurs titulaires.</string>
     <string name="credits_google_title">Google</string>
-    <string name="credits_google_body">Android, ARCore, Filament et Firebase fournissent les fonctions de plateforme, d’AR, de rendu 3D et d’authentification utilisées par l’app Android.</string>
+    <string name="credits_google_body">Android, ARCore, Filament et Firebase fournissent les capacités de plateforme, de RA, de rendu 3D et d\'authentification utilisées dans Paafekt.</string>
 
     <string name="camera_title">Appareil photo</string>
     <string name="camera_choose_mode">Choisir le mode de l’appareil photo</string>
@@ -458,4 +458,20 @@
     <string name="room_viewer_measuring_room">Mesure de la pièce…</string>
     <string name="room_viewer_saving_room">Enregistrement de la pièce</string>
     <string name="room_viewer_saving_room_ellipsis">Enregistrement de la pièce…</string>
+    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_body">Estimation métrique de la profondeur en intérieur qui alimente la reconstruction de pièce à partir d\'une seule photo dans Paafekt.</string>
+    <string name="credits_geo_calib_title">GeoCalib</string>
+    <string name="credits_geo_calib_body">Calibration de caméra à partir d\'une seule image, développée à l\'ETH Zurich, utilisée pour les indices de focale et de gravité lors de la génération de pièces.</string>
+    <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
+    <string name="credits_rtmdet_body">Détection et segmentation du mobilier utilisées pour Placement Intelligence et les ancres d\'objets lors de la génération de pièces.</string>
+    <string name="credits_onnx_runtime_title">ONNX Runtime</string>
+    <string name="credits_onnx_runtime_body">Runtime d\'inférence de réseaux de neurones sur l\'appareil, utilisé par l\'application Android.</string>
+    <string name="credits_filament_title">SceneView et Filament</string>
+    <string name="credits_filament_body">Rendu 3D natif Android utilisé pour la visualisation des pièces GLB.</string>
+    <string name="credits_three_title">Three.js</string>
+    <string name="credits_three_body">Prise en charge du rendu WebGL utilisée dans les visionneuses 3D de pièces intégrées.</string>
+    <string name="credits_hypersim_title">Jeu de données Hypersim</string>
+    <string name="credits_hypersim_body">Jeu de données synthétique d\'intérieurs d\'Apple utilisé pour affiner le modèle de profondeur métrique en intérieur.</string>
+    <string name="credits_coco_title">Jeu de données COCO</string>
+    <string name="credits_coco_body">Jeu de données Common Objects in Context utilisé pour entraîner le modèle de détection RTMDet.</string>
 </resources>

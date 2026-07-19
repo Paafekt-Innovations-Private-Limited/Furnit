@@ -551,11 +551,25 @@
 
 "settings.credits" = "Crédits";
 "credits.title" = "Crédits";
-"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
+"credits.intro" = "Paafekt s'appuie sur les technologies des plateformes Apple et Google, des modèles de recherche ouverts pour les pièces et le mobilier, ainsi que des outils OpenAI et Anthropic qui ont aidé à la recherche, à la rédaction et à l'ingénierie pendant le développement.";
 "credits.disclaimer" = "Ces remerciements sont fournis uniquement à titre de transparence. Les références à des entreprises, produits ou modèles tiers n’impliquent aucun parrainage, soutien ou affiliation.";
 "credits.visitWebsite" = "Visiter le site";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
+"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingBody" = "Estimation métrique de la profondeur en intérieur qui alimente la reconstruction de pièce à partir d'une seule photo dans Paafekt.";
+"credits.geoCalibTitle" = "GeoCalib";
+"credits.geoCalibBody" = "Calibration de caméra à partir d'une seule image, développée à l'ETH Zurich, utilisée pour les indices de focale et de gravité lors de la génération de pièces.";
+"credits.rtmdetTitle" = "RTMDet (OpenMMLab)";
+"credits.rtmdetBody" = "Détection et segmentation du mobilier utilisées pour Placement Intelligence et les ancres d'objets lors de la génération de pièces.";
+"credits.metalSplatterTitle" = "MetalSplatter";
+"credits.metalSplatterBody" = "Rendu de Gaussian splats sur l'appareil pour la visualisation des pièces splat sur iOS.";
+"credits.threeTitle" = "Three.js";
+"credits.threeBody" = "Prise en charge du rendu WebGL utilisée dans les visionneuses 3D de pièces intégrées.";
+"credits.hypersimTitle" = "Jeu de données Hypersim";
+"credits.hypersimBody" = "Jeu de données synthétique d'intérieurs d'Apple utilisé pour affiner le modèle de profondeur métrique en intérieur.";
+"credits.cocoTitle" = "Jeu de données COCO";
+"credits.cocoBody" = "Jeu de données Common Objects in Context utilisé pour entraîner le modèle de détection RTMDet.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "Les outils OpenAI, y compris ChatGPT, ont été utilisés pour soutenir l’idéation produit, l’assistance à l’implémentation, la rédaction et l’exploration technique pendant le développement.";
 "credits.anthropicTitle" = "Anthropic";
@@ -589,4 +603,4 @@
 "camera.wideAngle.holdSteady" = "Restez immobile • L'ultra grand-angle capture davantage";
 "roomViewer.furnitureHeightEstimate" = "Hauteur du meuble ~ %.2f m";
 "credits.googleTitle" = "Google";
-"credits.googleBody" = "Android, ARCore, Filament et Firebase fournissent les fonctions de plateforme, d'AR, de rendu 3D et d'authentification utilisées par l'app Android.";
+"credits.googleBody" = "Android, ARCore, Filament et Firebase fournissent les capacités de plateforme, de RA, de rendu 3D et d'authentification utilisées dans Paafekt.";
