@@ -63,6 +63,13 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Check Existing Auth
 
     private func checkAuthenticationStatus() {
+        #if DEBUG
+        if Self.isScreenshotAuthenticationEnabled {
+            enableScreenshotUser()
+            return
+        }
+        #endif
+
         // Guard: Make sure Firebase is configured
         guard FirebaseApp.app() != nil else {
             AppLogger.authError("Firebase not configured yet, retrying...")
@@ -94,6 +101,18 @@ class AuthenticationManager: ObservableObject {
         currentUser = nil
         isAuthenticated = false
     }
+
+    #if DEBUG
+    private static var isScreenshotAuthenticationEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("-PaafektScreenshotAuthenticated") ||
+        ProcessInfo.processInfo.environment["PAAFEKT_SCREENSHOT_AUTHENTICATED"] == "1"
+    }
+
+    func enableScreenshotUser() {
+        currentUser = User(id: "screenshot-user", name: "Paafekt", phoneNumber: "+15555550100")
+        isAuthenticated = true
+    }
+    #endif
 
     // MARK: - Send OTP
 

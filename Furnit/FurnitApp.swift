@@ -162,11 +162,24 @@ struct RootView: View {
 
     var body: some View {
         Group {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-PaafektScreenshotHome") {
+                HomeViewWithBottomBar(authManager: authManager)
+                    .onAppear {
+                        authManager.enableScreenshotUser()
+                    }
+            } else if authManager.isAuthenticated {
+                HomeViewWithBottomBar(authManager: authManager)
+            } else {
+                LoginView()
+            }
+            #else
             if authManager.isAuthenticated {
                 HomeViewWithBottomBar(authManager: authManager)
             } else {
                 LoginView()
             }
+            #endif
         }
     }
 }

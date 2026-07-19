@@ -10,6 +10,7 @@
 - Privacy policy: `https://paafekt.com/privacy`
 - Support: `support@paafekt.com`
 - Do not describe room generation as a cloud upload feature. Android room ML is on-device (Depth Anything + GeoCalib + RTMDet via ONNX; Filament/SceneView for GLB).
+- Firebase Phone OTP: allowlist SMS regions (including **France / FR**) and use a test phone for review — see [firebase-sms-regions.md](firebase-sms-regions.md).
 
 ## Reviewer notes (paste)
 

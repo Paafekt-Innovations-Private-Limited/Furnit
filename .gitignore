@@ -162,6 +162,9 @@ yarn-error.log
 package-lock.json
 yarn.lock
 
+# Local tool installs (e.g. npm-installed firebase-tools)
+.tools/
+
 # Android / Gradle
 android/.gradle/
 android/build/

@@ -8,11 +8,63 @@
 - Verify camera, photo-library, and motion permission prompts use accurate wording.
 
 ## App Store Connect
-- App Privacy answers must cover phone-number authentication, local account name storage, user ID, Firebase device installation identifier (app functionality / abuse prevention), on-device room/furniture processing, and confirm advertising analytics / tracking are **not** enabled in the release build.
 - Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device: **instant preview (no ML)** then **GeoCalib + Depth Anything + RTMDet object anchor → USDZ on first save**.
 - Confirm the export compliance answer remains correct for the shipped build (`ITSAppUsesNonExemptEncryption = NO`).
 - Ensure screenshots and app description do not claim unfinished or hidden functionality, and do not imply room photos are uploaded for generation.
 - Privacy Policy URL: `https://paafekt.com/privacy` — Terms: `https://paafekt.com/terms` — Support: `support@paafekt.com`.
+- Firebase Phone OTP: allowlist SMS regions (including **France / FR**) and use a test phone for review — see [firebase-sms-regions.md](firebase-sms-regions.md).
+
+## App Privacy (declare here — copy into App Store Connect)
+
+**Where:** [App Store Connect](https://appstoreconnect.apple.com) → your app **Paafekt** → **App Privacy** (left sidebar) → **Get Started** / **Edit** → answer the questionnaire → **Publish**.
+
+There is no Paafekt cloud DB for rooms or photos. Network is Firebase Authentication only (sign-in). Delete Account removes the Firebase Auth user. Rooms/photos stay on device only.
+
+### First questions
+| Question | Answer |
+|----------|--------|
+| Do you or your third-party partners collect data from this app? | **Yes** |
+| Do you or your third-party partners use data from this app for tracking purposes? | **No** |
+
+### Data types to add (only these)
+
+**1. Contact Info → Phone Number**
+- Collected: **Yes**
+- Linked to the user’s identity: **Yes**
+- Used for tracking: **No**
+- Purposes: **App Functionality** only  
+- Third party: Firebase Authentication (Google) processes phone OTP; not used for advertising.
+
+**2. Identifiers → User ID**
+- Collected: **Yes**
+- Linked to the user’s identity: **Yes**
+- Used for tracking: **No**
+- Purposes: **App Functionality** only  
+- Note: Firebase Auth UID; deleted when the user deletes their account in the app.
+
+**3. Identifiers → Device ID**
+- Collected: **Yes**
+- Linked to the user’s identity: **Yes**
+- Used for tracking: **No**
+- Purposes: **App Functionality** and/or **Fraud Prevention** (Firebase abuse prevention for OTP)  
+- Not used for advertising or cross-app tracking.
+
+**4. Contact Info → Name** (optional but accurate)
+- Collected: **Yes** (account display name)
+- Linked to the user’s identity: **Yes**
+- Used for tracking: **No**
+- Purposes: **App Functionality** only  
+- Note: Stored **on device only**; not uploaded to a Paafekt server.
+
+### Do **not** add
+- Photos or Videos (processed/stored on device; not collected by Paafekt servers)
+- Product Interaction / Advertising Data / Usage Data for ads
+- Precise Location / Coarse Location (unless you later add those features)
+- Crash Data / Performance Data (unless you ship those SDKs)
+- Any “Used for Tracking” = Yes
+
+### After saving
+Publish the privacy nutrition labels, then set Privacy Policy URL on the app version / App Information to `https://paafekt.com/privacy`.
 
 ## Reviewer Notes (paste into App Review Information)
 

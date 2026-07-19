@@ -37,10 +37,15 @@
 				"Models/RTMDet/rtmdet-ins-m.mlpackage" = (RTMDetModel, );
 			};
 			membershipExceptions = (
+				CHANGELOG.md,
 				diagrams/README.md,
+				diagrams/room-generation-flow.svg,
+				diagrams/rtmdet-swift-flow.svg,
 				docs/README.md,
+				docs/mask-head-accel.md,
 				Info.plist,
 				Models/RTMDet/README.md,
+				test_images/alchair.jpeg,
 				Views/FurnitureFit/README.md,
 			);
 			target = 045F5BD82E6D302900C5585D /* Furnit */;
@@ -406,13 +411,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				APS_ENVIRONMENT = development;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = Swift;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				ENABLE_ON_DEMAND_RESOURCES = YES;
 				ENABLE_PREVIEWS = YES;
@@ -457,12 +463,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				APS_ENVIRONMENT = production;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = Swift;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				ENABLE_ON_DEMAND_RESOURCES = YES;
 				ENABLE_PREVIEWS = YES;
@@ -504,7 +511,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
@@ -526,7 +533,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
