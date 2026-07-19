@@ -68,7 +68,7 @@
     <string name="faq_two_methods">AI Room மற்றும் Manual Setup இடையிலான வேறுபாடு என்ன?</string>
     <string name="faq_two_methods_answer">AI Room ஒரு புகைப்படத்திலிருந்து அறை அளவுகளை மதிப்பிட்டு அளவிடப்பட்ட தளத்தில் படத்தைக் காட்டுகிறது. இது முழுமையான கனஅளவு மறுகட்டமைப்பு அல்ல. Manual Setup ஐந்து மேற்பரப்புள்ள அறையை நீங்களே வரையறுக்க உதவுகிறது.</string>
     <string name="faq_what_is_ai_room">AI இயக்கப்பட்ட 3D அறை என்றால் என்ன?</string>
-    <string name="faq_what_is_ai_room_answer">AI Room மெட்ரிக் ஆழத்திற்கு Depth Anything, மரச்சாமான் நங்கூரங்களுக்கு RTMDet, கேமரா அளவுத்திருத்தத்திற்கு GeoCalib ஆகியவற்றைப் பயன்படுத்துகிறது. அளவுகளை மதிப்பிட்டு மூலப் படத்தை அளவிடப்பட்ட தளத்தில் காட்டுகிறது; இது முழுமையான கனஅளவு மறுகட்டமைப்பு அல்ல.</string>
+    <string name="faq_what_is_ai_room_answer">AI Room மெட்ரிக் ஆழத்திற்கு Depth Anything V2 Metric Indoor Small, மரச்சாமான் நங்கூரங்களுக்கு RTMDet, கேமரா அளவுத்திருத்தத்திற்கு GeoCalib ஆகியவற்றைப் பயன்படுத்துகிறது. அளவுகளை மதிப்பிட்டு மூலப் படத்தை அளவிடப்பட்ட தளத்தில் காட்டுகிறது; இது முழுமையான கனஅளவு மறுகட்டமைப்பு அல்ல.</string>
     <string name="faq_what_is_manual_room">கைமுறை அமைப்பு என்றால் என்ன?</string>
     <string name="faq_what_is_manual_room_answer">முடிவுப் பிரதிநிதித்துவத்தை அதிகம் கட்டுப்படுத்த, புகைப்படத்திலேயே அறை எல்லைகளை நேரடியாக வரையறுக்க Manual Setup உதவுகிறது.</string>
     <string name="faq_which_method_better">நான் எந்த முறையை தேர்வு செய்ய வேண்டும்?</string>
@@ -386,7 +386,7 @@
     <string name="camera_error_opening">கேமராவைத் திறப்பதில் பிழை: %s</string>
     <string name="camera_wide_unavailable">அகலக் கோண கேமராவைத் திறக்க முடியவில்லை</string>
     <string name="camera_ar_photo_failed">AR புகைப்படப் பிடிப்பு தோல்வியடைந்தது</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">ஒற்றைப் புகைப்பட அறை மறுகட்டமைப்புக்கான மெட்ரிக் உட்புற ஆழ மதிப்பீடு. Apache License 2.0 உரிமம்.</string>
     <string name="licenses_hypersim_title">Hypersim தரவுத்தொகுப்பு</string>
     <string name="licenses_hypersim">மெட்ரிக் உட்புற மாதிரி Apple-இன் Hypersim செயற்கை உட்புற தரவுத்தொகுப்பால் நுண்பயிற்சி செய்யப்பட்டது. Hypersim CC BY-SA 3.0 உரிமம் பெற்றது.</string>
@@ -449,7 +449,7 @@
     <string name="room_viewer_ar_sizing_enable">கேமரா உதவித் மரச்சாமான் அளவை இயக்கு</string>
     <string name="room_viewer_segmentation_done">முடிந்தது</string>
     <string name="room_viewer_furniture_height_estimate">மரச்சாமான் உயரம் ~ %.2f மீ</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Paafekt-இல் ஒற்றை-புகைப்பட அறை மறுகட்டமைப்பை இயக்கும் மெட்ரிக் உள் அறை ஆழ மதிப்பீடு.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">அறை உருவாக்கத்தில் குவிய நீளம் மற்றும் ஈர்ப்பு குறிப்புகளுக்குப் பயன்படுத்தப்படும் ETH Zurich-இன் ஒற்றை-பட கேமரா அளவீடு.</string>

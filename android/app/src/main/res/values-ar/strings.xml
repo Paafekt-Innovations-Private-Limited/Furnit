@@ -368,7 +368,7 @@
     <string name="photo_room_back_leave">رجوع</string>
     <!-- Full-catalog parity additions -->
     <string name="settings_open_link_failed">لا يتوفر متصفح لفتح هذا الرابط.</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">تقدير عمق متري داخلي لإعادة بناء غرفة من صورة واحدة. مرخّص بموجب Apache License 2.0.</string>
     <string name="licenses_hypersim_title">مجموعة بيانات Hypersim</string>
     <string name="licenses_hypersim">تم تحسين نموذج العمق المتري الداخلي باستخدام مجموعة بيانات Apple الاصطناعية للمساحات الداخلية Hypersim. تُرخّص Hypersim بموجب CC BY-SA 3.0.</string>
@@ -457,7 +457,7 @@
     <string name="room_viewer_recenter">إعادة تمركز العرض</string>
     <string name="room_viewer_display_all_helpers">إظهار تلميحات الإيماءات</string>
     <string name="room_viewer_ar_sizing_enable">تفعيل تحديد حجم الأثاث بمساعدة الكاميرا</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">تقدير عمق داخلي متري يشغّل إعادة بناء الغرفة من صورة واحدة في Paafekt.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">معايرة كاميرا من صورة واحدة من ETH Zurich تُستخدم لإشارات البعد البؤري والجاذبية في توليد الغرف.</string>

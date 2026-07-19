@@ -76,7 +76,7 @@
     <string name="faq_two_methods">AI Room 與 Manual Setup 有什麼差異？</string>
     <string name="faq_two_methods_answer">AI Room 會根據一張照片估算房間尺寸，並在 3D 檢視器的測量平面上顯示該照片；它並非完整的體積式重建。Manual Setup 讓您定義一個由五個表面組成的房間，以便更直接地控制呈現結果。</string>
     <string name="faq_what_is_ai_room">什麼是 AI 驅動的 3D 房間？</string>
-    <string name="faq_what_is_ai_room_answer">AI Room 使用 Depth Anything 估算公制深度、RTMDet 家具錨點與 GeoCalib 相機校準。它會估算尺寸，並在 3D 檢視器的測量平面上顯示來源照片；它並非完整的房間體積重建。</string>
+    <string name="faq_what_is_ai_room_answer">AI Room 使用 Depth Anything V2 Metric Indoor Small 估算公制深度、RTMDet 家具錨點與 GeoCalib 相機校準。它會估算尺寸，並在 3D 檢視器的測量平面上顯示來源照片；它並非完整的房間體積重建。</string>
     <string name="faq_what_is_manual_room">什麼是手動設定？</string>
     <string name="faq_what_is_manual_room_answer">Manual Setup 讓您直接在照片上定義房間邊界，從而更靈活地控制最終呈現效果。</string>
     <string name="faq_which_method_better">我該選哪種方式？</string>
@@ -424,7 +424,7 @@
     <string name="placement_intelligence_collapse">收合 Placement Intelligence</string>
     <string name="camera_title">相機</string>
     <string name="placement_intelligence_recommendation_depth">家具深度超出此房間範圍。</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="home_room_actions_title">房間選項</string>
     <string name="camera_choose_mode">選擇相機模式</string>
     <string name="settings_open_link_failed">沒有可用來開啟此連結的瀏覽器。</string>
@@ -452,7 +452,7 @@
     <string name="placement_intelligence_recommendation_rotate">旋轉占地範圍可取得較佳的尺寸適配。</string>
     <string name="room_viewer_measuring_room">正在測量房間…</string>
     <string name="placement_intelligence_style_only">僅提供風格指引</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">度量室內深度估計，為 Paafekt 的單張照片房間重建提供支援。</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">來自蘇黎世聯邦理工學院（ETH Zurich）的單影像相機校正，用於房間生成中的焦距與重力提示。</string>

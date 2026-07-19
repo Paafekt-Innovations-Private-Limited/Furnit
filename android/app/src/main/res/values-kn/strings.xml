@@ -79,7 +79,7 @@
     <string name="faq_two_methods">AI Room ಮತ್ತು Manual Setup ನಡುವಿನ ವ್ಯತ್ಯಾಸವೇನು?</string>
     <string name="faq_two_methods_answer">AI Room ಒಂದು ಫೋಟೋದಿಂದ ಕೊಠಡಿಯ ಆಯಾಮಗಳನ್ನು ಅಂದಾಜಿಸಿ, ಅಳತೆ ಮಾಡಿದ ಸಮತಲದಲ್ಲಿ ಫೋಟೋವನ್ನು ತೋರಿಸುತ್ತದೆ. ಇದು ಸಂಪೂರ್ಣ ವಾಲ್ಯೂಮೆಟ್ರಿಕ್ ಪುನರ್‌ನಿರ್ಮಾಣವಲ್ಲ. Manual Setup ನಲ್ಲಿ ಐದು ಮೇಲ್ಮೈಗಳ ಕೊಠಡಿಯನ್ನು ನೀವೇ ನಿರ್ಧರಿಸಬಹುದು.</string>
     <string name="faq_what_is_ai_room">AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?</string>
-    <string name="faq_what_is_ai_room_answer">AI Room ಮೆಟ್ರಿಕ್ ಆಳಕ್ಕೆ Depth Anything, ಪೀಠೋಪಕರಣ ಆಂಕರ್‌ಗಳಿಗೆ RTMDet ಮತ್ತು ಕ್ಯಾಮೆರಾ ಕ್ಯಾಲಿಬ್ರೇಶನ್‌ಗೆ GeoCalib ಬಳಸುತ್ತದೆ. ಇದು ಆಯಾಮಗಳನ್ನು ಅಂದಾಜಿಸಿ ಮೂಲ ಫೋಟೋವನ್ನು ಅಳತೆ ಮಾಡಿದ ಸಮತಲದಲ್ಲಿ ತೋರಿಸುತ್ತದೆ; ಇದು ಸಂಪೂರ್ಣ ವಾಲ್ಯೂಮೆಟ್ರಿಕ್ ಪುನರ್‌ನಿರ್ಮಾಣವಲ್ಲ.</string>
+    <string name="faq_what_is_ai_room_answer">AI Room ಮೆಟ್ರಿಕ್ ಆಳಕ್ಕೆ Depth Anything V2 Metric Indoor Small, ಪೀಠೋಪಕರಣ ಆಂಕರ್‌ಗಳಿಗೆ RTMDet ಮತ್ತು ಕ್ಯಾಮೆರಾ ಕ್ಯಾಲಿಬ್ರೇಶನ್‌ಗೆ GeoCalib ಬಳಸುತ್ತದೆ. ಇದು ಆಯಾಮಗಳನ್ನು ಅಂದಾಜಿಸಿ ಮೂಲ ಫೋಟೋವನ್ನು ಅಳತೆ ಮಾಡಿದ ಸಮತಲದಲ್ಲಿ ತೋರಿಸುತ್ತದೆ; ಇದು ಸಂಪೂರ್ಣ ವಾಲ್ಯೂಮೆಟ್ರಿಕ್ ಪುನರ್‌ನಿರ್ಮಾಣವಲ್ಲ.</string>
     <string name="faq_what_is_manual_room">ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ ಎಂದರೇನು?</string>
     <string name="faq_what_is_manual_room_answer">ಫಲಿತಾಂಶದ ಮೇಲೆ ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಫೋಟೋದಲ್ಲೇ ಕೊಠಡಿಯ ಗಡಿಗಳನ್ನು ನೇರವಾಗಿ ನಿರ್ಧರಿಸಲು Manual Setup ಅನುಮತಿಸುತ್ತದೆ.</string>
     <string name="faq_which_method_better">ನಾನು ಯಾವ ವಿಧಾನವನ್ನು ಆಯ್ಕೆಮಾಡಬೇಕು?</string>
@@ -386,7 +386,7 @@
     <string name="camera_error_opening">ಕ್ಯಾಮೆರಾ ತೆರೆಯುವಲ್ಲಿ ದೋಷ: %s</string>
     <string name="camera_wide_unavailable">ವಿಶಾಲ-ಕೋನ ಕ್ಯಾಮೆರಾ ತೆರೆಯಲಾಗಲಿಲ್ಲ</string>
     <string name="camera_ar_photo_failed">AR ಫೋಟೋ ಸೆರೆಹಿಡಿಯಲು ವಿಫಲವಾಗಿದೆ</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">ಒಂದೇ ಫೋಟೋದಿಂದ ಕೊಠಡಿ ಪುನರ್‌ನಿರ್ಮಾಣಕ್ಕೆ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಆಳ ಅಂದಾಜು. Apache License 2.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ.</string>
     <string name="licenses_hypersim_title">Hypersim ಡೇಟಾಸೆಟ್</string>
     <string name="licenses_hypersim">ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಮಾದರಿಯನ್ನು Apple ನ Hypersim ಕೃತಕ ಒಳಾಂಗಣ ಡೇಟಾಸೆಟ್ ಬಳಸಿ ಸೂಕ್ಷ್ಮವಾಗಿ ತರಬೇತುಗೊಳಿಸಲಾಗಿದೆ. Hypersim CC BY-SA 3.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ.</string>
@@ -449,7 +449,7 @@
     <string name="room_viewer_ar_sizing_enable">ಕ್ಯಾಮೆರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ</string>
     <string name="room_viewer_segmentation_done">ಮುಗಿಯಿತು</string>
     <string name="room_viewer_furniture_height_estimate">ಪೀಠೋಪಕರಣ ಎತ್ತರ ~ %.2f ಮೀ</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Paafektನಲ್ಲಿ ಎಕ-ಫೋಟೋ ಕೊಠಡಿ ಪುನರ್ನಿರ್ಮಾಣಅಕಕೆ ಶಕ್ತಿನೀದುವ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗನ ಆಳಅನದಾಜು.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">ಕೊಠಡಿ ಉತ್ಪಾದನೆಯಲ್ಲಿ ಫೋಕಲ್ ಉದ್ದ ಮತ್ತು ಗುರುತ್ವಾಕರ್ಷನೆ ಸೂಚನೆಗಳಿಗಾಗಿ ಬಳಸುವ ETH Zurichನ ಎಕ-ಚಿತ್ರ ಕ್ಯಾಮೆರ ಕ್ಯಾಲಿಬ್ರೇಶನ್.</string>

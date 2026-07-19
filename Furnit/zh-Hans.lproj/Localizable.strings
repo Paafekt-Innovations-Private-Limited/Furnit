@@ -149,7 +149,7 @@
 "licenses.openSourceSection" = "开源许可";
 "licenses.openSourceIntro" = "以下列出了此平台使用的主要开源软件、模型资源、数据集及必要的署名信息。";
 "licenses.viewFullLicense" = "查看完整许可";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "用于单张照片房间重建的室内公制深度估算。依据 Apache License 2.0 授权。";
 "licenses.hypersimTitle" = "Hypersim 数据集";
 "licenses.hypersim" = "室内公制模型使用 Apple 的 Hypersim 合成室内数据集进行微调。Hypersim 依据 CC BY-SA 3.0 授权。";
@@ -587,7 +587,7 @@
 "credits.appleBody" = "Apple 框架为 iOS App 提供相机拍摄、Core ML、AR/深度处理以及设备端 3D 渲染功能。";
 "credits.googleTitle" = "Google";
 "credits.googleBody" = "Android、ARCore、Filament 和 Firebase 为 Paafekt 提供平台、AR、3D 渲染与身份验证能力。";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "度量室内深度估计，为 Paafekt 的单张照片房间重建提供支持。";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "来自苏黎世联邦理工学院（ETH Zurich）的单图像相机标定，用于房间生成中的焦距与重力提示。";

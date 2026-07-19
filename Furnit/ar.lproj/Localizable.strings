@@ -148,7 +148,7 @@
 "licenses.openSourceSection" = "تراخيص المصدر المفتوح";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "عرض الترخيص الكامل";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "تقدير عمق متري داخلي لإعادة بناء غرفة من صورة واحدة. مرخّص بموجب Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "معايرة كاميرا من صورة واحدة لتقدير الطول البؤري واتجاه الجاذبية. حقوق النشر 2024 ETH Zurich. مرخّص بموجب Apache License 2.0.";
@@ -549,7 +549,7 @@
 "credits.visitWebsite" = "زيارة الموقع";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "تقدير عمق داخلي متري يشغّل إعادة بناء الغرفة من صورة واحدة في Paafekt.";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "معايرة كاميرا من صورة واحدة من ETH Zurich تُستخدم لإشارات البعد البؤري والجاذبية في توليد الغرف.";

@@ -148,7 +148,7 @@
 "licenses.openSourceSection" = "ओपन सोर्स लाइसेंस";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "पूर्ण लाइसेंस देखें";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "एक फ़ोटो से रूम पुनर्निर्माण के लिए मेट्रिक इनडोर गहराई अनुमान। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "फोकल लंबाई और गुरुत्व संकेतों के लिए एकल-छवि कैमरा कैलिब्रेशन। कॉपीराइट 2024 ETH Zurich। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।";
@@ -557,7 +557,7 @@
 "credits.visitWebsite" = "वेबसाइट देखें";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "मीट्रिक इनडोर डेप्थ अनुमान जो Paafekt में एकल-फ़ोटो रूम पुनर्निर्माण को शक्ति देता है।";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "ETH Zurich की एकल-छवि कैमरा कैलिब्रेशन, जिसका उपयोग रूम जनरेशन में फ़ोकल लंबाई और गुरुत्वाकर्षण संकेतों के लिए किया जाता है।";

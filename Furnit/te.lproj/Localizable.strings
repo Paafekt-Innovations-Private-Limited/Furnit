@@ -131,7 +131,7 @@
 "licenses.openSourceSection" = "ఓపెన్ సోర్స్ లైసెన్స్‌లు";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "పూర్తి లైసెన్స్ చూడండి";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
@@ -492,7 +492,7 @@
 "credits.visitWebsite" = "వెబ్‌సైట్‌ను సందర్శించండి";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "Paafektలో ఒకే ఫోటోతో గది పునర్నిర్మాణానికి శక్తినిచ్చే మెట్రిక్ ఇండోర్ లోతు అంచనా.";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "గది ఉత్పత్తిలో ఫోకల్ పొడవు మరియు గురుత్వాకర్షణ సూచనల కోసం ఉపయోగించే ETH Zurich యొక్క ఒకే-చిత్ర కెమెరా క్యాలిబ్రేషన్.";

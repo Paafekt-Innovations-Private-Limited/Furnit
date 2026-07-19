@@ -364,7 +364,7 @@
     <string name="photo_room_back_leave">ফিরে যান</string>
     <!-- Full-catalog parity additions -->
     <string name="settings_open_link_failed">এই লিঙ্ক খোলার জন্য কোনো ব্রাউজার উপলভ্য নেই।</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">একটি ছবি থেকে রুম পুনর্গঠনের জন্য মেট্রিক ইনডোর গভীরতা অনুমান। Apache License 2.0-এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_hypersim_title">Hypersim ডেটাসেট</string>
     <string name="licenses_hypersim">Apple-এর কৃত্রিম ইনডোর Hypersim ডেটাসেট ব্যবহার করে মেট্রিক ইনডোর মডেলটি সূক্ষ্মভাবে প্রশিক্ষিত হয়েছে। Hypersim CC BY-SA 3.0-এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
@@ -453,7 +453,7 @@
     <string name="room_viewer_recenter">দৃশ্য আবার কেন্দ্রে আনুন</string>
     <string name="room_viewer_display_all_helpers">জেসচার নির্দেশনা দেখান</string>
     <string name="room_viewer_ar_sizing_enable">ক্যামেরা-সহায়িত ফার্নিচার সাইজিং চালু করুন</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">মেট্রিক ইনডোর গভীরতা অনুমান যা Paafekt-এ একক-ছবির রুম পুনর্গঠন চালায়।</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">ETH Zurich-এর একক-চিত্র ক্যামেরা ক্যালিব্রেশন, যা রুম জেনারেশনে ফোকাল দৈর্ঘ্য ও মাধ্যাকর্ষণ ইঙ্গিতের জন্য ব্যবহৃত হয়।</string>

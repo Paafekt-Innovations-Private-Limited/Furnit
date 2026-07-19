@@ -152,8 +152,8 @@
 "licenses.openSourceSection" = "Open Source Licenses";
 "licenses.openSourceIntro" = "Key open-source software, model assets, datasets, and required attributions used by this platform are listed below.";
 "licenses.viewFullLicense" = "View full license";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
+"licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — metric indoor depth for single-photo room reconstruction. Small weights licensed under Apache License 2.0 (Base/Large/Giant not used).";
 "licenses.hypersimTitle" = "Hypersim Dataset";
 "licenses.hypersim" = "The metric indoor model was fine-tuned using Apple's Hypersim synthetic indoor dataset. Hypersim is licensed under CC BY-SA 3.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
@@ -576,8 +576,8 @@
 "credits.appleBody" = "Apple frameworks provide camera capture, Core ML, AR/depth processing, and on-device 3D rendering in the iOS app.";
 "credits.googleTitle" = "Google";
 "credits.googleBody" = "Android, ARCore, Filament, and Firebase provide platform, AR, 3D-rendering, and authentication capabilities used across Paafekt.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
-"credits.depthAnythingBody" = "Metric indoor depth estimation that powers single-photo room reconstruction in Paafekt.";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
+"credits.depthAnythingBody" = "Depth Anything V2 Metric Indoor Small powers single-photo metric indoor depth and room reconstruction in Paafekt.";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "Single-image camera calibration from ETH Zurich used for focal length and gravity hints in room generation.";
 "credits.rtmdetTitle" = "RTMDet (OpenMMLab)";

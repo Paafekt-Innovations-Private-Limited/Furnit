@@ -828,7 +828,7 @@ struct CreditsView: View {
                 id: "depthAnything",
                 title: L10n.Credits.depthAnythingTitle,
                 body: L10n.Credits.depthAnythingBody,
-                url: URL(string: "https://github.com/DepthAnything/Depth-Anything-V2")!
+                url: URL(string: "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")!
             ),
             CreditEntry(
                 id: "geoCalib",

@@ -364,7 +364,7 @@
     <string name="photo_room_back_leave">वापस जाएँ</string>
     <!-- Full-catalog parity additions -->
     <string name="settings_open_link_failed">इस लिंक को खोलने के लिए कोई ब्राउज़र उपलब्ध नहीं है।</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">एक फ़ोटो से रूम पुनर्निर्माण के लिए मेट्रिक इनडोर गहराई अनुमान। Apache License 2.0 के अंतर्गत लाइसेंस प्राप्त।</string>
     <string name="licenses_hypersim_title">Hypersim डेटासेट</string>
     <string name="licenses_hypersim">Apple के कृत्रिम इनडोर Hypersim डेटासेट का उपयोग करके मेट्रिक इनडोर मॉडल को बेहतर ढंग से प्रशिक्षित किया गया। Hypersim को CC BY-SA 3.0 के अंतर्गत लाइसेंस दिया गया है।</string>
@@ -453,7 +453,7 @@
     <string name="room_viewer_recenter">दृश्य फिर केंद्र में लाएँ</string>
     <string name="room_viewer_display_all_helpers">जेस्चर संकेत दिखाएँ</string>
     <string name="room_viewer_ar_sizing_enable">कैमरा-सहायित फर्नीचर साइजिंग चालू करें</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">मीट्रिक इनडोर डेप्थ अनुमान जो Paafekt में एकल-फ़ोटो रूम पुनर्निर्माण को शक्ति देता है।</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">ETH Zurich की एकल-छवि कैमरा कैलिब्रेशन, जिसका उपयोग रूम जनरेशन में फ़ोकल लंबाई और गुरुत्वाकर्षण संकेतों के लिए किया जाता है।</string>

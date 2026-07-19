@@ -84,7 +84,7 @@
     <string name="licenses_title">Licencias y atribuciones</string>
     <string name="licenses_open_source_section">Licencias de código abierto</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">Estimación métrica de profundidad en interiores para reconstruir cuartos a partir de una sola foto. Bajo la licencia Apache 2.0.</string>
     <string name="licenses_hypersim_title">Conjunto de datos Hypersim</string>
     <string name="licenses_hypersim">El modelo métrico para interiores se ajustó con el conjunto de datos sintéticos de interiores Hypersim de Apple. Hypersim se distribuye bajo la licencia CC BY-SA 3.0.</string>
@@ -144,7 +144,7 @@
     <string name="faq_two_methods">¿Cuál es la diferencia entre Cuarto con IA y Configuración manual?</string>
     <string name="faq_two_methods_answer">Cuarto con IA estima las dimensiones a partir de una foto y muestra la foto sobre un plano con medidas en el visor 3D. No es una reconstrucción volumétrica completa. Configuración manual te permite definir un cuarto de cinco superficies para obtener una representación más controlable.</string>
     <string name="faq_what_is_ai_room">¿Qué es el cuarto 3D con IA?</string>
-    <string name="faq_what_is_ai_room_answer">Cuarto con IA usa Depth Anything para la profundidad métrica, referencias de muebles de RTMDet y GeoCalib para calibrar la cámara. Estima las dimensiones y muestra la foto original sobre un plano con medidas en el visor 3D; no es una reconstrucción volumétrica completa del cuarto.</string>
+    <string name="faq_what_is_ai_room_answer">Cuarto con IA usa Depth Anything V2 Metric Indoor Small para la profundidad métrica, referencias de muebles de RTMDet y GeoCalib para calibrar la cámara. Estima las dimensiones y muestra la foto original sobre un plano con medidas en el visor 3D; no es una reconstrucción volumétrica completa del cuarto.</string>
     <string name="faq_what_is_manual_room">¿Qué es la configuración manual?</string>
     <string name="faq_what_is_manual_room_answer">Configuración manual te permite definir los límites del cuarto directamente sobre la foto para tener mayor control sobre la representación resultante.</string>
     <string name="faq_which_method_better">¿Qué método elijo?</string>
@@ -482,7 +482,7 @@ Arrastra para mirar alrededor y pellizca para ampliar.</string>
     <!-- ARCore distance measure (beta) -->
     <!-- Single photo / AI room generation -->
     <!-- Placement intelligence -->
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Estimación métrica de profundidad en interiores que impulsa la reconstrucción de cuartos a partir de una sola foto en Paafekt.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">Calibración de cámara a partir de una sola imagen de ETH Zurich, usada para pistas de distancia focal y gravedad en la generación de cuartos.</string>

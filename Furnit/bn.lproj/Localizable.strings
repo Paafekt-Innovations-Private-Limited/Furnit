@@ -148,7 +148,7 @@
 "licenses.openSourceSection" = "ওপেন সোর্স লাইসেন্স";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "সম্পূর্ণ লাইসেন্স দেখুন";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "একটি ছবি থেকে রুম পুনর্গঠনের জন্য মেট্রিক ইনডোর গভীরতা অনুমান। Apache License 2.0-এর অধীনে লাইসেন্সপ্রাপ্ত।";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "ফোকাল দৈর্ঘ্য ও অভিকর্ষের ইঙ্গিতের জন্য একক-ছবি ক্যামেরা ক্যালিব্রেশন। কপিরাইট 2024 ETH Zurich। Apache License 2.0-এর অধীনে লাইসেন্সপ্রাপ্ত।";
@@ -549,7 +549,7 @@
 "credits.visitWebsite" = "ওয়েবসাইট দেখুন";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "মেট্রিক ইনডোর গভীরতা অনুমান যা Paafekt-এ একক-ছবির রুম পুনর্গঠন চালায়।";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "ETH Zurich-এর একক-চিত্র ক্যামেরা ক্যালিব্রেশন, যা রুম জেনারেশনে ফোকাল দৈর্ঘ্য ও মাধ্যাকর্ষণ ইঙ্গিতের জন্য ব্যবহৃত হয়।";

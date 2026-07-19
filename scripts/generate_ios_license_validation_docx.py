@@ -65,10 +65,10 @@ def main() -> None:
     doc.add_heading("Open-source items listed in the app", level=2)
     items = [
         (
-            "Depth Anything V2",
-            "Metric indoor depth estimation for single-photo room reconstruction. "
-            "Licensed under the Apache License 2.0.",
-            "Apache 2.0",
+            "Depth Anything V2 Metric Indoor Small",
+            "Depth Anything V2 Metric Indoor Small — metric indoor depth for single-photo room reconstruction. "
+            "Small weights licensed under Apache License 2.0 (Base/Large/Giant not used).",
+            "Apache 2.0 (Small only)",
         ),
         (
             "GeoCalib",
@@ -114,11 +114,12 @@ def main() -> None:
 
     validation_rows = [
         [
-            "Depth Anything V2",
-            "Apache 2.0",
-            "https://github.com/DepthAnything/Depth-Anything-V2",
-            "Open LICENSE file and README. App uses the “Small” model only — README says Small is Apache-2.0. "
-            "Confirm Base/Large/Giant are not shipped. Confirm Small = OK for commercial.",
+            "Depth Anything V2 Metric Indoor Small",
+            "Apache 2.0 (Small only)",
+            "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf",
+            "Confirm shipped artifact is Metric Indoor Small (not Base/Large/Giant). "
+            "GitHub README: Small family Apache-2.0. Also open "
+            "https://github.com/DepthAnything/Depth-Anything-V2 — Hypersim training data is a lawyer question.",
         ],
         [
             "GeoCalib",

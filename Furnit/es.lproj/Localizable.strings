@@ -152,7 +152,7 @@
 "licenses.openSourceSection" = "Licencias de código abierto";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "Ver licencia completa";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Estimación métrica de profundidad en interiores para reconstruir habitaciones a partir de una sola foto. Bajo la licencia Apache 2.0.";
 "licenses.hypersimTitle" = "Conjunto de datos Hypersim";
 "licenses.hypersim" = "El modelo métrico para interiores se ajustó con el conjunto de datos sintéticos de interiores Hypersim de Apple. Hypersim se distribuye bajo la licencia CC BY-SA 3.0.";
@@ -576,7 +576,7 @@
 "credits.appleBody" = "Los frameworks de Apple proporcionan captura con cámara, Core ML, procesamiento de AR/profundidad y renderizado 3D en el dispositivo para la app de iOS.";
 "credits.googleTitle" = "Google";
 "credits.googleBody" = "Android, ARCore, Filament y Firebase aportan capacidades de plataforma, RA, renderizado 3D y autenticación usadas en Paafekt.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "Estimación métrica de profundidad en interiores que impulsa la reconstrucción de habitaciones a partir de una sola foto en Paafekt.";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "Calibración de cámara a partir de una sola imagen de ETH Zurich, usada para pistas de distancia focal y gravedad en la generación de habitaciones.";

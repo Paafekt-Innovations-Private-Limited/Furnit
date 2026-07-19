@@ -76,7 +76,7 @@
     <string name="faq_two_methods">Worin unterscheiden sich AI Room und Manual Setup?</string>
     <string name="faq_two_methods_answer">AI Room schätzt die Raummaße anhand eines Fotos und zeigt dieses auf einer vermessenen Ebene im 3D-Viewer an. Es handelt sich nicht um eine vollständige volumetrische Rekonstruktion. Mit Manual Setup können Sie einen Raum mit fünf Flächen definieren und die Darstellung gezielter steuern.</string>
     <string name="faq_what_is_ai_room">Was ist der KI-gestützte 3D-Raum?</string>
-    <string name="faq_what_is_ai_room_answer">AI Room nutzt Depth Anything für metrische Tiefe, RTMDet-Möbelanker und GeoCalib zur Kamerakalibrierung. Es schätzt die Maße und zeigt das Ausgangsfoto auf einer vermessenen Ebene im 3D-Viewer an; es handelt sich nicht um eine vollständige volumetrische Raumrekonstruktion.</string>
+    <string name="faq_what_is_ai_room_answer">AI Room nutzt Depth Anything V2 Metric Indoor Small für metrische Tiefe, RTMDet-Möbelanker und GeoCalib zur Kamerakalibrierung. Es schätzt die Maße und zeigt das Ausgangsfoto auf einer vermessenen Ebene im 3D-Viewer an; es handelt sich nicht um eine vollständige volumetrische Raumrekonstruktion.</string>
     <string name="faq_what_is_manual_room">Was ist die manuelle Einrichtung?</string>
     <string name="faq_what_is_manual_room_answer">Mit Manual Setup können Sie die Raumgrenzen direkt auf dem Foto festlegen und die resultierende Darstellung genauer steuern.</string>
     <string name="faq_which_method_better">Welche Methode soll ich wählen?</string>
@@ -366,7 +366,7 @@
     <string name="home_delete_room_action_hint">Von diesem Gerät löschen</string>
     <string name="settings_open_link_failed">Zum Öffnen dieses Links ist kein Browser verfügbar.</string>
 
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">Metrische Tiefenschätzung für Innenräume bei der Raumrekonstruktion aus einem einzelnen Foto. Lizenziert unter der Apache-Lizenz 2.0.</string>
     <string name="licenses_hypersim_title">Hypersim-Datensatz</string>
     <string name="licenses_hypersim">Das metrische Innenraummodell wurde mit Apples synthetischem Hypersim-Innenraumdatensatz feinabgestimmt. Hypersim ist unter CC BY-SA 3.0 lizenziert.</string>
@@ -458,7 +458,7 @@
     <string name="room_viewer_measuring_room">Raum wird vermessen…</string>
     <string name="room_viewer_saving_room">Raum wird gespeichert</string>
     <string name="room_viewer_saving_room_ellipsis">Raum wird gespeichert…</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Metrische Tiefenschätzung für Innenräume, die die Einzelbild-Raumrekonstruktion in Paafekt ermöglicht.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">Einzelbild-Kamerakalibrierung der ETH Zürich für Brennweiten- und Schwerkrafthinweise bei der Raumgenerierung.</string>

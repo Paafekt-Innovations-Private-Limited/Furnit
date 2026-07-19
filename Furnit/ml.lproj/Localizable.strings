@@ -131,7 +131,7 @@
 "licenses.openSourceSection" = "ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "പൂർണ്ണ ലൈസൻസ് കാണുക";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
@@ -492,7 +492,7 @@
 "credits.visitWebsite" = "വെബ്സൈറ്റ് സന്ദർശിക്കുക";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple frameworks iOS ആപ്പിൽ ക്യാമറ ക്യാപ്‌ചർ, Core ML, AR/ഡെപ്ത് പ്രോസസ്സിംഗ്, ഓൺ-ഡിവൈസ് 3D റെൻഡറിംഗ് എന്നിവ നൽകുന്നു.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "Paafekt-ൽ ഒറ്റ ഫോട്ടോയിൽ നിന്നുള്ള മുറി പുനർനിർമ്മാണത്തിന് ശക്തി നൽകുന്ന മെട്രിക് ഇൻഡോർ ഡെപ്ത് എസ്റ്റിമേഷൻ.";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "മുറി ജനറേഷനിൽ ഫോക്കൽ ദൂരത്തിനും ഗുരുത്വ സൂചനകൾക്കും ഉപയോഗിക്കുന്ന ETH Zurich ഒറ്റ-ചിത്ര ക്യാമറ കാലിബ്രേഷൻ.";

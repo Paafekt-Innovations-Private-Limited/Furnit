@@ -76,7 +76,7 @@
     <string name="faq_two_methods">Quelle est la différence entre AI Room et Manual Setup ?</string>
     <string name="faq_two_methods_answer">AI Room estime les dimensions de la pièce à partir d\'une photo et affiche celle-ci sur un plan mesuré dans le visualiseur 3D. Il ne s\'agit pas d\'une reconstruction volumétrique complète. Manual Setup vous permet de définir une pièce à cinq surfaces afin de mieux contrôler la représentation.</string>
     <string name="faq_what_is_ai_room">Qu\'est-ce que la pièce 3D par IA ?</string>
-    <string name="faq_what_is_ai_room_answer">AI Room utilise Depth Anything pour la profondeur métrique, les points d\'ancrage de meubles RTMDet et GeoCalib pour l\'étalonnage de la caméra. Il estime les dimensions et affiche la photo source sur un plan mesuré dans le visualiseur 3D ; il ne s\'agit pas d\'une reconstruction volumétrique complète de la pièce.</string>
+    <string name="faq_what_is_ai_room_answer">AI Room utilise Depth Anything V2 Metric Indoor Small pour la profondeur métrique, les points d\'ancrage de meubles RTMDet et GeoCalib pour l\'étalonnage de la caméra. Il estime les dimensions et affiche la photo source sur un plan mesuré dans le visualiseur 3D ; il ne s\'agit pas d\'une reconstruction volumétrique complète de la pièce.</string>
     <string name="faq_what_is_manual_room">Qu\'est-ce que la configuration manuelle ?</string>
     <string name="faq_what_is_manual_room_answer">Manual Setup vous permet de définir directement les limites de la pièce sur la photo afin de mieux contrôler la représentation obtenue.</string>
     <string name="faq_which_method_better">Quelle méthode choisir ?</string>
@@ -366,7 +366,7 @@
     <string name="home_delete_room_action_hint">Supprimer de cet appareil</string>
     <string name="settings_open_link_failed">Aucun navigateur n’est disponible pour ouvrir ce lien.</string>
 
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">Estimation métrique de la profondeur en intérieur pour la reconstruction d’une pièce à partir d’une seule photo. Sous licence Apache 2.0.</string>
     <string name="licenses_hypersim_title">Jeu de données Hypersim</string>
     <string name="licenses_hypersim">Le modèle métrique d’intérieur a été affiné à l’aide du jeu de données synthétique d’intérieurs Hypersim d’Apple. Hypersim est sous licence CC BY-SA 3.0.</string>
@@ -458,7 +458,7 @@
     <string name="room_viewer_measuring_room">Mesure de la pièce…</string>
     <string name="room_viewer_saving_room">Enregistrement de la pièce</string>
     <string name="room_viewer_saving_room_ellipsis">Enregistrement de la pièce…</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Estimation métrique de la profondeur en intérieur qui alimente la reconstruction de pièce à partir d\'une seule photo dans Paafekt.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">Calibration de caméra à partir d\'une seule image, développée à l\'ETH Zurich, utilisée pour les indices de focale et de gravité lors de la génération de pièces.</string>

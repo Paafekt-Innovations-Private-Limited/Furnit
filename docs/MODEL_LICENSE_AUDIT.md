@@ -59,7 +59,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | **HF model card (training)** | — | — | — | https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf — fine-tuned on **Hypersim** (synthetic indoor) | 2026-07-11 |
 | **Training data (Hypersim)** | CC-BY-SA-3.0 | YES with **Share-Alike** on derivatives | Attribution + SA | https://github.com/apple/ml-hypersim/blob/main/README.md — *“licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported License”* | 2026-07-11 |
 
-**App claim cross-check:** iOS `licenses.depthAnything` = “Licensed under the Apache License 2.0.” — **Matches upstream for Small weights** per GitHub README. Does **not** mention Hypersim CC-BY-SA training data.
+**App claim cross-check:** In-app licenses/credits titles use **Depth Anything V2 Metric Indoor Small** (not generic “Depth Anything V2”). English license body states Small weights are Apache-2.0 and Base/Large/Giant are not used — **Matches upstream for Small weights** per GitHub README. Does **not** resolve Hypersim CC-BY-SA training-data Share-Alike (lawyer).
 
 **Shipped checkpoint:** Small encoder (24.8M params); **do not** ship Base/Large/Giant.
 

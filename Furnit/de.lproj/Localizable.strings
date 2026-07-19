@@ -148,7 +148,7 @@
 "licenses.openSourceSection" = "Open-Source-Lizenzen";
 "licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "Vollständige Lizenz anzeigen";
-"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
@@ -559,7 +559,7 @@
 "credits.visitWebsite" = "Website besuchen";
 "credits.appleTitle" = "Apple";
 "credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
-"credits.depthAnythingTitle" = "Depth Anything V2";
+"credits.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "credits.depthAnythingBody" = "Metrische Tiefenschätzung für Innenräume, die die Einzelbild-Raumrekonstruktion in Paafekt ermöglicht.";
 "credits.geoCalibTitle" = "GeoCalib";
 "credits.geoCalibBody" = "Einzelbild-Kamerakalibrierung der ETH Zürich für Brennweiten- und Schwerkrafthinweise bei der Raumgenerierung.";

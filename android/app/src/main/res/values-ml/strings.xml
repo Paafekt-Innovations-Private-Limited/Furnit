@@ -68,7 +68,7 @@
     <string name="faq_two_methods">AI Room-ഉം Manual Setup-ഉം തമ്മിലുള്ള വ്യത്യാസമെന്ത്?</string>
     <string name="faq_two_methods_answer">AI Room ഒരു ഫോട്ടോയിൽ നിന്ന് മുറിയുടെ അളവുകൾ കണക്കാക്കി അളവുള്ള തലത്തിൽ ചിത്രം കാണിക്കുന്നു. ഇത് പൂർണ്ണ വോള്യൂമെട്രിക് പുനർനിർമ്മാണമല്ല. Manual Setup അഞ്ച് പ്രതലങ്ങളുള്ള മുറി സ്വയം നിർവചിക്കാൻ അനുവദിക്കുന്നു.</string>
     <string name="faq_what_is_ai_room">AI-നിയന്ത്രിത 3D മുറി എന്താണ്?</string>
-    <string name="faq_what_is_ai_room_answer">AI Room മെട്രിക് ഡെപ്തിന് Depth Anything, ഫർണിച്ചർ ആങ്കറുകൾക്ക് RTMDet, ക്യാമറ കാലിബ്രേഷനായി GeoCalib എന്നിവ ഉപയോഗിക്കുന്നു. ഇത് അളവുകൾ കണക്കാക്കി ഉറവിട ചിത്രം അളവുള്ള തലത്തിൽ കാണിക്കുന്നു; പൂർണ്ണ വോള്യൂമെട്രിക് പുനർനിർമ്മാണമല്ല.</string>
+    <string name="faq_what_is_ai_room_answer">AI Room മെട്രിക് ഡെപ്തിന് Depth Anything V2 Metric Indoor Small, ഫർണിച്ചർ ആങ്കറുകൾക്ക് RTMDet, ക്യാമറ കാലിബ്രേഷനായി GeoCalib എന്നിവ ഉപയോഗിക്കുന്നു. ഇത് അളവുകൾ കണക്കാക്കി ഉറവിട ചിത്രം അളവുള്ള തലത്തിൽ കാണിക്കുന്നു; പൂർണ്ണ വോള്യൂമെട്രിക് പുനർനിർമ്മാണമല്ല.</string>
     <string name="faq_what_is_manual_room">മാനുവൽ സെറ്റപ്പ് എന്താണ്?</string>
     <string name="faq_what_is_manual_room_answer">ഫലമായ പ്രതിനിധാനത്തിൽ കൂടുതൽ നിയന്ത്രണത്തിനായി ഫോട്ടോയിൽ നേരിട്ട് മുറിയുടെ അതിരുകൾ നിർവചിക്കാൻ Manual Setup അനുവദിക്കുന്നു.</string>
     <string name="faq_which_method_better">ഞാൻ ഏത് രീതി തിരഞ്ഞെടുക്കണം?</string>
@@ -386,7 +386,7 @@
     <string name="camera_error_opening">ക്യാമറ തുറക്കുന്നതിൽ പിശക്: %s</string>
     <string name="camera_wide_unavailable">വൈഡ്-ആംഗിൾ ക്യാമറ തുറക്കാനായില്ല</string>
     <string name="camera_ar_photo_failed">AR ഫോട്ടോ ക്യാപ്ചർ പരാജയപ്പെട്ടു</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="licenses_depth_anything">ഒറ്റ ഫോട്ടോ മുറി പുനർനിർമ്മാണത്തിനുള്ള മെട്രിക് ഇൻഡോർ ഡെപ്ത് എസ്റ്റിമേഷൻ. Apache License 2.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.</string>
     <string name="licenses_hypersim_title">Hypersim ഡാറ്റാസെറ്റ്</string>
     <string name="licenses_hypersim">മെട്രിക് ഇൻഡോർ മോഡൽ Apple-ന്റെ Hypersim സിന്തറ്റിക് ഇൻഡോർ ഡാറ്റാസെറ്റ് ഉപയോഗിച്ച് ഫൈൻ-ട്യൂൺ ചെയ്തു. Hypersim CC BY-SA 3.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.</string>
@@ -449,7 +449,7 @@
     <string name="room_viewer_ar_sizing_enable">ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓൺ ചെയ്യുക</string>
     <string name="room_viewer_segmentation_done">പൂർത്തിയായി</string>
     <string name="room_viewer_furniture_height_estimate">ഫർണിച്ചർ ഉയരം ~ %.2f മീ</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Paafekt-ൽ ഒറ്റ ഫോട്ടോയിൽ നിന്നുള്ള മുറി പുനർനിർമ്മാണത്തിന് ശക്തി നൽകുന്ന മെട്രിക് ഇൻഡോർ ഡെപ്ത് എസ്റ്റിമേഷൻ.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">മുറി ജനറേഷനിൽ ഫോക്കൽ ദൂരത്തിനും ഗുരുത്വ സൂചനകൾക്കും ഉപയോഗിക്കുന്ന ETH Zurich ഒറ്റ-ചിത്ര ക്യാമറ കാലിബ്രേഷൻ.</string>

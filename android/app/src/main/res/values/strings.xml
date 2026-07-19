@@ -95,8 +95,8 @@
     <string name="licenses_title">Licenses &amp; Attributions</string>
     <string name="licenses_open_source_section">Open Source Licenses</string>
     <string name="licenses_open_source_intro">Key open-source software, model assets, datasets, and required attributions used by this app are listed below.</string>
-    <string name="licenses_depth_anything_title">Depth Anything V2</string>
-    <string name="licenses_depth_anything">Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
+    <string name="licenses_depth_anything">Depth Anything V2 Metric Indoor Small — metric indoor depth for single-photo room reconstruction. Small weights licensed under Apache License 2.0 (Base/Large/Giant not used).</string>
     <string name="licenses_hypersim_title">Hypersim Dataset</string>
     <string name="licenses_hypersim">The metric indoor model was fine-tuned using Apple\'s Hypersim synthetic indoor dataset. Hypersim is licensed under CC BY-SA 3.0.</string>
     <string name="licenses_geo_calib_title">GeoCalib</string>
@@ -122,8 +122,8 @@
     <string name="credits_apple_body">Apple frameworks provide camera capture, Core ML, AR/depth processing, and on-device 3D rendering in the iOS app.</string>
     <string name="credits_google_title">Google</string>
     <string name="credits_google_body">Android, ARCore, Filament, and Firebase provide platform, AR, 3D-rendering, and authentication capabilities used across Paafekt.</string>
-    <string name="credits_depth_anything_title">Depth Anything V2</string>
-    <string name="credits_depth_anything_body">Metric indoor depth estimation that powers single-photo room reconstruction in Paafekt.</string>
+    <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
+    <string name="credits_depth_anything_body">Depth Anything V2 Metric Indoor Small powers single-photo metric indoor depth and room reconstruction in Paafekt.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>
     <string name="credits_geo_calib_body">Single-image camera calibration from ETH Zurich used for focal length and gravity hints in room generation.</string>
     <string name="credits_rtmdet_title">RTMDet (OpenMMLab)</string>
@@ -175,7 +175,7 @@
     <string name="faq_two_methods">What is the difference between AI Room and Manual Setup?</string>
     <string name="faq_two_methods_answer">AI Room estimates room dimensions from one photo and displays that photo on a measured plane in the 3D viewer. It is not a full volumetric reconstruction. Manual Setup lets you define a five-surface room for a more controllable representation.</string>
     <string name="faq_what_is_ai_room">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_ai_room_answer">AI Room uses Depth Anything for metric depth, RTMDet furniture anchors, and GeoCalib for camera calibration. It estimates dimensions and displays the source photo on a measured plane in the 3D viewer; it is not a full volumetric room reconstruction.</string>
+    <string name="faq_what_is_ai_room_answer">AI Room uses Depth Anything V2 Metric Indoor Small for metric depth, RTMDet furniture anchors, and GeoCalib for camera calibration. It estimates dimensions and displays the source photo on a measured plane in the 3D viewer; it is not a full volumetric room reconstruction.</string>
     <string name="faq_what_is_manual_room">What is Manual Setup?</string>
     <string name="faq_what_is_manual_room_answer">Manual Setup lets you define the room boundaries directly on the photo for greater control over the resulting representation.</string>
     <string name="faq_which_method_better">Which method should I choose?</string>

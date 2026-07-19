@@ -35,7 +35,7 @@ class CreditsActivity : AppCompatActivity() {
             CreditEntry(
                 R.string.credits_depth_anything_title,
                 R.string.credits_depth_anything_body,
-                "https://github.com/DepthAnything/Depth-Anything-V2",
+                "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf",
             ),
             CreditEntry(
                 R.string.credits_geo_calib_title,
