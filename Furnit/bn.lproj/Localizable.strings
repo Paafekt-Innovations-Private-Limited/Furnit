@@ -25,6 +25,7 @@
 "login.yourName" = "আপনার নাম";
 "login.enterName" = "আপনার নাম লিখুন";
 "login.nameHint" = "কমপক্ষে ৩টি অক্ষর ব্যবহার করুন, যার মধ্যে একটি অক্ষর থাকতে হবে।";
+"login.invalidName" = "অনুগ্রহ করে কমপক্ষে ৩টি অক্ষর লিখুন, যার মধ্যে একটি অক্ষর থাকতে হবে।";
 "login.phoneNumber" = "ফোন নম্বর";
 "login.phonePlaceholder" = "ফোন নম্বর";
 "login.sendOTP" = "OTP পাঠান";

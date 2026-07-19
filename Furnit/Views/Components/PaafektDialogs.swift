@@ -223,7 +223,7 @@ struct PaafektNameRoomSheet: View {
                         .font(Theme.Typo.caption())
                         .foregroundStyle(
                             !trimmedName.isEmpty && !isNameValid
-                                ? Color.orange
+                                ? Theme.Palette.accent
                                 : Theme.Palette.textSecondary
                         )
 

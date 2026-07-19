@@ -26,6 +26,7 @@
 "login.yourName" = "Tu nombre";
 "login.enterName" = "Introduce tu nombre";
 "login.nameHint" = "Usa al menos 3 caracteres, incluida una letra.";
+"login.invalidName" = "Introduce al menos 3 caracteres, incluida una letra.";
 "login.phoneNumber" = "Número de teléfono";
 "login.phonePlaceholder" = "Número de teléfono";
 "login.sendOTP" = "Enviar código";

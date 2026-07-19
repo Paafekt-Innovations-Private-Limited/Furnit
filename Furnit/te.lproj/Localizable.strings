@@ -25,6 +25,7 @@
 "login.yourName" = "మీ పేరు";
 "login.enterName" = "మీ పేరు నమోదు చేయండి";
 "login.nameHint" = "కనీసం 3 అక్షరాలు ఉండాలి; వాటిలో ఒక అక్షరం ఉండాలి.";
+"login.invalidName" = "దయచేసి కనీసం 3 అక్షరాలు నమోదు చేయండి; వాటిలో ఒక అక్షరం ఉండాలి.";
 "login.phoneNumber" = "ఫోన్ నంబర్";
 "login.phonePlaceholder" = "ఫోన్ నంబర్";
 "login.sendOTP" = "OTP పంపు";

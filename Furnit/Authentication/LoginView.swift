@@ -161,6 +161,14 @@ struct LoginView: View {
     @FocusState private var nameFieldFocused: Bool
     @FocusState private var phoneFieldFocused: Bool
 
+    private var trimmedLoginName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isLoginNameValid: Bool {
+        DisplayNameValidation.isValid(name)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -210,9 +218,15 @@ struct LoginView: View {
                                 }
                                 .disabled(isLoading)
 
-                            Text(L10n.Login.nameHint)
+                            Text(isLoginNameValid || trimmedLoginName.isEmpty
+                                 ? L10n.Login.nameHint
+                                 : L10n.Login.invalidName)
                                 .font(Theme.Typo.caption())
-                                .foregroundStyle(Theme.Palette.textSecondary)
+                                .foregroundStyle(
+                                    !trimmedLoginName.isEmpty && !isLoginNameValid
+                                        ? Theme.Palette.accent
+                                        : Theme.Palette.textSecondary
+                                )
                         }
 
                         // Phone Field with Country Code

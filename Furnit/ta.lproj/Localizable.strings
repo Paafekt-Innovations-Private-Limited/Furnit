@@ -25,6 +25,7 @@
 "login.yourName" = "உங்கள் பெயர்";
 "login.enterName" = "உங்கள் பெயரை உள்ளிடவும்";
 "login.nameHint" = "குறைந்தது 3 எழுத்துகள்; ஒரு எழுத்து இருக்க வேண்டும்.";
+"login.invalidName" = "குறைந்தது 3 எழுத்துகளை உள்ளிடவும்; ஒரு எழுத்து இருக்க வேண்டும்.";
 "login.phoneNumber" = "தொலைபேசி எண்";
 "login.phonePlaceholder" = "தொலைபேசி எண்";
 "login.sendOTP" = "OTP அனுப்பு";

@@ -25,6 +25,7 @@
 "login.yourName" = "你的名字";
 "login.enterName" = "请输入你的名字";
 "login.nameHint" = "至少 3 个字符，且需包含一个字母。";
+"login.invalidName" = "请输入至少 3 个字符，并包含一个字母。";
 "login.phoneNumber" = "手机号码";
 "login.phonePlaceholder" = "手机号码";
 "login.sendOTP" = "发送验证码";

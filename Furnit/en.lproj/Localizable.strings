@@ -26,6 +26,7 @@
 "login.yourName" = "Your Name";
 "login.enterName" = "Enter your name";
 "login.nameHint" = "Use at least 3 characters, including one letter.";
+"login.invalidName" = "Please enter at least 3 characters, including one letter.";
 "login.phoneNumber" = "Phone Number";
 "login.phonePlaceholder" = "Phone number";
 "login.sendOTP" = "Send OTP";

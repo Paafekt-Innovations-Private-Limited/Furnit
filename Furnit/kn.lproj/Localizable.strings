@@ -25,6 +25,7 @@
 "login.yourName" = "ನಿಮ್ಮ ಹೆಸರು";
 "login.enterName" = "ನಿಮ್ಮ ಹೆಸರನ್ನು ನಮೂದಿಸಿ";
 "login.nameHint" = "ಕನಿಷ್ಠ 3 ಅಕ್ಷರಗಳು; ಒಂದು ಅಕ್ಷರ ಅಗತ್ಯ.";
+"login.invalidName" = "ದಯವಿಟ್ಟು ಕನಿಷ್ಠ 3 ಅಕ್ಷರಗಳನ್ನು ನಮೂದಿಸಿ; ಒಂದು ಅಕ್ಷರ ಅಗತ್ಯ.";
 "login.phoneNumber" = "ಫೋನ್ ಸಂಖ್ಯೆ";
 "login.phonePlaceholder" = "ಫೋನ್ ಸಂಖ್ಯೆ";
 "login.sendOTP" = "OTP ಕಳುಹಿಸು";

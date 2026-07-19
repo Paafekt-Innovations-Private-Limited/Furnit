@@ -36,6 +36,7 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var authManager: AuthenticationManager
     private lateinit var nameInput: EditText
     private lateinit var phoneInput: EditText
+    private lateinit var nameHint: TextView
     private lateinit var countryButton: Button
     private lateinit var sendOtpButton: Button
     private lateinit var progressBar: ProgressBar
@@ -136,7 +137,7 @@ class LoginActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { setMargins(0, 0, 0, 4) })
 
-        val nameHint = TextView(this).apply {
+        nameHint = TextView(this).apply {
             text = getString(R.string.login_name_hint)
             textSize = 12f
             setTextColor(PaafektColors.textSecondary)
@@ -262,8 +263,19 @@ class LoginActivity : AppCompatActivity() {
     private fun validateInputs() {
         val name = nameInput.text.toString().trim()
         val phone = phoneInput.text.toString().replace(Regex("[^0-9]"), "")
+        val nameValid = com.furnit.android.util.DisplayNameValidation.isValid(name)
 
-        val isValid = com.furnit.android.util.DisplayNameValidation.isValid(name) && phone.length >= 10
+        if (::nameHint.isInitialized) {
+            if (name.isNotEmpty() && !nameValid) {
+                nameHint.text = getString(R.string.login_invalid_name)
+                nameHint.setTextColor(PaafektColors.accent)
+            } else {
+                nameHint.text = getString(R.string.login_name_hint)
+                nameHint.setTextColor(PaafektColors.textSecondary)
+            }
+        }
+
+        val isValid = nameValid && phone.length >= 10
         sendOtpButton.isEnabled = isValid
         sendOtpButton.alpha = if (isValid) 1.0f else 0.5f
     }

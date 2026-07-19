@@ -25,6 +25,7 @@
 "login.yourName" = "اسمك";
 "login.enterName" = "أدخل اسمك";
 "login.nameHint" = "استخدم 3 أحرف على الأقل، بما في ذلك حرف واحد.";
+"login.invalidName" = "يُرجى إدخال 3 أحرف على الأقل، بما في ذلك حرف واحد.";
 "login.phoneNumber" = "رقم الهاتف";
 "login.phonePlaceholder" = "رقم الهاتف";
 "login.sendOTP" = "إرسال الرمز";

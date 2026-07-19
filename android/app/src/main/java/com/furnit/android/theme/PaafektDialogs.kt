@@ -1,7 +1,6 @@
 package com.furnit.android.theme
 
 import android.app.Activity
-import android.graphics.Color
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -106,7 +105,7 @@ object PaafektDialogs {
             val typed = input.text?.toString()?.trim().orEmpty()
             if (typed.isNotEmpty() && !DisplayNameValidation.isValid(typed)) {
                 nameHint.text = activity.getString(R.string.room_viewer_invalid_room_name)
-                nameHint.setTextColor(Color.parseColor("#FFB020"))
+                nameHint.setTextColor(PaafektColors.accent)
             } else {
                 nameHint.text = activity.getString(R.string.room_viewer_name_hint)
                 nameHint.setTextColor(PaafektColors.textSecondary)

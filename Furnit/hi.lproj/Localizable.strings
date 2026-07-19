@@ -25,6 +25,7 @@
 "login.yourName" = "आपका नाम";
 "login.enterName" = "अपना नाम दर्ज करें";
 "login.nameHint" = "कम से कम 3 अक्षर दर्ज करें, जिसमें एक अक्षर शामिल हो।";
+"login.invalidName" = "कृपया कम से कम 3 अक्षर दर्ज करें, जिसमें एक अक्षर शामिल हो।";
 "login.phoneNumber" = "फोन नंबर";
 "login.phonePlaceholder" = "फोन नंबर";
 "login.sendOTP" = "OTP भेजें";

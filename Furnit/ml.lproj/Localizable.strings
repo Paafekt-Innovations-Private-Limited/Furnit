@@ -25,6 +25,7 @@
 "login.yourName" = "നിങ്ങളുടെ പേര്";
 "login.enterName" = "നിങ്ങളുടെ പേര് നൽകുക";
 "login.nameHint" = "കുറഞ്ഞത് 3 അക്ഷരങ്ങൾ; ഒരു അക്ഷരം ഉൾപ്പെടുത്തുക.";
+"login.invalidName" = "ദയവായി കുറഞ്ഞത് 3 അക്ഷരങ്ങൾ നൽകുക; ഒരു അക്ഷരം ഉൾപ്പെടുത്തുക.";
 "login.phoneNumber" = "ഫോൺ നമ്പർ";
 "login.phonePlaceholder" = "ഫോൺ നമ്പർ";
 "login.sendOTP" = "OTP അയയ്ക്കുക";

@@ -16,6 +16,7 @@
     <string name="login_your_name">Your Name</string>
     <string name="login_enter_name">Enter your name</string>
     <string name="login_name_hint">Use at least 3 characters, including one letter.</string>
+    <string name="login_invalid_name">Please enter at least 3 characters, including one letter.</string>
     <string name="login_validation_error">Please enter a valid name and phone number.</string>
     <string name="login_phone_number">Phone Number</string>
     <string name="login_phone_placeholder">Phone number</string>

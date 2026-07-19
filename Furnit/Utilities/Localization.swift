@@ -57,6 +57,7 @@ enum L10n {
         static let yourName = "login.yourName".localized
         static let enterName = "login.enterName".localized
         static let nameHint = "login.nameHint".localized
+        static let invalidName = "login.invalidName".localized
         static let phoneNumber = "login.phoneNumber".localized
         static let phonePlaceholder = "login.phonePlaceholder".localized
         static let sendOTP = "login.sendOTP".localized
