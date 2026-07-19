@@ -544,7 +544,7 @@
 "photoRoom.loading3DRoom" = "正在加载3D房间...";
 
 // MARK: - Generation progress overlay
-"generationProgress.uploadingImage" = "正在上传图片";
+"generationProgress.uploadingImage" = "正在准备图片";
 "generationProgress.generating3DModel" = "正在生成 3D 模型";
 "generationProgress.downloadingModel" = "正在下载模型";
 "generationProgress.complete" = "完成！";

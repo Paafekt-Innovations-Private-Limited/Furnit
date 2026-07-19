@@ -511,7 +511,7 @@
 "photoRoom.loading3DRoom" = "جاري تحميل الغرفة ثلاثية الأبعاد...";
 
 // MARK: - Generation progress overlay
-"generationProgress.uploadingImage" = "جاري رفع الصورة";
+"generationProgress.uploadingImage" = "جاري تجهيز الصورة";
 "generationProgress.generating3DModel" = "جاري إنشاء النموذج ثلاثي الأبعاد";
 "generationProgress.downloadingModel" = "جاري تنزيل النموذج";
 "generationProgress.complete" = "اكتمل!";

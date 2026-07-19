@@ -53,13 +53,13 @@ def main() -> None:
 
     doc.add_heading("What the app says (copy for your notes)", level=1)
 
-    doc.add_heading("Notice at top of Licenses screen", level=2)
+    doc.add_heading("Commercial product posture", level=2)
     doc.add_paragraph(
-        "“Current release: This app is currently offered for commercial use.”"
+        "Paafekt is a commercial app. The Licenses screen lists third-party attributions only — "
+        "there is no in-app “restricted / evaluation-only” release notice."
     )
     doc.add_paragraph(
-        "This is the app’s own policy text — not a standard open-source license. "
-        "Confirm it matches how the app is sold (e.g. paid App Store launch)."
+        "Confirm App Store listing, privacy policy, and terms present Paafekt as a commercial product."
     )
 
     doc.add_heading("Open-source items listed in the app", level=2)
@@ -108,7 +108,7 @@ def main() -> None:
     doc.add_heading("How to validate (web only)", level=1)
     doc.add_paragraph(
         "For each row below: (1) open the official link, (2) confirm the license type matches what the app claims, "
-        "(3) confirm commercial use is allowed (or note if it says non-commercial / research only), "
+        "(3) confirm the shipped artifact is allowed in a commercial product, "
         "(4) write PASS, FAIL, or ASK LAWYER."
     )
 
@@ -117,8 +117,8 @@ def main() -> None:
             "Depth Anything V2",
             "Apache 2.0",
             "https://github.com/DepthAnything/Depth-Anything-V2",
-            "Open LICENSE file and README. App uses the “Small” model only — README says Small is Apache; "
-            "larger models are non-commercial. Confirm Small = OK for commercial.",
+            "Open LICENSE file and README. App uses the “Small” model only — README says Small is Apache-2.0. "
+            "Confirm Base/Large/Giant are not shipped. Confirm Small = OK for commercial.",
         ],
         [
             "GeoCalib",
@@ -196,13 +196,13 @@ def main() -> None:
         "I found the Licenses screen in the app.",
         "All six software names appear (Depth Anything, GeoCalib, MetalSplatter, Firebase, RTMDet, Three.js).",
         "“View full license” links work (open in Safari).",
-        "Depth Anything — official site says Small model is Apache 2.0 (not non-commercial).",
+        "Depth Anything — official site says Small model is Apache 2.0; only Small is shipped.",
         "GeoCalib — official LICENSE is Apache 2.0.",
         "MetalSplatter — official LICENSE is MIT.",
         "Firebase — official LICENSE is Apache 2.0.",
         "RTMDet / MMDetection — official LICENSE is Apache 2.0.",
         "Three.js — official LICENSE is MIT.",
-        "Top notice (“commercial use”) matches how the app will be sold.",
+        "App Store / website / terms present Paafekt as a commercial product (no restricted-use wording).",
         "Anything unclear → escalated to a lawyer.",
     ]
     add_table(

@@ -521,7 +521,7 @@
 "photoRoom.loading3DRoom" = "3D-Raum wird geladen...";
 
 // MARK: - Generation progress overlay
-"generationProgress.uploadingImage" = "Bild wird hochgeladen";
+"generationProgress.uploadingImage" = "Bild wird vorbereitet";
 "generationProgress.generating3DModel" = "3D-Modell wird erstellt";
 "generationProgress.downloadingModel" = "Modell wird heruntergeladen";
 "generationProgress.complete" = "Fertig!";

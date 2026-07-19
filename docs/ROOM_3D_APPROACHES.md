@@ -276,7 +276,7 @@ Vanishing-point gravity refiner (`VanishingPointGravity`) is stubbed (`vps=0`); 
 | DA2 Small F16+INT8 (.mlpackage) | 27 MB | Apache 2.0 | Relative depth, quantized |
 | DA2 Metric Hypersim ViTS (.pth) | ~50 MB | Apache 2.0 | Metric meters, PyTorch |
 | DA2 Small HF (online) | ~100 MB | Apache 2.0 | Relative depth, HuggingFace |
-| Apple Depth Pro (.mlpackage) | 1.0 GB | Non-commercial | High accuracy, research only |
+| Apple Depth Pro (.mlpackage) | 1.0 GB | **Not used** (removed from ship) | Was evaluated historically; not in Paafekt |
 
 ## Key Learnings
 

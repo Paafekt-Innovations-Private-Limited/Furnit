@@ -519,7 +519,7 @@
 "photoRoom.loading3DRoom" = "3D कमरा लोड हो रहा है...";
 
 // MARK: - Generation progress overlay
-"generationProgress.uploadingImage" = "छवि अपलोड हो रही है";
+"generationProgress.uploadingImage" = "छवि तैयार की जा रही है";
 "generationProgress.generating3DModel" = "3D मॉडल बन रहा है";
 "generationProgress.downloadingModel" = "मॉडल डाउनलोड हो रहा है";
 "generationProgress.complete" = "पूर्ण!";

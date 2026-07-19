@@ -359,7 +359,7 @@
 "photoRoom.loading3DRoom" = "Loading 3D Room...";
 
 // MARK: - Generation progress overlay
-"generationProgress.uploadingImage" = "Uploading Image";
+"generationProgress.uploadingImage" = "Preparing Image";
 "generationProgress.generating3DModel" = "Generating 3D Model";
 "generationProgress.downloadingModel" = "Downloading Model";
 "generationProgress.complete" = "Complete!";

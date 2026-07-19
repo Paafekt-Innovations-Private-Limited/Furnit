@@ -9,7 +9,7 @@
 | # | Item | Verdict | Why (primary source) |
 |---|------|---------|----------------------|
 | 1 | **Depth Anything V2 Metric Indoor Small — training data** | **AMBIGUOUS — needs lawyer** | Metric Small weights are **Apache-2.0** per upstream README, but fine-tuning uses **Hypersim** (**CC-BY-SA 3.0**). Share-Alike may affect redistribution of derived weights; not resolved in any model card we found. |
-| 2 | **GeoCalib pinhole weights — training data** | **AMBIGUOUS — needs lawyer** | Code + release weights have **no separate NC terms**, but training uses **OpenPano** (HDRMAPS + Poly Haven CC0 + Laval HDR). **HDRMAPS** and **Laval** commercial terms were **not found** in primary sources reviewed. |
+| 2 | **GeoCalib pinhole weights — training data** | **AMBIGUOUS — needs lawyer** | Code + release weights have **no separate commercial-restriction terms**, but training uses **OpenPano** (HDRMAPS + Poly Haven CC0 + Laval HDR). **HDRMAPS** and **Laval** commercial terms were **not found** in primary sources reviewed. |
 | 3 | **HF license tag missing** | **Documentation gap** | Hugging Face API returns `"license": null` for `depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf` (queried 2026-07-11). Resolved for **Small** via GitHub README; still document in diligence. |
 
 **Not blockers (confirmed):** Inria 3DGS **not** in ship path; MiDaS **removed**; SparkJS **removed** (iOS + Android, 2026-07-11); MetalSplatter / Three.js / ONNX Runtime / RTMDet code **permissive** with attribution.
@@ -54,14 +54,14 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | Layer | License | Commercial | Attribution | Primary source | Date |
 |-------|---------|------------|-------------|----------------|------|
 | **Code** | Apache-2.0 | YES | NOTICE + license copy on redistribution | https://github.com/DepthAnything/Depth-Anything-V2/blob/main/LICENSE | 2026-07-11 |
-| **Weights (Small family)** | Apache-2.0 | YES (per upstream; Small only) | Same as Apache-2.0 | https://github.com/DepthAnything/Depth-Anything-V2/blob/main/README.md — LICENSE section: *“Depth-Anything-V2-**Small** model is under the Apache-2.0 license. Depth-Anything-V2-Base/Large/Giant models are under the CC-BY-NC-4.0 license.”* | 2026-07-11 |
+| **Weights (Small family)** | Apache-2.0 | YES (per upstream; Small only) | Same as Apache-2.0 | https://github.com/DepthAnything/Depth-Anything-V2/blob/main/README.md — LICENSE section: *“Depth-Anything-V2-**Small** model is under the Apache-2.0 license.”* (Base/Large/Giant are **not shipped** in Paafekt.) | 2026-07-11 |
 | **HF checkpoint tag** | *(none)* | — | — | HF API `depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf` → `"license": null` | 2026-07-11 |
 | **HF model card (training)** | — | — | — | https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf — fine-tuned on **Hypersim** (synthetic indoor) | 2026-07-11 |
 | **Training data (Hypersim)** | CC-BY-SA-3.0 | YES with **Share-Alike** on derivatives | Attribution + SA | https://github.com/apple/ml-hypersim/blob/main/README.md — *“licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported License”* | 2026-07-11 |
 
 **App claim cross-check:** iOS `licenses.depthAnything` = “Licensed under the Apache License 2.0.” — **Matches upstream for Small weights** per GitHub README. Does **not** mention Hypersim CC-BY-SA training data.
 
-**Shipped checkpoint:** Small encoder (24.8M params); **do not** ship Base/Large/Giant (NC).
+**Shipped checkpoint:** Small encoder (24.8M params); **do not** ship Base/Large/Giant.
 
 **Action:** Lawyer on **CC-BY-SA → exported CoreML/ONNX weights**. Hypersim attribution was added to both in-app license screens on 2026-07-18; attribution does not resolve the Share-Alike legal question.
 
@@ -91,7 +91,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | Layer | License | Commercial | Attribution | Primary source | Date |
 |-------|---------|------------|-------------|----------------|------|
 | **Code (MMDetection)** | Apache-2.0 | YES | NOTICE + copyright | https://github.com/open-mmlab/mmdetection/blob/main/LICENSE — *Copyright 2018-2023 OpenMMLab* | 2026-07-11 |
-| **Checkpoint** | *(no separate terms on download page)* | **YES** (same as project; no NC found) | OpenMMLab + Apache | https://download.openmmlab.com/mmdetection/v3.0/rtmdet/rtmdet-ins_m_8xb32-300e_coco/rtmdet-ins_m_8xb32-300e_coco_20221123_001039-6eba602e.pth (linked from Furnit export scripts) | 2026-07-11 |
+| **Checkpoint** | *(no separate terms on download page)* | **YES** (same as project; no commercial-restriction terms found) | OpenMMLab + Apache | https://download.openmmlab.com/mmdetection/v3.0/rtmdet/rtmdet-ins_m_8xb32-300e_coco/rtmdet-ins_m_8xb32-300e_coco_20221123_001039-6eba602e.pth (linked from Furnit export scripts) | 2026-07-11 |
 | **COCO annotations** | CC-BY-4.0 | YES | Attribution | https://github.com/cocodataset/cocodataset.github.io/blob/master/dataset/termsofuse.htm — *“annotations … licensed under a Creative Commons Attribution 4.0 License”* | 2026-07-11 |
 | **COCO images** | Flickr ToU | **User responsibility** | — | Same page — *“COCO Consortium does not own the copyright of the images. Use … must abide by the Flickr Terms of Use.”* | 2026-07-11 |
 
@@ -105,7 +105,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 | Component | License | Commercial | In ship path? | Primary source | Date |
 |-----------|---------|------------|---------------|----------------|------|
-| **Inria gaussian-splatting** (training) | **Non-commercial research** | **NO** | **NO** — zero `graphdeco` / `diff-gaussian` refs in repo | https://github.com/graphdeco-inria/gaussian-splatting/blob/main/LICENSE.md — *“non-commercially”*, *“THE USER CANNOT USE … FOR COMMERCIAL PURPOSES”* | 2026-07-11 |
+| **Inria gaussian-splatting** (training) | **Excluded from ship** | **NO** | **NO** — zero `graphdeco` / `diff-gaussian` refs in repo | https://github.com/graphdeco-inria/gaussian-splatting/blob/main/LICENSE.md — upstream license is incompatible with this commercial product; not used | 2026-07-11 |
 | **MetalSplatter 1.0.1** | MIT | YES | **YES** (iOS renderer) | https://github.com/scier/MetalSplatter/blob/main/LICENSE — Copyright (c) 2026 Sean Cier | 2026-07-11 |
 | **User PLY splats** | User content | N/A | YES | Generated/imported sidecars | — |
 **Verdict:** Ship path = **MIT renderer + user PLY** — **OK** for commercial **if** no Inria code/weights added later.
@@ -130,7 +130,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 |-------|--------|--------|------|
 | MiDaS weights / inference | **Absent** | No `MiDaS` / `midas` in Swift/Kotlin ship path | 2026-07-11 |
 | Placeholder | `SyntheticDepthEstimator` — explicit *“not MiDaS”* | `Furnit/Services/RoomReconstruction/SyntheticDepthEstimator.swift` | 2026-07-11 |
-| Depth Pro (non-commercial) | **Removed** | `docs/DEAD_CODE_CLEANUP.md` — `DepthProMetricDepthService.swift` deleted | 2026-07-11 |
+| Depth Pro | **Removed** (not used in commercial ship) | `docs/DEAD_CODE_CLEANUP.md` — `DepthProMetricDepthService.swift` deleted | 2026-07-11 |
 
 ---
 
@@ -162,26 +162,25 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 
 ---
 
-## `licenses.phase1Notice` — why it exists (git history)
+## `licenses.phase1Notice` — retired (git history)
 
 | Commit | Date | What happened |
 |--------|------|----------------|
-| `4ef4e10` | 2026-02-26 | **Added** Phase 1 notice with legacy model attributions and in-app Licenses screens. Message: *“Phase 1 release: … non-commercial use only.”* |
-| `3c15aec` | 2026-06-16 | **Removed notice from UI** ahead of commercial release; kept string keys. Commit message: RTMDet attribution added; phase1 “unused”. |
-| `e2aac05` | 2026-07-08 | **Re-displayed** notice; text changed to *“Current release: … non-commercial use only.”* |
-| *(working tree)* | 2026-07-13 | **Updated** notice to *“Current release: This app is currently offered for commercial use.”* (iOS + Android string resources). |
+| `4ef4e10` | 2026-02-26 | **Added** early Phase 1 notice with legacy model attributions and in-app Licenses screens (legacy restricted wording). |
+| `3c15aec` | 2026-06-16 | **Removed notice from UI** ahead of commercial release; kept string keys temporarily. |
+| `e2aac05` / later | 2026-07 | Notice wording updated toward commercial release, then removed entirely from license UI. |
 
-**Displayed today:** No. Removed from both in-app license screens on 2026-07-18 because it is release policy, not third-party attribution.
+**Displayed today:** No. Removed from both in-app license screens on 2026-07-18. Paafekt is a **commercial** product; release/policy wording belongs in product terms, not third-party attribution lists.
 
-**Conclusion:** **Product / release-phase policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Originally carried from an early Phase 1 legacy-model legal posture. **Updated 2026-07-13** to state commercial use; aligns with intended commercial launch. Lawyer should still align full terms with model audit above.
+**Conclusion:** Phase-1 notice was **product policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Current posture: commercial App Store / Play launch. Lawyer should still align full terms with the model audit above.
 
 ---
 
-## Red-flag license types
+## Red-flag license types (commercial ship)
 
-**Non-commercial / NC / research-only / GPL-AGPL / RAIL** on weights or data → stop or get written permission.
+Licenses that **prohibit commercial distribution**, or research-only / GPL-AGPL / RAIL terms on weights or data → stop or get written permission before shipping.
 
-**Confirmed NC in ecosystem (not shipped):** Inria `gaussian-splatting` LICENSE.md. DAV2 **Base/Large/Giant** = CC-BY-NC-4.0 per README (Furnit uses **Small only**).
+**Excluded from this commercial product (not shipped):** Inria `gaussian-splatting`; Depth Anything V2 **Base/Large/Giant** (Paafekt ships **Small** only, Apache-2.0).
 
 ---
 

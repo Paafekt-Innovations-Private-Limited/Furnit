@@ -426,7 +426,7 @@
 				INFOPLIST_FILE = Furnit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Paafekt;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is required for AR furniture detection and placement";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Paafekt uses the camera to capture room photos and for AR furniture detection and placement";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Motion access is used to stabilize room viewing and measurement while you move your device";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Paafekt needs access to save screenshots of your 3D rooms";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Paafekt needs access to your photos to create 3D rooms from your room photos";
@@ -475,7 +475,7 @@
 				INFOPLIST_FILE = Furnit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Paafekt;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is required for AR furniture detection and placement";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Paafekt uses the camera to capture room photos and for AR furniture detection and placement";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Motion access is used to stabilize room viewing and measurement while you move your device";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Paafekt needs access to save screenshots of your 3D rooms";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Paafekt needs access to your photos to create 3D rooms from your room photos";

@@ -451,7 +451,7 @@
 "photoRoom.loading3DRoom" = "3D గది లోడ్ అవుతోంది...";
 
 // MARK: - Generation progress overlay
-"generationProgress.uploadingImage" = "చిత్రం అప్‌లోడ్ అవుతోంది";
+"generationProgress.uploadingImage" = "చిత్రం సిద్ధం చేస్తోంది";
 "generationProgress.generating3DModel" = "3D మాదరి రూపొందిస్తున్నారు";
 "generationProgress.downloadingModel" = "మాదరి డౌన్‌లోడ్ అవుతోంది";
 "generationProgress.complete" = "పూర్తయింది!";

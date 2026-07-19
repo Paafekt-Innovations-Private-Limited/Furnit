@@ -346,7 +346,7 @@ enum L10n {
         static let chooseOrientationShort = "camera.chooseOrientationShort".localized
     }
 
-    /// Progress overlay during remote/API 3D generation (upload → process → download)
+    /// Progress overlay during on-device 3D generation
     enum GenerationProgress {
         static let uploadingImage = "generationProgress.uploadingImage".localized
         static let generating3DModel = "generationProgress.generating3DModel".localized
