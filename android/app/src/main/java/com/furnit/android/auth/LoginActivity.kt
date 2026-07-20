@@ -66,26 +66,35 @@ class LoginActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
 
-        val rootLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        // Vertically centered content that scrolls when the keyboard covers the fields —
+        // mirrors iOS LoginView's Spacer(minLength: xxl) top/bottom centering.
+        val scrollView = ScrollView(this).apply {
             setBackgroundColor(PaafektColors.background)
-            setPadding(dp(24), dp(24), dp(24), dp(24))
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+
+        val contentColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(32), dp(16), dp(32))
             // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
             // status/navigation bar insets so content clears the notification bar.
             WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
         }
 
+        // Premium Paafekt mark — centered above the sign-in card
         val logoView = ImageView(this).apply {
             setImageResource(R.drawable.paafekt_login_mark)
             adjustViewBounds = true
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = getString(R.string.app_name)
         }
-        rootLayout.addView(
+        contentColumn.addView(
             logoView,
             LinearLayout.LayoutParams(dp(96), dp(96)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(16)
+                bottomMargin = dp(12)
             }
         )
 
@@ -96,10 +105,10 @@ class LoginActivity : AppCompatActivity() {
             setTextColor(PaafektColors.textPrimary)
             gravity = Gravity.CENTER
         }
-        rootLayout.addView(appNameView, LinearLayout.LayoutParams(
+        contentColumn.addView(appNameView, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(4) })
+        ).apply { bottomMargin = dp(12) })
 
         val taglineView = TextView(this).apply {
             text = getString(R.string.app_tagline)
@@ -107,31 +116,30 @@ class LoginActivity : AppCompatActivity() {
             setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
         }
-        rootLayout.addView(taglineView, LinearLayout.LayoutParams(
+        contentColumn.addView(taglineView, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(24) })
 
-        // Sign-in card
+        // Sign-in card — iOS paafektCardSurface(): surface fill, control radius, hairline stroke
         val cardLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = PaafektDrawables.secondaryButton()
             setPadding(dp(24), dp(24), dp(24), dp(24))
-            elevation = 8f
         }
-        val nameLabel = TextView(this).apply {
-            text = getString(R.string.login_your_name)
-            textSize = 14f
-            setTextColor(PaafektColors.textPrimary)
-            setPadding(0, 0, 0, 8)
-        }
-        cardLayout.addView(nameLabel)
+
+        // Name field group (label + input + hint), iOS spacing 8
+        val nameLabel = makeFieldLabel(getString(R.string.login_your_name), R.drawable.ic_person)
+        cardLayout.addView(nameLabel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(8) })
 
         nameInput = EditText(this).apply {
             hint = getString(R.string.login_enter_name)
             inputType = InputType.TYPE_TEXT_VARIATION_PERSON_NAME or InputType.TYPE_TEXT_FLAG_CAP_WORDS
-            setBackgroundColor(PaafektColors.surfaceHi)
-            setPadding(24, 24, 24, 24)
+            background = PaafektDrawables.fieldSurface()
+            setPadding(dp(16), dp(16), dp(16), dp(16))
             textSize = 16f
             setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
             setHintTextColor(ColorStateList.valueOf(PaafektColors.textSecondary))
@@ -139,29 +147,25 @@ class LoginActivity : AppCompatActivity() {
         cardLayout.addView(nameInput, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 0, 0, 4) })
+        ).apply { bottomMargin = dp(8) })
 
         nameHint = TextView(this).apply {
             text = getString(R.string.login_name_hint)
             textSize = 12f
             setTextColor(PaafektColors.textSecondary)
-            setPadding(4, 0, 4, 0)
         }
         cardLayout.addView(nameHint, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 0, 0, 24) })
+        ).apply { bottomMargin = dp(20) })
 
-        // Phone number section
-        val phoneLabel = TextView(this).apply {
-            text = getString(R.string.login_phone_number)
-            textSize = 14f
-            setTextColor(PaafektColors.textPrimary)
-            setPadding(0, 0, 0, 8)
-        }
-        cardLayout.addView(phoneLabel)
+        // Phone field group (label + [country | number] row), iOS spacing 8
+        val phoneLabel = makeFieldLabel(getString(R.string.login_phone_number), R.drawable.ic_phone)
+        cardLayout.addView(phoneLabel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(8) })
 
-        // Country code + phone input row
         val phoneRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -170,21 +174,27 @@ class LoginActivity : AppCompatActivity() {
         countryButton = Button(this).apply {
             text = selectedCountry.shortDisplay
             textSize = 14f
+            isAllCaps = false
+            setTypeface(null, Typeface.NORMAL)
             setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
-            setBackgroundColor(PaafektColors.surfaceHi)
-            setPadding(16, 16, 16, 16)
+            background = PaafektDrawables.fieldSurface()
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+            stateListAnimator = null
+            elevation = 0f
+            compoundDrawablePadding = dp(4)
+            setLeadingOrTrailingIcon(R.drawable.ic_chevron_down, dp(14), PaafektColors.textPrimary, trailing = true)
             setOnClickListener { showCountryPicker() }
         }
         phoneRow.addView(countryButton, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 0, 8, 0) })
+        ).apply { setMargins(0, 0, dp(8), 0) })
 
         phoneInput = EditText(this).apply {
             hint = getString(R.string.login_phone_placeholder)
             inputType = InputType.TYPE_CLASS_PHONE
-            setBackgroundColor(PaafektColors.surfaceHi)
-            setPadding(24, 24, 24, 24)
+            background = PaafektDrawables.fieldSurface()
+            setPadding(dp(16), dp(16), dp(16), dp(16))
             textSize = 16f
             setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
             setHintTextColor(ColorStateList.valueOf(PaafektColors.textSecondary))
@@ -198,59 +208,75 @@ class LoginActivity : AppCompatActivity() {
         cardLayout.addView(phoneRow, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 0, 0, 24) })
+        ).apply { bottomMargin = dp(20) })
 
-        // Error text
+        // Error text (inline) — hidden until validation fails
         errorText = TextView(this).apply {
             textSize = 14f
             setTextColor(PaafektColors.danger)
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(0, 0, 0, 16)
         }
-        cardLayout.addView(errorText)
+        cardLayout.addView(errorText, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(12) })
 
-        // Send OTP button
+        // Send OTP button — primary control with a paperplane icon
         sendOtpButton = Button(this).apply {
             text = getString(R.string.login_send_code)
-            textSize = 16f
+            textSize = 17f
+            isAllCaps = false
             setTypeface(null, Typeface.BOLD)
             setTextColor(PaafektColors.accentText)
             background = PaafektDrawables.primaryButton()
-            setPadding(24, 24, 24, 24)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            stateListAnimator = null
+            elevation = 0f
+            compoundDrawablePadding = dp(8)
+            setLeadingOrTrailingIcon(R.drawable.ic_send, dp(18), PaafektColors.accentText, trailing = false)
             isEnabled = false
+            alpha = 0.5f
             setOnClickListener { sendOtp() }
         }
         cardLayout.addView(sendOtpButton, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+        ).apply { bottomMargin = dp(20) })
 
         // Progress bar (hidden by default)
         progressBar = ProgressBar(this).apply {
             visibility = View.GONE
-            setPadding(0, 16, 0, 0)
         }
         cardLayout.addView(progressBar, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            bottomMargin = dp(12)
+        })
 
-        // Terms text
+        // Terms hint below the button
         val termsText = TextView(this).apply {
             text = getString(R.string.login_terms_agree)
             textSize = 12f
             setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
-            setPadding(0, 24, 0, 0)
         }
-        cardLayout.addView(termsText)
-
-        rootLayout.addView(cardLayout, LinearLayout.LayoutParams(
+        cardLayout.addView(termsText, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
-        setContentView(rootLayout)
+
+        contentColumn.addView(cardLayout, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        scrollView.addView(contentColumn, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        setContentView(scrollView)
 
         // Add text watchers for validation
         val textWatcher = object : TextWatcher {
@@ -262,6 +288,30 @@ class LoginActivity : AppCompatActivity() {
         }
         nameInput.addTextChangedListener(textWatcher)
         phoneInput.addTextChangedListener(textWatcher)
+    }
+
+    /** Caption-style field label with a leading tinted icon — matches iOS `Label(..., systemImage:)`. */
+    private fun makeFieldLabel(text: String, iconRes: Int): TextView {
+        val density = resources.displayMetrics.density
+        return TextView(this).apply {
+            this.text = text
+            textSize = 12f
+            setTextColor(PaafektColors.textSecondary)
+            compoundDrawablePadding = (6 * density).toInt()
+            setLeadingOrTrailingIcon(iconRes, (14 * density).toInt(), PaafektColors.textSecondary, trailing = false)
+        }
+    }
+
+    /** Sets a fixed-size, tinted compound drawable at the start (or end) of a TextView. */
+    private fun TextView.setLeadingOrTrailingIcon(iconRes: Int, sizePx: Int, tint: Int, trailing: Boolean) {
+        val icon = androidx.core.content.ContextCompat.getDrawable(context, iconRes)?.mutate() ?: return
+        icon.setBounds(0, 0, sizePx, sizePx)
+        icon.setTint(tint)
+        if (trailing) {
+            setCompoundDrawables(null, null, icon, null)
+        } else {
+            setCompoundDrawables(icon, null, null, null)
+        }
     }
 
     private fun validateInputs() {

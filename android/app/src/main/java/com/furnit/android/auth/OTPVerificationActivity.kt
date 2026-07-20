@@ -50,6 +50,8 @@ class OTPVerificationActivity : AppCompatActivity() {
         const val EXTRA_USER_NAME = "user_name"
         private const val OTP_LENGTH = 6
         private const val RESEND_COOLDOWN_SECONDS = 30
+        private val OTP_BOX_FILL = android.graphics.Color.parseColor("#F2FFFFFF")
+        private val OTP_BOX_TEXT = android.graphics.Color.parseColor("#0E0F12")
     }
 
     private lateinit var authManager: AuthenticationManager
@@ -86,13 +88,13 @@ class OTPVerificationActivity : AppCompatActivity() {
     private fun dp(v: Float): Int = (v * resources.displayMetrics.density).toInt()
 
     private fun otpFieldBackground(hasFocus: Boolean): GradientDrawable {
+        // White digit boxes with black text — matches iOS OTPDigitField (Color.white 0.95,
+        // 10pt radius, accent focus ring).
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(12f).toFloat()
-            setColor(PaafektColors.surfaceHi)
-            val strokePx = if (hasFocus) dp(2f) else dp(1f)
-            val strokeColor = if (hasFocus) PaafektColors.accent else PaafektColors.hairline
-            setStroke(strokePx, strokeColor)
+            cornerRadius = dp(10f).toFloat()
+            setColor(OTP_BOX_FILL)
+            if (hasFocus) setStroke(dp(2f), PaafektColors.accent)
         }
     }
 
@@ -105,23 +107,32 @@ class OTPVerificationActivity : AppCompatActivity() {
     private fun setupUI() {
         val rootLayout = FrameLayout(this).apply {
             setBackgroundColor(PaafektColors.background)
+        }
+
+        // Vertically centered content that scrolls when the keyboard is up — mirrors
+        // iOS OTPVerificationView's spacer-based centering.
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+
+        val contentColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(16f), dp(32f), dp(16f), dp(32f))
             // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
-            // status/navigation bar insets so the back button and content clear them.
+            // status/navigation bar insets so content clears them.
             WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
         }
 
-        val scrollContent = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24f), dp(24f), dp(24f), dp(24f))
-        }
-
+        // Header — lock-shield mark, title, subtitle, phone (iOS VStack spacing 16)
         val headerIcon = ImageView(this).apply {
             setImageResource(R.drawable.ic_lock_shield)
             imageTintList = ColorStateList.valueOf(PaafektColors.accent)
             adjustViewBounds = true
             contentDescription = getString(R.string.otp_title)
         }
-        scrollContent.addView(
+        contentColumn.addView(
             headerIcon,
             LinearLayout.LayoutParams(dp(50f), dp(50f)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -131,15 +142,15 @@ class OTPVerificationActivity : AppCompatActivity() {
 
         val title = TextView(this).apply {
             text = getString(R.string.otp_title)
-            textSize = 24f
+            textSize = 30f
             setTypeface(null, Typeface.BOLD)
             setTextColor(PaafektColors.textPrimary)
             gravity = Gravity.CENTER
         }
-        scrollContent.addView(title, LinearLayout.LayoutParams(
+        contentColumn.addView(title, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = dp(8f) })
+        ).apply { bottomMargin = dp(16f) })
 
         val subtitle = TextView(this).apply {
             text = getString(R.string.otp_subtitle)
@@ -147,28 +158,28 @@ class OTPVerificationActivity : AppCompatActivity() {
             setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
         }
-        scrollContent.addView(subtitle, LinearLayout.LayoutParams(
+        contentColumn.addView(subtitle, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = dp(4f) })
+        ).apply { bottomMargin = dp(16f) })
 
         val phoneDisplay = TextView(this).apply {
             text = maskPhoneNumber(phoneNumber)
-            textSize = 16f
+            textSize = 17f
             setTypeface(null, Typeface.BOLD)
             setTextColor(PaafektColors.textPrimary)
             gravity = Gravity.CENTER
         }
-        scrollContent.addView(phoneDisplay, LinearLayout.LayoutParams(
+        contentColumn.addView(phoneDisplay, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = dp(24f) })
+        ).apply { bottomMargin = dp(30f) })
 
+        // Sign-in card — iOS paafektCardSurface(): surface fill, control radius, hairline
         val cardLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = PaafektDrawables.secondaryButton()
             setPadding(dp(24f), dp(24f), dp(24f), dp(24f))
-            elevation = 8f
         }
 
         val otpRow = LinearLayout(this).apply {
@@ -181,11 +192,13 @@ class OTPVerificationActivity : AppCompatActivity() {
             createOtpDigitInput(index)
         }
 
-        otpDigitInputs.forEach { input ->
+        // Equal-weight boxes so all six fit without clipping on narrow screens.
+        otpDigitInputs.forEachIndexed { index, input ->
             otpRow.addView(
                 input,
-                LinearLayout.LayoutParams(dp(48f), dp(56f)).apply {
-                    setMargins(dp(4f), 0, dp(4f), 0)
+                LinearLayout.LayoutParams(0, dp(54f), 1f).apply {
+                    val gap = dp(3f)
+                    setMargins(if (index == 0) 0 else gap, 0, if (index == OTP_LENGTH - 1) 0 else gap, 0)
                 },
             )
         }
@@ -203,17 +216,24 @@ class OTPVerificationActivity : AppCompatActivity() {
             setTextColor(PaafektColors.danger)
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(0, 0, 0, dp(16f))
         }
-        cardLayout.addView(errorText)
+        cardLayout.addView(errorText, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { bottomMargin = dp(12f) })
 
         verifyButton = Button(this).apply {
             text = getString(R.string.otp_verify)
-            textSize = 16f
+            textSize = 17f
+            isAllCaps = false
             setTypeface(null, Typeface.BOLD)
             setTextColor(PaafektColors.accentText)
             background = PaafektDrawables.primaryButton()
-            setPadding(dp(24f), dp(24f), dp(24f), dp(24f))
+            setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
+            stateListAnimator = null
+            elevation = 0f
+            compoundDrawablePadding = dp(8f)
+            setLeadingIcon(R.drawable.ic_check_shield, dp(18f), PaafektColors.accentText)
             isEnabled = false
             alpha = 0.5f
             setOnClickListener { verifyOtp() }
@@ -223,19 +243,21 @@ class OTPVerificationActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ),
+            ).apply { bottomMargin = dp(20f) },
         )
 
         progressBar = ProgressBar(this).apply {
             visibility = View.GONE
-            setPadding(0, dp(16f), 0, 0)
         }
         cardLayout.addView(
             progressBar,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.CENTER_HORIZONTAL },
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(12f)
+            },
         )
 
         timerText = TextView(this).apply {
@@ -243,40 +265,60 @@ class OTPVerificationActivity : AppCompatActivity() {
             textSize = 14f
             setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
-            setPadding(0, dp(24f), 0, 0)
         }
-        cardLayout.addView(timerText)
-
-        resendButton = TextView(this).apply {
-            text = getString(R.string.otp_resend)
-            textSize = 14f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(PaafektColors.accent)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8f), 0, 0)
-            visibility = View.GONE
-            setOnClickListener { resendOtp() }
-        }
-        cardLayout.addView(resendButton)
-
-        scrollContent.addView(cardLayout, LinearLayout.LayoutParams(
+        cardLayout.addView(timerText, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
 
+        resendButton = TextView(this).apply {
+            text = getString(R.string.otp_resend)
+            textSize = 14f
+            isAllCaps = false
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(PaafektColors.accent)
+            gravity = Gravity.CENTER
+            compoundDrawablePadding = dp(6f)
+            setLeadingIcon(R.drawable.ic_refresh, dp(16f), PaafektColors.accent)
+            visibility = View.GONE
+            setOnClickListener { resendOtp() }
+        }
+        cardLayout.addView(resendButton, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+
+        contentColumn.addView(cardLayout, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+
+        scroll.addView(contentColumn, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
         rootLayout.addView(
-            scrollContent,
+            scroll,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
         )
 
+        // Back button — rounded surfaceHi pill with a chevron (iOS overlay topLeading)
         val backButton = TextView(this).apply {
-            text = getString(R.string.otp_back)
+            text = getString(R.string.common_back)
             textSize = 16f
-            setTextColor(PaafektColors.accent)
-            setPadding(dp(16f), dp(16f), dp(16f), dp(16f))
+            setTextColor(PaafektColors.textPrimary)
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(20f).toFloat()
+                setColor(PaafektColors.surfaceHi)
+            }
+            setPadding(dp(16f), dp(8f), dp(16f), dp(8f))
+            compoundDrawablePadding = dp(4f)
+            setLeadingIcon(R.drawable.ic_chevron_left, dp(16f), PaafektColors.textPrimary)
             setOnClickListener { finish() }
         }
         rootLayout.addView(
@@ -284,11 +326,24 @@ class OTPVerificationActivity : AppCompatActivity() {
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.START or Gravity.TOP },
+            ).apply {
+                gravity = Gravity.START or Gravity.TOP
+                setMargins(dp(16f), dp(8f), 0, 0)
+            },
         )
+        // Keep the back pill clear of the status bar under edge-to-edge.
+        WindowInsetsUtil.applyTopInsetAsTopMargin(backButton)
 
         setContentView(rootLayout)
         refreshOtpBoxStyles()
+    }
+
+    /** Sets a fixed-size, tinted leading compound drawable on a TextView/Button. */
+    private fun TextView.setLeadingIcon(iconRes: Int, sizePx: Int, tint: Int) {
+        val icon = androidx.core.content.ContextCompat.getDrawable(context, iconRes)?.mutate() ?: return
+        icon.setBounds(0, 0, sizePx, sizePx)
+        icon.setTint(tint)
+        setCompoundDrawables(icon, null, null, null)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -317,7 +372,7 @@ class OTPVerificationActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(null, Typeface.BOLD)
             background = otpFieldBackground(false)
-            setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
+            setTextColor(ColorStateList.valueOf(OTP_BOX_TEXT))
             setHintTextColor(ColorStateList.valueOf(PaafektColors.textSecondary))
             highlightColor = PaafektColors.accent
             filters = arrayOf(InputFilter.LengthFilter(1))

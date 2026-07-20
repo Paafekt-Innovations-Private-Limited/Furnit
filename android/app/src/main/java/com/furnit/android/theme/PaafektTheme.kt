@@ -71,6 +71,13 @@ object PaafektDrawables {
         setStroke(1, PaafektColors.hairline)
     }
 
+    /** Rounded input/control fill — iOS `Theme.Palette.surfaceHi` + `Radius.control`. */
+    fun fieldSurface(): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = PaafektDimens.radiusControlDp
+        setColor(PaafektColors.surfaceHi)
+    }
+
     fun hintChip(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = 999f
