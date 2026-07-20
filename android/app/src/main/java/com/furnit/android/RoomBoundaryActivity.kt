@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.WindowInsetsUtil
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -245,8 +246,11 @@ class RoomBoundaryActivity : AppCompatActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#1A1A1A"))
-            setPadding(16, 48, 16, 16)
+            setPadding(16, 16, 16, 16)
             gravity = Gravity.CENTER_VERTICAL
+            // Edge-to-edge (targetSdk 35+) draws behind the status bar; extend the top
+            // bar's dark background up under it so its content clears the notification bar.
+            WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
 
             val backBtn = TextView(this@RoomBoundaryActivity).apply {
                 text = getString(R.string.boundary_back)

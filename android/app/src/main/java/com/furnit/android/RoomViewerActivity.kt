@@ -8,6 +8,7 @@ import android.graphics.Typeface
 import android.os.Bundle
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.utils.WindowInsetsUtil
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektHintViews
@@ -320,8 +321,12 @@ class RoomViewerActivity : AppCompatActivity() {
         rootLayout.addView(contentColumn)
 
         val topBar = FrameLayout(this).apply {
-            setPadding(dp(16), dp(48), dp(16), 0)
+            setPadding(dp(16), dp(8), dp(16), 0)
             elevation = 40f
+            // Edge-to-edge (targetSdk 35+) draws behind the status bar; add the real
+            // status bar inset so the overlaid controls clear the notification bar
+            // without shrinking the 3D viewer beneath.
+            WindowInsetsUtil.applyTopInsetAsPadding(this)
         }
 
         val backBtn = TextView(this).apply {

@@ -19,6 +19,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.FurnitureFitFrameUsability
+import com.furnit.android.utils.WindowInsetsUtil
 import com.furnit.android.utils.FurnitureFitThermalCadence
 import com.furnit.android.utils.LogUtil
 import android.view.*
@@ -205,8 +206,11 @@ class FurnitureFitFragment : Fragment() {
             text = getString(R.string.smartypants_initializing)
             setTextColor(0xFFFFFFFF.toInt())
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
-            setPadding(24, 48, 24, 24)
+            setPadding(24, 24, 24, 24)
             textSize = 14f
+            // Edge-to-edge (targetSdk 35+) draws behind the status bar; add the real
+            // status bar inset so the status text clears the notification bar.
+            WindowInsetsUtil.applyTopInsetAsPadding(this)
         }
 
         // Progress container (like iOS progressContainer)
@@ -248,9 +252,12 @@ class FurnitureFitFragment : Fragment() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
             )
             lp.gravity = Gravity.TOP or Gravity.START
-            lp.setMargins(PaafektSpace.lg(requireContext()), PaafektSpace.viewerTopInset(requireContext()), 0, 0)
+            lp.setMargins(PaafektSpace.lg(requireContext()), PaafektSpace.sm(requireContext()), 0, 0)
             layoutParams = lp
             contentDescription = getString(R.string.photo_room_back)
+            // Edge-to-edge (targetSdk 35+) draws behind the status bar; add the real
+            // status bar inset to the top margin so the button clears the notification bar.
+            WindowInsetsUtil.applyTopInsetAsTopMargin(this)
         }
 
         // Touch layer - passes all events to overlay for furniture manipulation

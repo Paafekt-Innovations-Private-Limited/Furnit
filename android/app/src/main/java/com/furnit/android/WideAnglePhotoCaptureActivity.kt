@@ -28,6 +28,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.WindowInsetsUtil
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -81,6 +82,9 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(dp(16), dp(12), dp(16), dp(12))
             setBackgroundColor(Color.parseColor("#99000000"))
+            // Edge-to-edge (targetSdk 35+) draws behind the status bar; add the real
+            // status bar inset so the hint clears the notification bar.
+            WindowInsetsUtil.applyTopInsetAsPadding(this)
         }
 
         zoomLabel = TextView(this).apply {
@@ -118,6 +122,8 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.parseColor("#99000000"))
             setPadding(dp(8), dp(12), dp(8), dp(20))
+            // Add the navigation bar inset so controls clear the gesture/nav bar.
+            WindowInsetsUtil.applyBottomInsetAsPadding(this)
             addView(
                 cancelButton,
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
@@ -155,7 +161,7 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
                     gravity = Gravity.TOP
-                    topMargin = dp(24)
+                    topMargin = dp(8)
                 },
             )
             addView(

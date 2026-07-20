@@ -24,6 +24,10 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import android.view.ViewGroup
 import android.view.Gravity
@@ -90,12 +94,14 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var firstRunCoachController: PaafektFirstRunCoachMarkController
     private var immersiveFitFab: LinearLayout? = null
     private var immersiveSaveFab: LinearLayout? = null
+    private var immersiveBackButton: View? = null
     private var immersivePersistentActions: PaafektViewerToolbar.PersistentPrimaryActionsHolder? = null
     private var heroFitAction: () -> Unit = {}
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveRestingChrome: FrameLayout
     private lateinit var summonedBottomChrome: View
     private var summonedToolbar: ImmersiveSummonedToolbarHolder? = null
+    private var systemBarInsets: Insets = Insets.NONE
     private var initialCameraPosition: io.github.sceneview.math.Position? = null
     private var initialCameraLookAt: io.github.sceneview.math.Position? = null
     private lateinit var immersiveTapDetector: GestureDetector
@@ -117,10 +123,9 @@ class ModelDetailActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Simple setup - let system handle insets normally
-        // Edge-to-edge was causing SceneView rendering issues
-        window.statusBarColor = Color.parseColor("#1C1C1E")
-        window.navigationBarColor = Color.BLACK
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
 
         setContentView(R.layout.activity_model_detail)
 
@@ -146,6 +151,7 @@ class ModelDetailActivity : AppCompatActivity() {
 
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
         installImmersiveViewerChrome()
+        installSystemBarInsets()
 
         previewBackCallback = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
@@ -319,6 +325,38 @@ class ModelDetailActivity : AppCompatActivity() {
         refreshImmersiveChromeVisibility(animate = false)
     }
 
+    /** SceneView fills the window; system-bar insets pad chrome overlays only. */
+    private fun installSystemBarInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(viewerRootLayout) { _, insets ->
+            applyChromeWindowInsets(insets.getInsets(WindowInsetsCompat.Type.systemBars()))
+            WindowInsetsCompat.CONSUMED
+        }
+        ViewCompat.requestApplyInsets(viewerRootLayout)
+    }
+
+    private fun applyChromeWindowInsets(bars: Insets) {
+        systemBarInsets = bars
+        immersiveBackButton?.layoutParams?.let { lp ->
+            if (lp is FrameLayout.LayoutParams) {
+                lp.topMargin = bars.top + PaafektSpace.md(this)
+                lp.marginStart = bars.left + PaafektSpace.lg(this)
+                immersiveBackButton?.layoutParams = lp
+            }
+        }
+        if (::summonedBottomChrome.isInitialized) {
+            summonedBottomChrome.setPadding(
+                PaafektSpace.lg(this),
+                summonedBottomChrome.paddingTop,
+                PaafektSpace.lg(this),
+                bars.bottom + PaafektSpace.lg(this),
+            )
+        }
+        PaafektViewerToolbar.updatePersistentPrimaryActionsInsets(
+            immersivePersistentActions,
+            bars.bottom,
+        )
+    }
+
     private fun createImmersiveRestingChrome(): FrameLayout {
         return FrameLayout(this).apply {
             isClickable = false
@@ -329,6 +367,9 @@ class ModelDetailActivity : AppCompatActivity() {
                 alpha = 0.55f
                 contentDescription = getString(R.string.photo_room_back)
             }
+            immersiveBackButton = back
+            val initialTop = systemBarInsets.top.takeIf { it > 0 }
+                ?: PaafektSpace.viewerTopInset(this@ModelDetailActivity)
             addView(
                 back,
                 FrameLayout.LayoutParams(
@@ -336,7 +377,7 @@ class ModelDetailActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
                     gravity = Gravity.START or Gravity.TOP
-                    topMargin = PaafektSpace.viewerTopInset(this@ModelDetailActivity)
+                    topMargin = initialTop + PaafektSpace.md(this@ModelDetailActivity)
                     marginStart = PaafektSpace.lg(this@ModelDetailActivity)
                 },
             )
@@ -476,11 +517,13 @@ class ModelDetailActivity : AppCompatActivity() {
         } else {
             getString(R.string.approximate_room_height, roomHeight)
         }
+        val topMarginDp = ((systemBarInsets.top + PaafektSpace.md(this)) /
+            resources.displayMetrics.density).toInt().coerceAtLeast(52)
         hintController.showText(
             this,
             R.drawable.ic_ruler,
             heightLabel,
-            topMarginDp = 52,
+            topMarginDp = topMarginDp,
         )
     }
 
@@ -791,9 +834,11 @@ class ModelDetailActivity : AppCompatActivity() {
     }
 
     private fun updateOrientationLabel() {
+        // Immersive chrome rebuilds bottomControlsContainer (removeAllViews), so these
+        // legacy labels may already be gone — orientation UI stays hidden either way.
+        val subtitleView = findViewById<TextView>(R.id.orientationSubtitle) ?: return
+        val titleView = findViewById<TextView>(R.id.orientationTitle) ?: return
         val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-        val subtitleView = findViewById<TextView>(R.id.orientationSubtitle)
-        val titleView = findViewById<TextView>(R.id.orientationTitle)
 
         if (isPortrait) {
             subtitleView.text = getString(R.string.orientation_held_vertically)

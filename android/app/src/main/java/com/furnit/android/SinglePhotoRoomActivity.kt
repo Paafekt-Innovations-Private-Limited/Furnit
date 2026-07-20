@@ -15,6 +15,7 @@ import android.provider.MediaStore
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.WindowInsetsUtil
 import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.View
@@ -203,6 +204,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
         rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(PaafektColors.background)
+        // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
+        // status/navigation bar insets so each mode's top content clears them.
+        WindowInsetsUtil.applySystemBarInsetsAsPadding(rootLayout)
 
         // Initial view - photo selection
         initialView = createInitialView()
@@ -277,7 +281,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(48, 80, 48, 48)
+            setPadding(48, 24, 48, 48)
 
             val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
                 text = getString(R.string.photo_room_back)

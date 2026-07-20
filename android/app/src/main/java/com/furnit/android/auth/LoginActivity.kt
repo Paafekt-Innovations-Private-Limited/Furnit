@@ -12,6 +12,7 @@ import android.text.TextWatcher
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.WindowInsetsUtil
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -68,7 +69,10 @@ class LoginActivity : AppCompatActivity() {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(PaafektColors.background)
-            setPadding(dp(24), dp(48), dp(24), dp(24))
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
+            // status/navigation bar insets so content clears the notification bar.
+            WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
         }
 
         val logoView = ImageView(this).apply {

@@ -31,6 +31,7 @@ import com.furnit.android.R
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.WindowInsetsUtil
 
 /**
  * OTP verification — 6-digit code.
@@ -104,11 +105,14 @@ class OTPVerificationActivity : AppCompatActivity() {
     private fun setupUI() {
         val rootLayout = FrameLayout(this).apply {
             setBackgroundColor(PaafektColors.background)
+            // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
+            // status/navigation bar insets so the back button and content clear them.
+            WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
         }
 
         val scrollContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24f), dp(48f), dp(24f), dp(24f))
+            setPadding(dp(24f), dp(24f), dp(24f), dp(24f))
         }
 
         val headerIcon = ImageView(this).apply {
@@ -272,7 +276,7 @@ class OTPVerificationActivity : AppCompatActivity() {
             text = getString(R.string.otp_back)
             textSize = 16f
             setTextColor(PaafektColors.accent)
-            setPadding(dp(16f), dp(48f), dp(16f), dp(16f))
+            setPadding(dp(16f), dp(16f), dp(16f), dp(16f))
             setOnClickListener { finish() }
         }
         rootLayout.addView(

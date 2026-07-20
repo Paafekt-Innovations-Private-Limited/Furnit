@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import com.furnit.android.ar.ArPhotoCaptureResult
 import com.furnit.android.ar.FurnitureFitArCameraController
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.WindowInsetsUtil
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -80,6 +81,9 @@ class ArDepthPhotoCaptureActivity : AppCompatActivity() {
             textSize = 16f
             setPadding(32, 32, 32, 32)
             setBackgroundColor(Color.parseColor("#66000000"))
+            // Edge-to-edge (targetSdk 35+) draws behind the status bar; add the real
+            // status bar inset so the hint text clears the notification bar.
+            WindowInsetsUtil.applyTopInsetAsPadding(this)
         }
         captureButton = Button(this).apply {
             text = getString(R.string.camera_capture)
@@ -98,6 +102,8 @@ class ArDepthPhotoCaptureActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(24, 16, 24, 40)
             setBackgroundColor(Color.parseColor("#66000000"))
+            // Add the navigation bar inset so the buttons clear the gesture/nav bar.
+            WindowInsetsUtil.applyBottomInsetAsPadding(this)
             addView(cancelButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(captureButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }

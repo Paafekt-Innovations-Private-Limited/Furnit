@@ -16,6 +16,7 @@ import androidx.annotation.DrawableRes
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 import com.furnit.android.R
+import com.furnit.android.utils.WindowInsetsUtil
 
 /** Shared list/settings screen chrome — Paafekt gold-on-dark tokens. */
 object PaafektScreenViews {
@@ -32,10 +33,14 @@ object PaafektScreenViews {
             orientation = LinearLayout.VERTICAL
             setPadding(
                 PaafektSpace.lg(context),
-                PaafektSpace.viewerTopInset(context),
+                PaafektSpace.lg(context),
                 PaafektSpace.lg(context),
                 PaafektSpace.xl(context),
             )
+            // Edge-to-edge (targetSdk 35+) draws content behind the system bars; add the
+            // real status/navigation bar insets so the top row clears the notification bar
+            // instead of relying on a fixed guess.
+            WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
         }
     }
 

@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.utils.WindowInsetsUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,6 +62,9 @@ class SettingsImageScanActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#F5F5F5"))
+            // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
+            // status/navigation bar insets so the top bar clears the notification bar.
+            WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
         }
 
         val topBar = LinearLayout(this).apply {

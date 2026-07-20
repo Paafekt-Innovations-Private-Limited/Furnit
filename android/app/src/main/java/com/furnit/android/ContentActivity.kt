@@ -11,6 +11,7 @@ import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import androidx.appcompat.app.AppCompatActivity
+import com.furnit.android.utils.WindowInsetsUtil
 import android.widget.LinearLayout
 import android.view.Gravity
 import android.widget.TextView
@@ -100,6 +101,11 @@ class ContentActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
         }
+
+        // Edge-to-edge is enforced on targetSdk 35+, so content draws behind the
+        // system bars. Offset the padding by the status/navigation bar insets so the
+        // top bar clears the phone's notification/charging indicators.
+        WindowInsetsUtil.applySystemBarInsetsAsPadding(layout)
 
         // Top bar with icons
         val topBar = LinearLayout(this).apply {
