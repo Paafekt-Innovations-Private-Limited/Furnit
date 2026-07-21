@@ -452,11 +452,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
                 val warningText = TextView(this@SinglePhotoRoomActivity).apply {
                     text = getString(R.string.photo_room_screenshot_warning)
-                    textSize = 17f
+                    textSize = 16f
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(PaafektColors.danger)
                     includeFontPadding = false
-                    maxLines = 3
+                    isSingleLine = false
                 }
                 addView(
                     warningText,

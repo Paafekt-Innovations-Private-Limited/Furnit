@@ -2343,13 +2343,20 @@ struct SinglePhotoRoomView: View {
                         .padding(.horizontal)
 
                         // Warning about screenshots
-                        HStack(spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.subheadline)
+                                .padding(.top, 2)
                             Text(L10n.PhotoRoom.screenshotWarning)
                                 .font(.subheadline)
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
                         }
                         .foregroundColor(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
                         .padding(.top, 12)
 
                         Spacer()
@@ -2386,7 +2393,7 @@ struct SinglePhotoRoomView: View {
             }
 
         }
-        .navigationTitle(L10n.PhotoRoom.title)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
