@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Auth/session state must not survive uninstall + reinstall. -->
+        <exclude
+            domain="sharedpref"
+            path="." />
         <exclude
             domain="file"
             path="rooms/" />
     </cloud-backup>
     <device-transfer>
+        <!-- Auth/session state must not survive device transfer either. -->
+        <exclude
+            domain="sharedpref"
+            path="." />
         <exclude
             domain="file"
             path="rooms/" />

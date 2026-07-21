@@ -1,5 +1,6 @@
 package com.furnit.android.utils
 
+import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat
@@ -55,6 +56,53 @@ object WindowInsetsUtil {
                 view.layoutParams = marginParams
             }
             windowInsets
+        }
+    }
+
+    /**
+     * For a scroll container on an edge-to-edge screen: pads by the system bar insets and,
+     * when the soft keyboard (IME) is open, extends the bottom padding to cover it and
+     * scrolls content into the remaining visible area. Attach to the ScrollView (not its
+     * inner column) so the scroll offset respects the reserved keyboard space.
+     * Requires the activity to use windowSoftInputMode="adjustResize".
+     *
+     * @param bringIntoViewWhenImeVisible optional view to keep above the keyboard (e.g. a
+     * primary action button below the focused field). Falls back to the focused view.
+     */
+    fun applyImeAwareInsetsAsPadding(
+        scrollView: View,
+        bringIntoViewWhenImeVisible: (() -> View?)? = null,
+    ) {
+        val basePaddingLeft = scrollView.paddingLeft
+        val basePaddingTop = scrollView.paddingTop
+        val basePaddingRight = scrollView.paddingRight
+        val basePaddingBottom = scrollView.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, windowInsets ->
+            val bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime())
+            view.setPadding(
+                basePaddingLeft + bars.left,
+                basePaddingTop + bars.top,
+                basePaddingRight + bars.right,
+                basePaddingBottom + maxOf(bars.bottom, ime.bottom)
+            )
+            if (ime.bottom > 0) {
+                val target = bringIntoViewWhenImeVisible?.invoke() ?: view.findFocus()
+                target?.let { bringViewAboveIme(it) }
+            }
+            windowInsets
+        }
+        ViewCompat.requestApplyInsets(scrollView)
+    }
+
+    /** Scrolls [target] (and a bit of space below it) into the visible area above the IME. */
+    fun bringViewAboveIme(target: View) {
+        target.post {
+            val extraBelow = (72 * target.resources.displayMetrics.density).toInt()
+            target.requestRectangleOnScreen(
+                Rect(0, 0, target.width, target.height + extraBelow),
+                true,
+            )
         }
     }
 

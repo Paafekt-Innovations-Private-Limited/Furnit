@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- Auth/session state must not survive uninstall + reinstall. -->
+    <exclude
+        domain="sharedpref"
+        path="." />
     <exclude
         domain="file"
         path="rooms/" />

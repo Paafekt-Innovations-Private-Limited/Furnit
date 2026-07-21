@@ -26,6 +26,8 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import com.furnit.android.ContentActivity
 import com.furnit.android.R
 import com.furnit.android.theme.PaafektColors
@@ -71,6 +73,10 @@ class OTPVerificationActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Handle insets ourselves so the keyboard (IME) inset is delivered to our
+        // listener under enforced edge-to-edge; otherwise the keypad overlaps the fields.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         authManager = AuthenticationManager.getInstance(this)
         phoneNumber = intent.getStringExtra(EXTRA_PHONE_NUMBER) ?: ""
         userName = intent.getStringExtra(EXTRA_USER_NAME) ?: ""
@@ -114,15 +120,14 @@ class OTPVerificationActivity : AppCompatActivity() {
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_NEVER
+            setPadding(0, dp(16f), 0, dp(24f))
+            clipToPadding = false
         }
 
         val contentColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(16f), dp(32f), dp(16f), dp(32f))
-            // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
-            // status/navigation bar insets so content clears them.
-            WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16f), dp(24f), dp(16f), dp(32f))
         }
 
         // Header — lock-shield mark, title, subtitle, phone (iOS VStack spacing 16)
@@ -293,10 +298,13 @@ class OTPVerificationActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
 
-        scroll.addView(contentColumn, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        ))
+        scroll.addView(
+            contentColumn,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.CENTER_VERTICAL },
+        )
         rootLayout.addView(
             scroll,
             FrameLayout.LayoutParams(
@@ -335,6 +343,9 @@ class OTPVerificationActivity : AppCompatActivity() {
         WindowInsetsUtil.applyTopInsetAsTopMargin(backButton)
 
         setContentView(rootLayout)
+        WindowInsetsUtil.applyImeAwareInsetsAsPadding(scroll) { verifyButton }
+        ViewCompat.requestApplyInsets(scroll)
+        ViewCompat.requestApplyInsets(backButton)
         refreshOtpBoxStyles()
     }
 

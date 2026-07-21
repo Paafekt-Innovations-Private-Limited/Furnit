@@ -21,6 +21,8 @@ import android.content.res.ColorStateList
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import com.furnit.android.ContentActivity
 import com.furnit.android.R
 
@@ -48,6 +50,10 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Handle insets ourselves so the keyboard (IME) inset is delivered to our
+        // listener under enforced edge-to-edge; otherwise the keypad overlaps the fields.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         authManager = AuthenticationManager.getInstance(this)
 
         // Initialize country code based on SIM/network/locale
@@ -66,21 +72,22 @@ class LoginActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
 
-        // Vertically centered content that scrolls when the keyboard covers the fields —
-        // mirrors iOS LoginView's Spacer(minLength: xxl) top/bottom centering.
+        // Scrolls when the keyboard covers the fields. System/IME insets are applied after
+        // setContentView so the title clears the status bar and the Send button stays above
+        // the keypad.
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(PaafektColors.background)
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_NEVER
+            // Base top padding; status-bar inset is added by WindowInsetsUtil.
+            setPadding(0, dp(16), 0, dp(24))
+            clipToPadding = false
         }
 
         val contentColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(32), dp(16), dp(32))
-            // Edge-to-edge (targetSdk 35+) draws behind the system bars; add the real
-            // status/navigation bar insets so content clears the notification bar.
-            WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16), dp(24), dp(16), dp(32))
         }
 
         // Premium Paafekt mark — centered above the sign-in card
@@ -272,11 +279,19 @@ class LoginActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
-        scrollView.addView(contentColumn, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
+        // WRAP_CONTENT so the form can scroll above the keyboard (MATCH_PARENT + center
+        // kept the Send button under the IME).
+        scrollView.addView(
+            contentColumn,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.CENTER_VERTICAL },
+        )
         setContentView(scrollView)
+
+        WindowInsetsUtil.applyImeAwareInsetsAsPadding(scrollView) { sendOtpButton }
+        ViewCompat.requestApplyInsets(scrollView)
 
         // Add text watchers for validation
         val textWatcher = object : TextWatcher {
@@ -288,6 +303,14 @@ class LoginActivity : AppCompatActivity() {
         }
         nameInput.addTextChangedListener(textWatcher)
         phoneInput.addTextChangedListener(textWatcher)
+
+        val bringSendButtonAboveKeyboard = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                WindowInsetsUtil.bringViewAboveIme(sendOtpButton)
+            }
+        }
+        nameInput.onFocusChangeListener = bringSendButtonAboveKeyboard
+        phoneInput.onFocusChangeListener = bringSendButtonAboveKeyboard
     }
 
     /** Caption-style field label with a leading tinted icon — matches iOS `Label(..., systemImage:)`. */
