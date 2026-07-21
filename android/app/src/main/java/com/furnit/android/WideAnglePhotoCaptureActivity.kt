@@ -6,14 +6,14 @@ import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.hardware.camera2.CameraCharacteristics
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ImageButton
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,7 +49,7 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var zoomLabel: TextView
     private lateinit var statusLabel: TextView
-    private lateinit var captureButton: ImageButton
+    private lateinit var captureButton: FrameLayout
     private var imageCapture: ImageCapture? = null
     private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var usingUltraWide = false
@@ -71,7 +71,7 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         previewView = PreviewView(this).apply {
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            implementationMode = PreviewView.ImplementationMode.PERFORMANCE
             scaleType = PreviewView.ScaleType.FILL_CENTER
         }
 
@@ -80,8 +80,9 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             textSize = 15f
             gravity = Gravity.CENTER
+            setTypeface(null, Typeface.BOLD)
             setPadding(dp(16), dp(12), dp(16), dp(12))
-            setBackgroundColor(Color.parseColor("#99000000"))
+            background = roundedRect(Color.parseColor("#73000000"), dp(8).toFloat())
             // Edge-to-edge (targetSdk 35+) draws behind the status bar; add the real
             // status bar inset so the hint clears the notification bar.
             WindowInsetsUtil.applyTopInsetAsPadding(this)
@@ -94,14 +95,12 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = roundedRect(Color.parseColor("#66000000"), dp(8).toFloat())
         }
 
         val gridOverlay = RuleOfThirdsGridView(this)
 
-        captureButton = ImageButton(this).apply {
-            setImageResource(android.R.drawable.radiobutton_on_background)
-            setBackgroundColor(Color.TRANSPARENT)
-            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+        captureButton = createShutterButton().apply {
             contentDescription = getString(R.string.camera_capture_wide_angle)
             setOnClickListener { capturePhoto() }
         }
@@ -109,32 +108,35 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
         val cancelButton = TextView(this).apply {
             text = getString(R.string.common_cancel)
             setTextColor(Color.WHITE)
-            textSize = 16f
-            setPadding(dp(20), dp(16), dp(20), dp(16))
+            textSize = 18f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(12), dp(20), dp(12))
             setOnClickListener {
                 setResult(RESULT_CANCELED)
                 finish()
             }
         }
 
-        val bottomBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#99000000"))
-            setPadding(dp(8), dp(12), dp(8), dp(20))
+        val bottomBar = FrameLayout(this).apply {
+            setPadding(dp(16), dp(8), dp(16), dp(28))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.TRANSPARENT, Color.parseColor("#8A000000")),
+            )
             // Add the navigation bar inset so controls clear the gesture/nav bar.
             WindowInsetsUtil.applyBottomInsetAsPadding(this)
             addView(
                 cancelButton,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.START or Gravity.CENTER_VERTICAL,
+                ),
             )
             addView(
                 captureButton,
-                LinearLayout.LayoutParams(dp(72), dp(72)).apply { gravity = Gravity.CENTER },
-            )
-            addView(
-                View(this@WideAnglePhotoCaptureActivity),
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                FrameLayout.LayoutParams(dp(88), dp(88), Gravity.CENTER),
             )
         }
 
@@ -157,11 +159,13 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
             addView(
                 statusLabel,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.CENTER_HORIZONTAL,
                 ).apply {
-                    gravity = Gravity.TOP
-                    topMargin = dp(8)
+                    topMargin = dp(12)
+                    marginStart = dp(16)
+                    marginEnd = dp(16)
                 },
             )
             addView(
@@ -218,12 +222,9 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
 
             try {
                 provider.unbindAll()
-                provider.bindToLifecycle(this, selector, preview, imageCapture)
-                zoomLabel.text = if (usingUltraWide) {
-                    getString(R.string.camera_zoom_ultra_wide)
-                } else {
-                    getString(R.string.camera_zoom_wide)
-                }
+                val camera = provider.bindToLifecycle(this, selector, preview, imageCapture)
+                applyWidestLogicalZoom(camera)
+                brightenPreviewIfSupported(camera)
                 LogUtil.d(TAG, "Camera bound ultraWide=$usingUltraWide")
             } catch (e: Exception) {
                 LogUtil.e(TAG, "bindToLifecycle failed", e)
@@ -267,6 +268,35 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
         } else {
             usingUltraWide = false
             CameraSelector.DEFAULT_BACK_CAMERA
+        }
+    }
+
+    private fun applyWidestLogicalZoom(camera: androidx.camera.core.Camera) {
+        val zoomState = camera.cameraInfo.zoomState.value
+        val minZoom = zoomState?.minZoomRatio ?: 1f
+        if (minZoom < 0.95f) {
+            camera.cameraControl.setZoomRatio(minZoom)
+            usingUltraWide = true
+            zoomLabel.text = getString(R.string.camera_zoom_ultra_wide)
+        } else {
+            usingUltraWide = usingUltraWide && minZoom <= 1f
+            zoomLabel.text = if (usingUltraWide) {
+                getString(R.string.camera_zoom_ultra_wide)
+            } else {
+                getString(R.string.camera_zoom_wide)
+            }
+        }
+        LogUtil.d(TAG, "Camera zoom min=$minZoom ultraWide=$usingUltraWide")
+    }
+
+    private fun brightenPreviewIfSupported(camera: androidx.camera.core.Camera) {
+        val exposure = camera.cameraInfo.exposureState
+        if (!exposure.isExposureCompensationSupported) return
+        val range = exposure.exposureCompensationRange
+        val target = minOf(range.upper, maxOf(0, range.upper / 3))
+        if (target > 0) {
+            camera.cameraControl.setExposureCompensationIndex(target)
+            LogUtil.d(TAG, "Exposure compensation set to $target in $range")
         }
     }
 
@@ -321,6 +351,59 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun createShutterButton(): FrameLayout {
+        val outerRing = View(this).apply {
+            background = ovalStroke(Color.WHITE, dp(4))
+        }
+        val innerCircle = View(this).apply {
+            background = ovalFill(Color.WHITE)
+        }
+        return FrameLayout(this).apply {
+            foreground = selectableItemBackgroundBorderless()
+            addView(
+                outerRing,
+                FrameLayout.LayoutParams(dp(78), dp(78), Gravity.CENTER),
+            )
+            addView(
+                innerCircle,
+                FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER),
+            )
+        }
+    }
+
+    private fun selectableItemBackgroundBorderless(): android.graphics.drawable.Drawable? {
+        val attrs = intArrayOf(android.R.attr.selectableItemBackgroundBorderless)
+        val typedArray = obtainStyledAttributes(attrs)
+        return try {
+            typedArray.getDrawable(0)
+        } finally {
+            typedArray.recycle()
+        }
+    }
+
+    private fun roundedRect(color: Int, radius: Float): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(color)
+        }
+    }
+
+    private fun ovalFill(color: Int): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+        }
+    }
+
+    private fun ovalStroke(color: Int, width: Int): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.TRANSPARENT)
+            setStroke(width, color)
+        }
+    }
 
     override fun onDestroy() {
         cameraExecutor.shutdown()
