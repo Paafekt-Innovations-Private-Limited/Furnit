@@ -281,13 +281,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(48, 24, 48, 48)
+            setPadding(dpToPx(24), dpToPx(24), dpToPx(24), dpToPx(32))
 
             val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
                 text = getString(R.string.photo_room_back)
                 textSize = 16f
                 setTextColor(PaafektColors.accent)
-                setPadding(0, 0, 0, 32)
+                setPadding(0, 0, 0, dpToPx(16))
                 setOnClickListener { onBackPressedDispatcher.onBackPressed() }
             }
             addView(backBtn, LinearLayout.LayoutParams(
@@ -301,6 +301,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(PaafektColors.textPrimary)
                 gravity = Gravity.CENTER
+                setPadding(0, dpToPx(20), 0, 0)
             }
             addView(title)
 
@@ -309,14 +310,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 textSize = 16f
                 setTextColor(PaafektColors.textSecondary)
                 gravity = Gravity.CENTER
-                setPadding(0, 16, 0, 32)
+                setPadding(0, dpToPx(12), 0, dpToPx(28))
             }
             addView(subtitle)
 
             val takePhotoBtn = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(48, 36, 48, 36)
+                setPadding(dpToPx(32), dpToPx(28), dpToPx(32), dpToPx(28))
                 background = PaafektDrawables.creationCardPrimary()
 
                 val icon = ImageView(this@SinglePhotoRoomActivity).apply {
@@ -324,7 +325,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     imageTintList = ColorStateList.valueOf(PaafektColors.accent)
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
                 }
-                addView(icon, LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)))
+                addView(icon, LinearLayout.LayoutParams(dpToPx(56), dpToPx(56)))
 
                 val btnText = TextView(this@SinglePhotoRoomActivity).apply {
                     text = getString(R.string.photo_room_take_photo)
@@ -332,7 +333,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(PaafektColors.textPrimary)
                     gravity = Gravity.CENTER
-                    setPadding(0, 16, 0, 0)
+                    setPadding(0, dpToPx(16), 0, 0)
                 }
                 addView(btnText)
 
@@ -341,7 +342,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     textSize = 14f
                     setTextColor(PaafektColors.textSecondary)
                     gravity = Gravity.CENTER
-                    setPadding(0, 8, 0, 0)
+                    setPadding(0, dpToPx(8), 0, 0)
                 }
                 addView(btnHint)
 
@@ -350,12 +351,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             addView(takePhotoBtn, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 24) })
+            ).apply { setMargins(0, 0, 0, dpToPx(20)) })
 
             val dividerRow = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(32, 0, 32, 0)
+                setPadding(dpToPx(32), 0, dpToPx(32), 0)
 
                 val leftLine = View(this@SinglePhotoRoomActivity).apply {
                     setBackgroundColor(PaafektColors.hairline)
@@ -378,12 +379,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             addView(dividerRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 24) })
+            ).apply { setMargins(0, 0, 0, dpToPx(20)) })
 
             val selectPhotoBtn = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(48, 36, 48, 36)
+                setPadding(dpToPx(32), dpToPx(28), dpToPx(32), dpToPx(28))
                 background = PaafektDrawables.creationCardSecondary()
 
                 val icon = ImageView(this@SinglePhotoRoomActivity).apply {
@@ -391,7 +392,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     imageTintList = ColorStateList.valueOf(PaafektColors.textPrimary)
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
                 }
-                addView(icon, LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)))
+                addView(icon, LinearLayout.LayoutParams(dpToPx(56), dpToPx(56)))
 
                 val btnText = TextView(this@SinglePhotoRoomActivity).apply {
                     text = getString(R.string.photo_room_select_photo)
@@ -399,7 +400,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(PaafektColors.textPrimary)
                     gravity = Gravity.CENTER
-                    setPadding(0, 16, 0, 0)
+                    setPadding(0, dpToPx(16), 0, 0)
                 }
                 addView(btnText)
 
@@ -408,7 +409,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     textSize = 14f
                     setTextColor(PaafektColors.textSecondary)
                     gravity = Gravity.CENTER
-                    setPadding(0, 8, 0, 0)
+                    setPadding(0, dpToPx(8), 0, 0)
                 }
                 addView(btnHint)
 
@@ -417,15 +418,60 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             addView(selectPhotoBtn, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 24) })
+            ).apply { setMargins(0, 0, 0, dpToPx(20)) })
 
-            val warning = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_screenshot_warning)
-                textSize = 14f
-                setTextColor(PaafektColors.danger)
-                gravity = Gravity.CENTER
+            val warning = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(12).toFloat()
+                    setColor(Color.argb(34, 0xC8, 0x5A, 0x54))
+                    setStroke(dpToPx(1), Color.argb(125, 0xC8, 0x5A, 0x54))
+                }
+
+                val warningIcon = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "!"
+                    textSize = 18f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(PaafektColors.danger)
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.argb(36, 0xC8, 0x5A, 0x54))
+                        setStroke(dpToPx(2), PaafektColors.danger)
+                    }
+                }
+                addView(
+                    warningIcon,
+                    LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply {
+                        marginEnd = dpToPx(12)
+                    },
+                )
+
+                val warningText = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = getString(R.string.photo_room_screenshot_warning)
+                    textSize = 17f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(PaafektColors.danger)
+                    includeFontPadding = false
+                    maxLines = 3
+                }
+                addView(
+                    warningText,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
             }
-            addView(warning)
+            addView(
+                warning,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    topMargin = dpToPx(4)
+                },
+            )
         }
     }
 

@@ -254,7 +254,7 @@
 
     <!-- Single Photo Room -->
     <string name="photo_room_title">Photo to 3D Room</string>
-    <string name="photo_room_create_title">Create a 3D Room</string>
+    <string name="photo_room_create_title">Photo to 3D Room</string>
     <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
     <string name="photo_room_tap_option">Tap an option below to continue</string>
     <string name="photo_room_ai_powered">AI-measured photo room</string>

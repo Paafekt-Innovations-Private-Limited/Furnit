@@ -326,7 +326,7 @@
 
 // MARK: - Single Photo Room
 "photoRoom.title" = "Photo to 3D Room";
-"photoRoom.createTitle" = "Create a 3D Room";
+"photoRoom.createTitle" = "Photo to 3D Room";
 "photoRoom.createSubtitle" = "Select a photo to get started";
 "photoRoom.quickPhoto" = "Quick Photo";
 "photoRoom.quickPhotoSubtitle" = "Single photo capture";

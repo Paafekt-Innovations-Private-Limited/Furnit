@@ -1,6 +1,24 @@
 # Model & Weights License Audit — Paafekt
 
-> **Not legal advice.** Primary-source research completed **2026-07-11**. Checked by: _[fill name]_. Lawyer review: _[date / firm / outcome]_.
+> **Not legal advice.** Primary-source research completed **2026-07-11** (GeoCalib weights update **2026-07-19**). Checked by: _[fill name]_. Lawyer review: _[date / firm / outcome]_.
+
+---
+
+## For a second reader (share this file)
+
+Path in repo: [`docs/MODEL_LICENSE_AUDIT.md`](MODEL_LICENSE_AUDIT.md).
+
+**What we discussed / audited:** Depth Anything V2 Metric Indoor **Small**, **Hypersim** (training data), **GeoCalib** pinhole weights, **RTMDet** + **COCO**, plus what we explicitly **do not ship** (Inria 3DGS, DA Base/Large/Giant, MiDaS, SparkJS, etc.).
+
+**Please double-check especially:**
+
+1. **Depth Anything Small** — Upstream says Small weights are **Apache-2.0**. Metric Indoor Small was fine-tuned on **Hypersim (CC-BY-SA 3.0)**. Does Share-Alike create a material risk for redistributing our exported CoreML/ONNX weights in a commercial app? (Our working view: open lawyer question / tail risk, not an automatic ship-blocker.)
+2. **GeoCalib** — Upstream README now states trained weights are **CC BY 4.0** (commercial OK with attribution); code **Apache-2.0**. Confirm that still matches the live [GeoCalib README](https://github.com/cvg/GeoCalib/blob/main/README.md) License section.
+3. **RTMDet + COCO** — Code Apache-2.0; COCO **annotations** CC-BY-4.0 (we attribute in-app); images are Flickr ToU / not owned by COCO Consortium. Any leftover concern for shipping pretrained detection weights?
+4. **Ship inventory** — Confirm we only ship Small / GeoCalib pinhole / RTMDet-ins-m paths listed below (not Base/Large/Giant, not Inria training code).
+5. **In-app Licenses** — Attribution present on iOS + Android Settings → Licenses for the above.
+
+**Not asking you to rewrite the whole BOM** — challenge the 🔴 / lawyer-priority items and flag anything we got wrong vs primary sources.
 
 ---
 
