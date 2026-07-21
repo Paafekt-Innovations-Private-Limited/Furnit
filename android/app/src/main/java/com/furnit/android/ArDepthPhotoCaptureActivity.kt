@@ -71,7 +71,7 @@ class ArDepthPhotoCaptureActivity : AppCompatActivity() {
         }
 
         previewImageView = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(Color.BLACK)
         }
 

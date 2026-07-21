@@ -118,10 +118,22 @@ class GlbGenerator {
         photoTexture: Bitmap,
     ): Boolean {
         return try {
-            LogUtil.d(TAG, "Generating flat photo GLB: ${outputFile.absolutePath}")
+            val imageAspect = if (photoTexture.height > 0) {
+                photoTexture.width.toFloat() / photoTexture.height.toFloat()
+            } else {
+                1f
+            }
+            val displayHeight = dimensions.height.coerceAtLeast(0.1f)
+            val displayWidth = (displayHeight * imageAspect).coerceAtLeast(0.1f)
+            LogUtil.d(
+                TAG,
+                "Generating flat photo GLB: ${outputFile.absolutePath} " +
+                    "photo=${photoTexture.width}x${photoTexture.height} " +
+                    "mesh=${displayWidth}x$displayHeight measured=${dimensions.width}x${dimensions.height}",
+            )
             val plane = createFrontPhotoPlaneGeometry(
-                width = dimensions.width,
-                height = dimensions.height,
+                width = displayWidth,
+                height = displayHeight,
             )
             writeGlb(
                 outputFile = outputFile,
