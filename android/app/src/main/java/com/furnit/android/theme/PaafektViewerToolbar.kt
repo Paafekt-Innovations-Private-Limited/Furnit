@@ -72,11 +72,8 @@ object PaafektViewerToolbar {
             )
             background = null
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(context, 7), dp(context, 7), dp(context, 7), dp(context, 7))
-            layoutParams = LinearLayout.LayoutParams(dp(context, 36), dp(context, 36)).apply {
-                marginStart = dp(context, 6)
-                marginEnd = dp(context, 6)
-            }
+            setPadding(dp(context, 5), dp(context, 7), dp(context, 5), dp(context, 7))
+            layoutParams = LinearLayout.LayoutParams(dp(context, 26), dp(context, 36))
             contentDescription?.let { this.contentDescription = it }
             setOnClickListener { onClick() }
         }
@@ -352,7 +349,7 @@ object PaafektImmersiveSummonedToolbar {
             setPadding(
                 PaafektSpace.lg(context),
                 0,
-                PaafektSpace.lg(context),
+                PaafektSpace.lg(context) + persistentActionsTrailingReserve(context),
                 PaafektSpace.lg(context),
             )
         }
@@ -448,7 +445,7 @@ object PaafektImmersiveSummonedToolbar {
 
         capsule.addView(
             View(context),
-            LinearLayout.LayoutParams(0, 0, 1f),
+            LinearLayout.LayoutParams(PaafektSpace.sm(context), 0),
         )
 
         val captureButton = PaafektHintViews.createCompactHeroAction(
@@ -467,4 +464,7 @@ object PaafektImmersiveSummonedToolbar {
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    private fun persistentActionsTrailingReserve(context: Context): Int =
+        dp(context, 88)
 }
