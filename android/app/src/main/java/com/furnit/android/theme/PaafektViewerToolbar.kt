@@ -344,19 +344,20 @@ object PaafektImmersiveSummonedToolbar {
         onArSizing: () -> Unit,
         onCapture: () -> Unit,
         includeFurnitureFitExtras: Boolean = true,
+        persistentActionCount: Int = 1,
     ): ImmersiveSummonedToolbarHolder {
         val outer = FrameLayout(context).apply {
             setPadding(
                 PaafektSpace.lg(context),
                 0,
-                PaafektSpace.lg(context) + persistentActionsTrailingReserve(context),
+                PaafektSpace.lg(context) + persistentActionsTrailingReserve(context, persistentActionCount),
                 PaafektSpace.lg(context),
             )
         }
 
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.START
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -374,7 +375,7 @@ object PaafektImmersiveSummonedToolbar {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
+                gravity = Gravity.START
             }
         }
 
@@ -465,6 +466,8 @@ object PaafektImmersiveSummonedToolbar {
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
-    private fun persistentActionsTrailingReserve(context: Context): Int =
-        dp(context, 88)
+    private fun persistentActionsTrailingReserve(context: Context, actionCount: Int): Int {
+        val count = actionCount.coerceAtLeast(1)
+        return dp(context, 88 * count) + PaafektSpace.sm(context) * (count - 1)
+    }
 }

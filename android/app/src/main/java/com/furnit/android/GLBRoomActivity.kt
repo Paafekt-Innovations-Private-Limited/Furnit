@@ -344,7 +344,7 @@ class GLBRoomActivity : AppCompatActivity() {
         val persistentActions = PaafektViewerToolbar.createPersistentPrimaryActionsRow(
             this@GLBRoomActivity,
             showFit = true,
-            showSave = false,
+            showSave = isPreviewMode,
             fitLabel = getString(R.string.room_viewer_immersive_fit_short),
             saveLabel = getString(R.string.common_save),
             onFit = {
@@ -849,6 +849,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 immersiveChrome.noteChromeInteraction()
                 takeScreenshot()
             },
+            persistentActionCount = if (isPreviewMode) 2 else 1,
         )
         summonedToolbar = holder
         return holder.root
