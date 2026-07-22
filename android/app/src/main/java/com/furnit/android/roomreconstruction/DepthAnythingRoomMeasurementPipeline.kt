@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
+import com.furnit.android.RoomDefaults
 import com.furnit.android.services.RoomMeasurementDisplay
 import com.furnit.android.utils.LogUtil
 import java.util.concurrent.Callable
@@ -24,6 +25,7 @@ data class RoomMeasurementPipelineResult(
 
 object DepthAnythingRoomMeasurementPipeline {
     private const val TAG = "RoomMeasurementPipeline"
+    private const val AUTHORITATIVE_HEIGHT_CONFIDENCE = 0.7f
 
     fun measure(
         context: Context,
@@ -169,10 +171,21 @@ object DepthAnythingRoomMeasurementPipeline {
                 cameraHeight = measurementCalibration.cameraHeightPriorMeters,
             )
 
-            val authoritativeHeight = if (roomHeightMeasured.confidence >= 0.5f) {
+            val authoritativeHeight = if (
+                roomHeightMeasured.confidence >= AUTHORITATIVE_HEIGHT_CONFIDENCE &&
+                !roomHeightMeasured.approximate
+            ) {
                 roomHeightMeasured.height
             } else {
-                roomExtentMeasured.height.coerceIn(2.0f, 3.6f)
+                RoomDefaults.DEFAULT_HEIGHT_M
+            }
+            val authoritativeHeightSource = if (
+                roomHeightMeasured.confidence >= AUTHORITATIVE_HEIGHT_CONFIDENCE &&
+                !roomHeightMeasured.approximate
+            ) {
+                "single_view"
+            } else {
+                "default_2.8m_low_confidence"
             }
             val authoritativeWidth = if (roomWidthMeasured.confidence >= 0.5f) {
                 roomWidthMeasured.width
@@ -197,6 +210,7 @@ object DepthAnythingRoomMeasurementPipeline {
                     "Hconf=${"%.2f".format(roomHeightMeasured.confidence)} " +
                     "Wconf=${"%.2f".format(roomWidthMeasured.confidence)} " +
                     "extentConf=${"%.2f".format(roomExtentMeasured.confidence)} " +
+                    "heightSource=$authoritativeHeightSource " +
                     "scale=${"%.4f".format(measurementCalibration.depthScale)} " +
                     "W=${measured.width} H=${measured.height} D=${measured.depth} meshW=$meshWidth",
             )

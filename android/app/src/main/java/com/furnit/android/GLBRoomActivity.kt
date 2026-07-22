@@ -174,6 +174,9 @@ class GLBRoomActivity : AppCompatActivity() {
     private var roomWidth: Float = 4.0f
     private var roomHeight: Float = 3.0f
     private var roomDepth: Float = 4.5f
+    private var hasRoomWidthSignal: Boolean = false
+    private var hasRoomHeightSignal: Boolean = false
+    private var hasRoomDepthSignal: Boolean = false
     private var isFlatPhotoRoomMesh: Boolean = false
     private var hasCalculatedRoomMeasurements: Boolean = false
     private var roomDimsApproach: String? = null
@@ -212,6 +215,9 @@ class GLBRoomActivity : AppCompatActivity() {
         roomName = intent.getStringExtra(EXTRA_ROOM_NAME) ?: "3D Room"
         roomId = intent.getStringExtra(EXTRA_ROOM_ID)
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
+        hasRoomWidthSignal = intent.hasExtra(EXTRA_ROOM_WIDTH)
+        hasRoomHeightSignal = intent.hasExtra(EXTRA_ROOM_HEIGHT)
+        hasRoomDepthSignal = intent.hasExtra(EXTRA_ROOM_DEPTH)
         roomWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, RoomDefaults.widthMeters(this))
         roomHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, RoomDefaults.heightMeters(this))
         roomDepth = intent.getFloatExtra(EXTRA_ROOM_DEPTH, RoomDefaults.depthMeters(this))
@@ -579,14 +585,14 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun restingMeasurementPillText(): String {
         val text = RoomMeasurementDisplay.restingPillText(
-            width = roomWidth,
-            height = roomHeight,
-            depth = roomDepth,
+            width = roomWidth.takeIf { hasRoomWidthSignal } ?: 0f,
+            height = roomHeight.takeIf { hasRoomHeightSignal } ?: 0f,
+            depth = roomDepth.takeIf { hasRoomDepthSignal } ?: 0f,
             emphasizeHeight = isFlatPhotoRoomMesh,
         ) { heightMeters ->
             getString(R.string.approximate_room_height, heightMeters)
         }
-        return text ?: getString(R.string.approximate_room_height, roomHeight)
+        return text ?: roomName.takeIf { it.isNotBlank() } ?: "3D Room"
     }
 
     private fun refreshMeasurementPill() {
@@ -596,9 +602,18 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun loadRoomMetadataFromFolder() {
         val folder = glbPath?.let { File(it).parentFile } ?: return
         val snapshot = RoomFolderMetadata.readFromFolder(folder) ?: return
-        snapshot.roomWidth?.let { roomWidth = it }
-        snapshot.roomHeight?.let { roomHeight = it }
-        snapshot.roomDepth?.let { roomDepth = it }
+        snapshot.roomWidth?.takeIf { it > 0.05f && it.isFinite() }?.let {
+            roomWidth = it
+            hasRoomWidthSignal = true
+        }
+        snapshot.roomHeight?.takeIf { it > 0.05f && it.isFinite() }?.let {
+            roomHeight = it
+            hasRoomHeightSignal = true
+        }
+        snapshot.roomDepth?.takeIf { it > 0.05f && it.isFinite() }?.let {
+            roomDepth = it
+            hasRoomDepthSignal = true
+        }
         roomDimsApproach = snapshot.roomDimsApproach
         isFlatPhotoRoomMesh = snapshot.type == "photo" ||
             snapshot.roomDimsApproach == "depth_anything_metric" ||
@@ -647,6 +662,9 @@ class GLBRoomActivity : AppCompatActivity() {
         roomWidth = measured.width
         roomHeight = measured.height
         roomDepth = measured.depth
+        hasRoomWidthSignal = true
+        hasRoomHeightSignal = true
+        hasRoomDepthSignal = true
         hasCalculatedRoomMeasurements = measured.measured
         roomDimsApproach = measured.source
         isFlatPhotoRoomMesh = true
@@ -773,10 +791,17 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun showRoomDimensionsHint() {
         if (isPreviewMode) return
         val showHint = {
-            val heightLabel = if (isFlatPhotoRoom()) {
+            val heightLabel = if (
+                isFlatPhotoRoom() &&
+                hasRoomWidthSignal &&
+                hasRoomHeightSignal &&
+                hasRoomDepthSignal
+            ) {
                 getString(R.string.room_dimensions_whd_near_accurate, roomWidth, roomHeight, roomDepth)
-            } else {
+            } else if (hasRoomHeightSignal) {
                 getString(R.string.approximate_room_height, roomHeight)
+            } else {
+                roomName.takeIf { it.isNotBlank() } ?: "3D Room"
             }
             hintController.showText(
                 this,
@@ -1323,7 +1348,18 @@ class GLBRoomActivity : AppCompatActivity() {
             }
             return
         }
-        val roomDimensions = RoomDimensions(roomWidth, roomHeight, roomDepth)
+        val roomDimensions = if (
+            hasRoomWidthSignal &&
+            hasRoomHeightSignal &&
+            hasRoomDepthSignal &&
+            roomWidth > 0.05f &&
+            roomHeight > 0.05f &&
+            roomDepth > 0.05f
+        ) {
+            RoomDimensions(roomWidth, roomHeight, roomDepth)
+        } else {
+            null
+        }
         val hasSingleFurnitureSelection =
             !inlineBrainFullVideoEnabled || inlineBrainSelectedPins.size == 1
         val evaluatedWidthMeters = inlineBrainFurnitureWidthMeters.takeIf {

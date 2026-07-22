@@ -447,6 +447,9 @@
         <item quantity="other">%d rooms</item>
     </plurals>
     <string name="home_3d_room_model">3D Room Model</string>
+    <string name="home_ai_based_3d_room">AI Based 3D Room</string>
+    <string name="home_manual_based_3d_room">Manual Based 3D Room</string>
+    <string name="home_room_model">Room Model</string>
     <string name="home_opening">Opening %s…</string>
     <string name="home_failed_delete">Failed to delete: %s</string>
 

@@ -46,7 +46,7 @@ class ContentActivity : AppCompatActivity() {
     private val secondaryTextColor = PaafektColors.textSecondary
     private val accentGreen = PaafektColors.accent
     private val accentPurple = PaafektColors.accent
-    private val dividerColor = PaafektColors.surfaceHi
+    private val dividerColor = PaafektColors.hairline
 
     companion object {
         private const val MAX_SAVED_ROOMS = 20
@@ -99,7 +99,7 @@ class ContentActivity : AppCompatActivity() {
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
+            setPadding(0, dpToPx(12), 0, dpToPx(16))
         }
 
         // Edge-to-edge is enforced on targetSdk 35+, so content draws behind the
@@ -111,7 +111,7 @@ class ContentActivity : AppCompatActivity() {
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dpToPx(8), 0, dpToPx(16))
+            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(10))
         }
 
         // Create Room entry (left): matches the iOS "Photo → 3D" toolbar action.
@@ -120,11 +120,11 @@ class ContentActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setOnClickListener { launchRoomCreatorIfAllowed() }
         }
-        val createRoomIcon = createIconButton("\uD83D\uDDBC") // Image icon
+        val createRoomIcon = createIconButton(R.drawable.ic_camera)
         createRoomEntry.addView(createRoomIcon)
         val createRoomLabel = TextView(this).apply {
             text = getString(R.string.home_create_room_toolbar_label)
-            textSize = 14f
+            textSize = 12f
             setTextColor(primaryTextColor)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(dpToPx(8), 0, 0, 0)
@@ -139,14 +139,14 @@ class ContentActivity : AppCompatActivity() {
         topBar.addView(spacer)
 
         // Help icon button - opens FAQ/Help Activity
-        val helpIcon = createIconButton("?")
+        val helpIcon = createIconButton(R.drawable.ic_help)
         helpIcon.setOnClickListener {
             startActivity(Intent(this@ContentActivity, HelpActivity::class.java))
         }
         topBar.addView(helpIcon)
 
         // Settings icon button
-        val settingsIcon = createIconButton("\u2699") // Gear icon
+        val settingsIcon = createTextIconButton("\u2699") // Gear icon
         settingsIcon.setOnClickListener {
             startActivity(Intent(this@ContentActivity, SettingsActivity::class.java))
         }
@@ -162,7 +162,7 @@ class ContentActivity : AppCompatActivity() {
             textSize = 28f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(primaryTextColor)
-            setPadding(0, 0, 0, dpToPx(16))
+            setPadding(dpToPx(16), 0, dpToPx(16), dpToPx(8))
         }
         layout.addView(screenTitle)
         layout.addView(
@@ -170,7 +170,7 @@ class ContentActivity : AppCompatActivity() {
                 text = getString(R.string.home_rooms_subtitle)
                 textSize = 14f
                 setTextColor(secondaryTextColor)
-                setPadding(0, 0, 0, dpToPx(16))
+                setPadding(dpToPx(16), 0, dpToPx(16), dpToPx(8))
             },
         )
 
@@ -178,7 +178,8 @@ class ContentActivity : AppCompatActivity() {
         val statsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dpToPx(8))
+            setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14))
+            setBackgroundColor(cardBackgroundColor)
         }
 
         statsText = TextView(this).apply {
@@ -209,15 +210,12 @@ class ContentActivity : AppCompatActivity() {
 
         val storageLocation = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
-            background = PaafektDrawables.secondaryButton()
+            setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+            setBackgroundColor(cardBackgroundColor)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                topMargin = dpToPx(8)
-                bottomMargin = dpToPx(8)
-            }
+            )
         }
         storageLocation.addView(
             TextView(this).apply {
@@ -249,19 +247,13 @@ class ContentActivity : AppCompatActivity() {
         val hintRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dpToPx(8), 0, dpToPx(16))
+            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
+            setBackgroundColor(backgroundColor)
         }
-
-        val bulbIcon = TextView(this).apply {
-            text = "\uD83D\uDCA1" // Lightbulb emoji
-            textSize = 14f
-            setPadding(0, 0, dpToPx(8), 0)
-        }
-        hintRow.addView(bulbIcon)
 
         val hintText = TextView(this).apply {
             text = getString(R.string.home_long_press_hint)
-            textSize = 14f
+            textSize = 12f
             setTextColor(secondaryTextColor)
         }
         hintRow.addView(hintText)
@@ -284,12 +276,11 @@ class ContentActivity : AppCompatActivity() {
         refreshRoomsList()
     }
 
-    private fun createIconButton(icon: String): TextView {
-        return TextView(this).apply {
-            text = icon
-            textSize = 20f
-            setTextColor(primaryTextColor)
-            gravity = Gravity.CENTER
+    private fun createIconButton(iconRes: Int): ImageView {
+        return ImageView(this).apply {
+            setImageResource(iconRes)
+            setColorFilter(primaryTextColor)
+            scaleType = ImageView.ScaleType.CENTER
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dpToPx(12).toFloat()
@@ -301,6 +292,21 @@ class ContentActivity : AppCompatActivity() {
         }
     }
 
+    private fun createTextIconButton(icon: String): TextView {
+        return TextView(this).apply {
+            text = icon
+            textSize = 20f
+            setTextColor(primaryTextColor)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(12).toFloat()
+                setColor(cardBackgroundColor)
+            }
+            layoutParams = LinearLayout.LayoutParams(dpToPx(44), dpToPx(44))
+        }
+    }
+
     private fun createDivider(): View {
         return View(this).apply {
             setBackgroundColor(dividerColor)
@@ -308,6 +314,25 @@ class ContentActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dpToPx(1)
             )
+        }
+    }
+
+    private fun fileTypeTag(model: Model): String {
+        return when {
+            model.assetPath.endsWith(".ply", ignoreCase = true) -> "PLY"
+            model.assetPath.endsWith(".meshroom", ignoreCase = true) -> "MESHROOM"
+            model.assetPath.endsWith(".glb", ignoreCase = true) -> "GLB"
+            model.assetPath.endsWith(".usdz", ignoreCase = true) -> "USDZ"
+            model.isUserCreated -> "GLB"
+            else -> "USDZ"
+        }
+    }
+
+    private fun roomCreationKindSubtitle(model: Model): String {
+        return when (fileTypeTag(model)) {
+            "PLY" -> getString(R.string.home_ai_based_3d_room)
+            "MESHROOM", "GLB" -> getString(R.string.home_manual_based_3d_room)
+            else -> getString(R.string.home_room_model)
         }
     }
 
@@ -402,7 +427,6 @@ class ContentActivity : AppCompatActivity() {
             )
             roomsContainer.addView(emptyState)
         } else {
-            // Room cards
             for (model in models) {
                 val card = createRoomCard(model)
                 roomsContainer.addView(card)
@@ -415,7 +439,7 @@ class ContentActivity : AppCompatActivity() {
         val card = LinearLayout(this)
         card.orientation = LinearLayout.HORIZONTAL
         card.setBackgroundColor(backgroundColor)
-        card.setPadding(0, dpToPx(12), 0, dpToPx(12))
+        card.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
         card.gravity = Gravity.CENTER_VERTICAL
 
         val params = LinearLayout.LayoutParams(
@@ -424,29 +448,21 @@ class ContentActivity : AppCompatActivity() {
         )
         card.layoutParams = params
 
-        // Icon (purple grid for 3D Room, green box for 3D Model)
         val iconContainer = LinearLayout(this).apply {
             gravity = Gravity.CENTER
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpToPx(8).toFloat()
-                setColor(if (model.isUserCreated) cardBackgroundColor else Color.parseColor("#1A3D1A"))
+                cornerRadius = dpToPx(12).toFloat()
+                setColor(PaafektColors.surfaceHi)
             }
             background = bg
-            val iconParams = LinearLayout.LayoutParams(dpToPx(44), dpToPx(44))
+            val iconParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40))
             iconParams.setMargins(0, 0, dpToPx(12), 0)
             layoutParams = iconParams
         }
 
         if (model.isUserCreated) {
             val isManualRoom = model.assetPath.endsWith(".glb", ignoreCase = true)
-            (iconContainer.background as? GradientDrawable)?.setColor(
-                when {
-                    isManualRoom -> Color.parseColor("#4A3318")
-                    else -> cardBackgroundColor
-                },
-            )
-
             val userRoomIcon = ImageView(this).apply {
                 setImageResource(
                     when {
@@ -454,16 +470,16 @@ class ContentActivity : AppCompatActivity() {
                         else -> R.drawable.ic_grid_3x3
                     },
                 )
-                val iconSize = dpToPx(28)
+                setColorFilter(primaryTextColor)
+                val iconSize = dpToPx(22)
                 layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
             }
             iconContainer.addView(userRoomIcon)
         } else {
-            // Green 3D box icon for bundled models
             val boxIcon = TextView(this).apply {
-                text = "\uD83D\uDCE6" // Box emoji
+                text = "\u25A3"
                 textSize = 20f
-                setTextColor(accentGreen)
+                setTextColor(primaryTextColor)
                 gravity = Gravity.CENTER
             }
             iconContainer.addView(boxIcon)
@@ -485,37 +501,43 @@ class ContentActivity : AppCompatActivity() {
 
         // Type subtitle
         val typeText = TextView(this)
-        typeText.text = getString(R.string.home_3d_room_model)
-        typeText.textSize = 13f
+        typeText.text = roomCreationKindSubtitle(model)
+        typeText.textSize = 12f
         typeText.setTextColor(secondaryTextColor)
-        typeText.setPadding(0, dpToPx(2), 0, 0)
+        typeText.setPadding(0, dpToPx(4), 0, 0)
+        typeText.maxLines = 1
         textContainer.addView(typeText)
 
-        // Details row (size and orientation)
-        val detailsText = TextView(this)
-        val fileSize = getFileSize(model)
-        val orientation = if (model.isUserCreated) {
-            val orient = if (model.photoOrientation == "landscape") "Landscape" else "Portrait"
-            "$orient - held ${if (model.photoOrientation == "landscape") "horizontally" else "vertically"}"
-        } else "3D Model"
-        // Show actual dimensions if available
-        val dimensionStr = if (model.roomHeight != null && model.roomHeight > 0) {
-            getString(R.string.approximate_room_height, model.roomHeight)
-        } else {
-            "3D Room"
+        val detailsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(4), 0, 0)
         }
-        detailsText.text = "$dimensionStr  •  $fileSize  •  $orientation"
-        detailsText.textSize = 13f
-        detailsText.setTextColor(secondaryTextColor)
-        detailsText.setPadding(0, dpToPx(2), 0, 0)
-        textContainer.addView(detailsText)
+        val fileTypeText = TextView(this).apply {
+            text = fileTypeTag(model)
+            textSize = 11f
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setTextColor(secondaryTextColor)
+        }
+        detailsRow.addView(fileTypeText)
+        val fileSize = getFileSize(model)
+        if (fileSize != "\u2014") {
+            detailsRow.addView(
+                TextView(this).apply {
+                    text = fileSize
+                    textSize = 12f
+                    setTextColor(secondaryTextColor)
+                    setPadding(dpToPx(8), 0, 0, 0)
+                },
+            )
+        }
+        textContainer.addView(detailsRow)
 
         card.addView(textContainer)
 
-        // Double chevron
         val chevron = TextView(this)
-        chevron.text = "〉〉"
-        chevron.textSize = 16f
+        chevron.text = "\u203A"
+        chevron.textSize = 20f
         chevron.setTextColor(secondaryTextColor)
         chevron.setPadding(dpToPx(8), 0, 0, 0)
         card.addView(chevron)
