@@ -244,6 +244,12 @@
     <!-- Room Boundary Detection -->
     <string name="boundary_adjust">Adjust Boundaries</string>
     <string name="boundary_drag_handles">Drag handles to adjust boundaries</string>
+    <string name="boundary_floor">Floor</string>
+    <string name="boundary_ceiling">Ceiling</string>
+    <string name="boundary_walls">Walls</string>
+    <string name="boundary_vanish">Vanish</string>
+    <string name="orientation_held_vertically_portrait">Held vertically - Portrait</string>
+    <string name="orientation_held_horizontally_landscape">Held horizontally - Landscape</string>
 
     <!-- Model Viewer -->
 

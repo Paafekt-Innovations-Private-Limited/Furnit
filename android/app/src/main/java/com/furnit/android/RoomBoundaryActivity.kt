@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.*
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -17,6 +18,9 @@ import androidx.appcompat.app.AppCompatActivity
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SinglePhotoRoomReconstructor
+import com.furnit.android.theme.PaafektBuildingRoomOverlay
+import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDrawables
 import java.io.File
 import java.io.InputStream
 import kotlin.math.abs
@@ -47,7 +51,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
     private lateinit var boundaryView: BoundaryOverlayView
     private lateinit var imageView: ImageView
     private lateinit var rootLayout: FrameLayout
-    private var progressOverlay: View? = null
+    private var progressOverlay: PaafektBuildingRoomOverlay? = null
 
     // Boundary values (percentages 0-1)
     private var structure = RoomStructure()
@@ -105,6 +109,10 @@ class RoomBoundaryActivity : AppCompatActivity() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
     private fun loadImage(uri: Uri) {
         try {
             val inputStream: InputStream? = contentResolver.openInputStream(uri)
@@ -119,7 +127,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
     private fun setupUI() {
         rootLayout = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(PaafektColors.background)
         }
 
         if (isLandscape) {
@@ -181,22 +189,27 @@ class RoomBoundaryActivity : AppCompatActivity() {
         // Horizontal bottom overlay bar with controls
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#CC2A2A2A"))
+            background = PaafektDrawables.toolbarCapsule()
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(24, 12, 24, 12)
+            setPadding(dpToPx(16), dpToPx(10), dpToPx(16), dpToPx(10))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
-            )
+            ).apply {
+                leftMargin = dpToPx(16)
+                rightMargin = dpToPx(16)
+                bottomMargin = dpToPx(16)
+            }
         }
 
         // Back button
         val backBtn = TextView(this).apply {
-            text = getString(R.string.boundary_back)
+            text = getString(R.string.common_back)
             textSize = 14f
-            setTextColor(Color.parseColor("#007AFF"))
-            setPadding(0, 0, 24, 0)
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(PaafektColors.textPrimary)
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
             setOnClickListener { finish() }
         }
         bottomBar.addView(backBtn)
@@ -206,14 +219,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
         bottomBar.addView(legendLayout, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         // Reset button
-        val resetBtn = Button(this).apply {
-            text = getString(R.string.common_reset)
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#555555"))
-            setPadding(20, 8, 20, 8)
-            minimumHeight = 0
-            minHeight = 0
+        val resetBtn = createControlButton(getString(R.string.common_reset), prominent = false).apply {
             setOnClickListener {
                 structure.reset()
                 boundaryView.updateStructure(structure)
@@ -225,14 +231,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
         ).apply { setMargins(8, 0, 8, 0) })
 
         // Done button
-        val doneBtn = Button(this).apply {
-            text = getString(R.string.common_done)
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#4CAF50"))
-            setPadding(28, 8, 28, 8)
-            minimumHeight = 0
-            minHeight = 0
+        val doneBtn = createControlButton(getString(R.string.common_done), prominent = true).apply {
             setOnClickListener {
                 onDonePressed()
             }
@@ -245,17 +244,17 @@ class RoomBoundaryActivity : AppCompatActivity() {
     private fun createTopBar(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#1A1A1A"))
-            setPadding(16, 16, 16, 16)
+            setBackgroundColor(PaafektColors.surface)
+            setPadding(dpToPx(16), dpToPx(10), dpToPx(16), dpToPx(10))
             gravity = Gravity.CENTER_VERTICAL
             // Edge-to-edge (targetSdk 35+) draws behind the status bar; extend the top
             // bar's dark background up under it so its content clears the notification bar.
             WindowInsetsUtil.applySystemBarInsetsAsPadding(this)
 
             val backBtn = TextView(this@RoomBoundaryActivity).apply {
-                text = getString(R.string.boundary_back)
+                text = getString(R.string.common_back)
                 textSize = 16f
-                setTextColor(Color.parseColor("#007AFF"))
+                setTextColor(PaafektColors.textPrimary)
                 setOnClickListener { finish() }
             }
             addView(backBtn)
@@ -263,7 +262,8 @@ class RoomBoundaryActivity : AppCompatActivity() {
             val title = TextView(this@RoomBoundaryActivity).apply {
                 text = getString(R.string.boundary_adjust)
                 textSize = 18f
-                setTextColor(Color.WHITE)
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(PaafektColors.textPrimary)
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
@@ -271,9 +271,12 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
             // Orientation indicator
             val orientationLabel = TextView(this@RoomBoundaryActivity).apply {
-                text = if (isLandscape) "\uD83D\uDCF1↔ Landscape" else "\uD83D\uDCF1↕ Portrait"
+                text = if (isLandscape) getString(R.string.orientation_landscape) else getString(R.string.orientation_portrait)
                 textSize = 12f
-                setTextColor(Color.GRAY)
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(PaafektColors.textPrimary)
+                background = PaafektDrawables.hintChip()
+                setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
             }
             addView(orientationLabel)
         }
@@ -313,33 +316,68 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
             fun addLegendDot(color: Int, label: String) {
                 val dot = View(this@RoomBoundaryActivity).apply {
-                    layoutParams = LinearLayout.LayoutParams(12, 12).apply {
-                        setMargins(6, 0, 2, 0)
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(10), dpToPx(10)).apply {
+                        setMargins(dpToPx(8), 0, dpToPx(4), 0)
                     }
-                    setBackgroundColor(color)
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(color)
+                    }
                 }
                 addView(dot)
                 val text = TextView(this@RoomBoundaryActivity).apply {
                     this.text = label
-                    textSize = 10f
-                    setTextColor(Color.LTGRAY)
+                    textSize = 12f
+                    setTextColor(PaafektColors.textPrimary)
                 }
                 addView(text)
             }
 
-            addLegendDot(Color.GREEN, "F")
-            addLegendDot(Color.CYAN, "C")
-            addLegendDot(Color.RED, "L")
-            addLegendDot(Color.YELLOW, "R")
-            addLegendDot(Color.MAGENTA, "VP")
+            addLegendDot(Color.GREEN, getString(R.string.boundary_floor))
+            addLegendDot(Color.CYAN, getString(R.string.boundary_ceiling))
+            addLegendDot(Color.RED, getString(R.string.boundary_walls))
+            addLegendDot(Color.MAGENTA, getString(R.string.boundary_vanish))
         }
     }
 
     private fun createControlsPanel(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#2A2A2A"))
-            setPadding(16, 8, 16, 8)
+            setBackgroundColor(PaafektColors.surface)
+            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
+
+            val orientationBadge = TextView(this@RoomBoundaryActivity).apply {
+                text = if (isLandscape) {
+                    getString(R.string.orientation_held_horizontally_landscape)
+                } else {
+                    getString(R.string.orientation_held_vertically_portrait)
+                }
+                textSize = 11f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(PaafektColors.textPrimary)
+                gravity = Gravity.CENTER
+                background = PaafektDrawables.hintChip()
+                setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    bottomMargin = dpToPx(8)
+                }
+            }
+            addView(orientationBadge)
+
+            addView(
+                TextView(this@RoomBoundaryActivity).apply {
+                    text = getString(R.string.boundary_drag_handles)
+                    textSize = 17f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(PaafektColors.textPrimary)
+                    gravity = Gravity.CENTER
+                    setPadding(0, 0, 0, dpToPx(8))
+                },
+            )
 
             // Combined legend and buttons in one row
             val controlsRow = LinearLayout(this@RoomBoundaryActivity).apply {
@@ -352,14 +390,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 addView(legendLayout)
 
                 // Buttons
-                val resetBtn = Button(this@RoomBoundaryActivity).apply {
-                    text = getString(R.string.common_reset)
-                    textSize = 12f
-                    setTextColor(Color.WHITE)
-                    setBackgroundColor(Color.parseColor("#555555"))
-                    setPadding(24, 8, 24, 8)
-                    minimumHeight = 0
-                    minHeight = 0
+                val resetBtn = createControlButton(getString(R.string.common_reset), prominent = false).apply {
                     setOnClickListener {
                         structure.reset()
                         boundaryView.updateStructure(structure)
@@ -370,14 +401,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { setMargins(8, 0, 8, 0) })
 
-                val doneBtn = Button(this@RoomBoundaryActivity).apply {
-                    text = getString(R.string.common_done)
-                    textSize = 12f
-                    setTextColor(Color.WHITE)
-                    setBackgroundColor(Color.parseColor("#4CAF50"))
-                    setPadding(32, 8, 32, 8)
-                    minimumHeight = 0
-                    minHeight = 0
+                val doneBtn = createControlButton(getString(R.string.common_done), prominent = true).apply {
                     setOnClickListener {
                         onDonePressed()
                     }
@@ -388,16 +412,21 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 ))
             }
             addView(controlsRow)
+        }
+    }
 
-            // Instruction hint
-            val instructionText = TextView(this@RoomBoundaryActivity).apply {
-                text = getString(R.string.boundary_drag_handles)
-                textSize = 11f
-                setTextColor(Color.GRAY)
-                gravity = Gravity.CENTER
-                setPadding(0, 4, 0, 0)
-            }
-            addView(instructionText)
+    private fun createControlButton(text: String, prominent: Boolean): TextView {
+        return TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(if (prominent) PaafektColors.accentText else PaafektColors.textPrimary)
+            gravity = Gravity.CENTER
+            background = if (prominent) PaafektDrawables.primaryButton() else PaafektDrawables.secondaryButton()
+            setPadding(dpToPx(18), dpToPx(9), dpToPx(18), dpToPx(9))
+            isClickable = true
+            isFocusable = true
+            minWidth = dpToPx(72)
         }
     }
 
@@ -500,55 +529,18 @@ class RoomBoundaryActivity : AppCompatActivity() {
     private var progressBar: ProgressBar? = null
 
     private fun showProgressOverlay() {
-        progressOverlay = FrameLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#CC000000"))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-
-            val container = LinearLayout(this@RoomBoundaryActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setBackgroundColor(Color.parseColor("#333333"))
-                setPadding(48, 48, 48, 48)
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Gravity.CENTER
-                )
-            }
-
-            progressBar = ProgressBar(this@RoomBoundaryActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
-                layoutParams = LinearLayout.LayoutParams(300, ViewGroup.LayoutParams.WRAP_CONTENT)
-                max = 100
-                progress = 0
-            }
-            container.addView(progressBar)
-
-            progressText = TextView(this@RoomBoundaryActivity).apply {
-                text = getString(R.string.boundary_processing)
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                setPadding(0, 24, 0, 0)
-            }
-            container.addView(progressText)
-
-            addView(container)
-        }
-        rootLayout.addView(progressOverlay)
+        progressOverlay = PaafektBuildingRoomOverlay.show(rootLayout)
+        progressOverlay?.setProgress(0f, getString(R.string.boundary_processing))
     }
 
     private fun updateProgress(progress: Float, message: String) {
         progressBar?.progress = (progress * 100).toInt()
         progressText?.text = message
+        progressOverlay?.setProgress(progress, message)
     }
 
     private fun hideProgressOverlay() {
-        progressOverlay?.let {
-            rootLayout.removeView(it)
-        }
+        PaafektBuildingRoomOverlay.hide(rootLayout)
         progressOverlay = null
     }
 }
