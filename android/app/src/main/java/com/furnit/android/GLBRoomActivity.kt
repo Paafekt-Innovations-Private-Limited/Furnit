@@ -130,7 +130,6 @@ class GLBRoomActivity : AppCompatActivity() {
     private var immersiveSummonButton: View? = null
     private var immersiveFitFab: LinearLayout? = null
     private var immersiveSaveFab: LinearLayout? = null
-    private var immersiveFullVideoButton: ImageButton? = null
     private var immersivePersistentActions: PaafektViewerToolbar.PersistentPrimaryActionsHolder? = null
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveTapDetector: GestureDetector
@@ -345,7 +344,7 @@ class GLBRoomActivity : AppCompatActivity() {
         val persistentActions = PaafektViewerToolbar.createPersistentPrimaryActionsRow(
             this@GLBRoomActivity,
             showFit = true,
-            showSave = isPreviewMode,
+            showSave = false,
             fitLabel = getString(R.string.room_viewer_immersive_fit_short),
             saveLabel = getString(R.string.common_save),
             onFit = {
@@ -361,9 +360,6 @@ class GLBRoomActivity : AppCompatActivity() {
         immersiveSaveFab = persistentActions.saveButton
         persistentActions.container.elevation = 40f
         rootLayout.addView(persistentActions.container)
-
-        immersiveFullVideoButton = createFloatingFullVideoButton()
-        rootLayout.addView(immersiveFullVideoButton)
 
         immersiveChrome.onPhaseChanged = { refreshImmersiveChromeVisibility() }
         refreshImmersiveChromeVisibility(animate = false)
@@ -511,13 +507,6 @@ class GLBRoomActivity : AppCompatActivity() {
                 immersiveSummonButton?.layoutParams = lp
             }
         }
-        immersiveFullVideoButton?.layoutParams?.let { lp ->
-            if (lp is FrameLayout.LayoutParams) {
-                lp.topMargin = bars.top + dpToPx(54)
-                lp.marginEnd = bars.right + PaafektSpace.lg(this)
-                immersiveFullVideoButton?.layoutParams = lp
-            }
-        }
     }
 
     private fun notifyWebViewViewportChanged() {
@@ -582,39 +571,6 @@ class GLBRoomActivity : AppCompatActivity() {
             addView(
                 summonQuiet,
                 PaafektViewerToolbar.quietSummonButtonLayoutParams(this@GLBRoomActivity),
-            )
-        }
-    }
-
-    private fun createFloatingFullVideoButton(): ImageButton {
-        return ImageButton(this).apply {
-            setImageResource(R.drawable.ic_text_viewfinder)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dpToPx(9), dpToPx(9), dpToPx(9), dpToPx(9))
-            contentDescription = getString(R.string.room_viewer_full_video_with_identifications)
-            background = floatingFullVideoButtonBackground(active = false)
-            imageTintList = ColorStateList.valueOf(PaafektColors.textPrimary)
-            visibility = View.GONE
-            elevation = 39f
-            setOnClickListener {
-                immersiveChrome.noteChromeInteraction()
-                toggleInlineBrainFullVideoMode()
-            }
-            layoutParams = FrameLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
-                gravity = Gravity.TOP or Gravity.END
-                topMargin = dpToPx(54)
-                marginEnd = dpToPx(16)
-            }
-        }
-    }
-
-    private fun floatingFullVideoButtonBackground(active: Boolean): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.argb(158, 0, 0, 0))
-            setStroke(
-                dpToPx(1),
-                if (active) Color.argb(230, 0, 188, 212) else Color.argb(46, 255, 255, 255),
             )
         }
     }
@@ -780,7 +736,6 @@ class GLBRoomActivity : AppCompatActivity() {
             rootLayout.bringChildToFront(immersiveRestingChrome)
         }
         immersivePersistentActions?.container?.let { rootLayout.bringChildToFront(it) }
-        immersiveFullVideoButton?.let { rootLayout.bringChildToFront(it) }
         if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
             rootLayout.bringChildToFront(brainProgressOverlay)
         }
@@ -848,22 +803,11 @@ class GLBRoomActivity : AppCompatActivity() {
                 inlineBrainSelectedPins.isNotEmpty(),
             )
         }
-        toolbar.setFullVideoVisible(false)
-        updateFloatingFullVideoButton(brainActive)
+        toolbar.setFullVideoVisible(brainActive)
+        toolbar.setFullVideoActive(inlineBrainFullVideoEnabled)
         toolbar.setArSizingVisible(brainActive)
         toolbar.setArSizingActive(inlineBrainArAssistedSizingEnabled)
         updateInlineBrainSegmentButton()
-    }
-
-    private fun updateFloatingFullVideoButton(brainActive: Boolean) {
-        immersiveFullVideoButton?.let { button ->
-            button.visibility = if (brainActive) View.VISIBLE else View.GONE
-            button.background = floatingFullVideoButtonBackground(inlineBrainFullVideoEnabled)
-            button.imageTintList = ColorStateList.valueOf(
-                if (brainActive) Color.rgb(0, 188, 212) else PaafektColors.textPrimary,
-            )
-            button.isSelected = inlineBrainFullVideoEnabled
-        }
     }
 
     private fun createBottomControls(): FrameLayout {
@@ -1601,7 +1545,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
         when {
             fullVideoSnapshot && modeSnapshot == InlineBrainMode.IDENTIFY ->
-                furnitureFitManager?.detectWithDetectionsAsync(bitmap, callback)
+                furnitureFitManager?.detectWithDetectionsAsync(bitmap, requireClusters = true, callback = callback)
             fullVideoSnapshot && modeSnapshot == InlineBrainMode.SEGMENT_SELECTED ->
                 furnitureFitManager?.segmentSelectedInstancesAsync(bitmap, selectedPinsSnapshot, callback)
             else ->

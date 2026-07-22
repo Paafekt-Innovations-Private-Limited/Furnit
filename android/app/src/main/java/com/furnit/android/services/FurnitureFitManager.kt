@@ -289,9 +289,17 @@ class FurnitureFitManager(private val context: Context) {
 
     fun detectWithDetectionsAsync(
         frame: Bitmap?,
+        requireClusters: Boolean = false,
         callback: (SegmentationResult?) -> Unit,
     ) {
-        analyzeFrameAsync(frame, includeMask = false, selectedClassIds = emptySet(), pinnedDetections = null, callback = callback)
+        analyzeFrameAsync(
+            frame,
+            includeMask = false,
+            selectedClassIds = emptySet(),
+            pinnedDetections = null,
+            requireClusters = requireClusters,
+            callback = callback,
+        )
     }
 
     fun segmentSelectedClassesAsync(
@@ -324,6 +332,7 @@ class FurnitureFitManager(private val context: Context) {
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>? = null,
+        requireClusters: Boolean = false,
         callback: (SegmentationResult?) -> Unit,
     ) {
         if (frame == null) {
@@ -335,7 +344,14 @@ class FurnitureFitManager(private val context: Context) {
             sharedInferenceExecutor.execute {
                 try {
                     if (ortSession != null) {
-                        runOnnxInferenceWithDetections(frame, includeMask, selectedClassIds, pinnedDetections, callback)
+                        runOnnxInferenceWithDetections(
+                            frame,
+                            includeMask,
+                            selectedClassIds,
+                            pinnedDetections,
+                            requireClusters,
+                            callback,
+                        )
                         return@execute
                     }
 
@@ -858,10 +874,17 @@ class FurnitureFitManager(private val context: Context) {
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>?,
+        requireClusters: Boolean = false,
         callback: (SegmentationResult?) -> Unit,
     ) {
         try {
-            val base = runOnnxSegmentationOnce(frame, includeMask, selectedClassIds, pinnedDetections) ?: run {
+            val base = runOnnxSegmentationOnce(
+                frame,
+                includeMask,
+                selectedClassIds,
+                pinnedDetections,
+                requireClusters,
+            ) ?: run {
                 mainHandler.post { callback(null) }
                 return
             }
@@ -878,6 +901,7 @@ class FurnitureFitManager(private val context: Context) {
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>? = null,
+        requireClusters: Boolean = false,
     ): SegmentationResult? {
         var tensor: OnnxTensor? = null
         return try {
@@ -928,7 +952,7 @@ class FurnitureFitManager(private val context: Context) {
 
             val inferenceStartNanos = System.nanoTime()
             val requestedOutputs =
-                if (isRtmdetRaw && !includeMask && selectedClassIds.isEmpty() && pinnedDetections.isNullOrEmpty()) {
+                if (isRtmdetRaw && !includeMask && !requireClusters && selectedClassIds.isEmpty() && pinnedDetections.isNullOrEmpty()) {
                     RTMDET_DETECTION_OUTPUTS
                 } else {
                     null
@@ -948,6 +972,7 @@ class FurnitureFitManager(private val context: Context) {
                         includeMask = includeMask,
                         selectedClassIds = selectedClassIds,
                         pinnedDetections = pinnedDetections,
+                        requireClusters = requireClusters,
                         results = results,
                         totalStartNanos = totalStartNanos,
                         preprocessMillis = preprocessMillis,
@@ -1323,6 +1348,7 @@ class FurnitureFitManager(private val context: Context) {
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>?,
+        requireClusters: Boolean,
         results: OrtSession.Result,
         totalStartNanos: Long,
         preprocessMillis: Long = 0,
@@ -1331,8 +1357,8 @@ class FurnitureFitManager(private val context: Context) {
         val parseStartNanos = System.nanoTime()
         val raw = extractRtmdetRawOutputs(
             results = results,
-            requireKernels = includeMask,
-            requireMaskFeat = includeMask,
+            requireKernels = includeMask || requireClusters,
+            requireMaskFeat = includeMask || requireClusters,
         ) ?: run {
             LogUtil.e(TAG, "RTMDet raw outputs missing")
             return null
@@ -1364,7 +1390,7 @@ class FurnitureFitManager(private val context: Context) {
         )
 
         val pinList = pinnedDetections.orEmpty()
-        if (!includeMask && selectedClassIds.isEmpty() && pinList.isEmpty()) {
+        if (!includeMask && !requireClusters && selectedClassIds.isEmpty() && pinList.isEmpty()) {
             val primaryDet = pickPrimaryOnnxDetection(
                 detections = keepDets,
                 frameWidth = inputW.toFloat(),

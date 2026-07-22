@@ -1,6 +1,7 @@
 package com.furnit.android.theme
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -185,6 +186,7 @@ class PlacementIntelligenceCardView(context: Context) : LinearLayout(context) {
         }
         chipCircle = ImageView(context).apply {
             setImageResource(R.drawable.ic_placement_intelligence)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(12), dp(12), dp(12), dp(12))
             background = chipBackground(PaafektColors.textSecondary)
@@ -283,11 +285,14 @@ class PlacementIntelligenceCardView(context: Context) : LinearLayout(context) {
             intArrayOf(Color.rgb(56, 56, 56), Color.rgb(31, 31, 31)),
         ).apply {
             shape = GradientDrawable.OVAL
-            setStroke(dp(3), ringColor)
+            setStroke(dp(2.5f), ringColor)
         }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
+
+    private fun dp(value: Float): Int =
+        (value * resources.displayMetrics.density).roundToInt()
 
     companion object {
         fun viewerLayoutParams(context: Context, topMarginDp: Int = 92): FrameLayout.LayoutParams =

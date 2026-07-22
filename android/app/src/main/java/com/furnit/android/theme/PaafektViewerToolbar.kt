@@ -451,20 +451,14 @@ object PaafektImmersiveSummonedToolbar {
             LinearLayout.LayoutParams(0, 0, 1f),
         )
 
-        val heroRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
         val captureButton = PaafektHintViews.createCompactHeroAction(
             context,
             R.drawable.ic_snapshot,
             context.getString(R.string.room_viewer_immersive_capture_short),
             onClick = onCapture,
         )
-        heroRow.addView(captureButton)
+        capsule.addView(captureButton)
 
-        capsule.addView(heroRow)
         column.addView(capsule)
         outer.addView(column)
 

@@ -7,5 +7,5 @@
     <!-- Android equivalent of the iOS square.split.2x2.fill symbol. -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M4,4h7v7H4zM13,4h7v7h-7zM4,13h7v7H4zM13,13h7v7h-7z" />
+        android:pathData="M5.25,4h4.6Q11,4 11,5.15v4.7Q11,11 9.85,11h-4.7Q4,11 4,9.85v-4.6Q4,4 5.25,4zM14.15,4h4.6Q20,4 20,5.25v4.6Q20,11 18.85,11h-4.7Q13,11 13,9.85v-4.7Q13,4 14.15,4zM5.15,13h4.7Q11,13 11,14.15v4.7Q11,20 9.75,20h-4.5Q4,20 4,18.75v-4.6Q4,13 5.15,13zM14.15,13h4.7Q20,13 20,14.25v4.5Q20,20 18.75,20h-4.6Q13,20 13,18.85v-4.7Q13,13 14.15,13z" />
 </vector>
