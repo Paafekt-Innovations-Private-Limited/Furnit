@@ -11,6 +11,7 @@ struct FurnitureFitTapMaskSnapshot {
     let modelSide: Int
     let imageWidth: Int
     let imageHeight: Int
+    let usesLetterbox: Bool
 
     var hasUsableState: Bool {
         !planes.isEmpty &&
@@ -30,7 +31,8 @@ final class FurnitureFitTapMaskState {
         protoHeight: 0,
         modelSide: 0,
         imageWidth: 0,
-        imageHeight: 0
+        imageHeight: 0,
+        usesLetterbox: false
     )
 
     func update(
@@ -39,7 +41,8 @@ final class FurnitureFitTapMaskState {
         protoHeight: Int,
         modelSide: Int,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        usesLetterbox: Bool
     ) {
         lock.lock()
         latestSnapshot = FurnitureFitTapMaskSnapshot(
@@ -48,7 +51,8 @@ final class FurnitureFitTapMaskState {
             protoHeight: protoHeight,
             modelSide: modelSide,
             imageWidth: imageWidth,
-            imageHeight: imageHeight
+            imageHeight: imageHeight,
+            usesLetterbox: usesLetterbox
         )
         lock.unlock()
     }
@@ -61,7 +65,8 @@ final class FurnitureFitTapMaskState {
             protoHeight: 0,
             modelSide: 0,
             imageWidth: 0,
-            imageHeight: 0
+            imageHeight: 0,
+            usesLetterbox: false
         )
         lock.unlock()
     }
@@ -81,6 +86,7 @@ struct FurnitureFitTapSelectionContext {
     let candidates: [FurnitureFitDetection]
     let tapMaskSnapshot: FurnitureFitTapMaskSnapshot
     let isShowingLiveVideoIdentifications: Bool
+    let imageContentRectInView: CGRect?
 
     var tapHitPadding: CGFloat {
         isShowingLiveVideoIdentifications ? 22 : 10
@@ -144,10 +150,15 @@ enum FurnitureFitTapSelection {
             return nil
         }
 
-        let imageX = Float(context.pointInMaskView.x / context.maskViewBounds.width) * Float(snapshot.imageWidth)
-        let imageY = Float(context.pointInMaskView.y / context.maskViewBounds.height) * Float(snapshot.imageHeight)
-        let modelX = imageX * Float(snapshot.modelSide) / Float(snapshot.imageWidth)
-        let modelY = imageY * Float(snapshot.modelSide) / Float(snapshot.imageHeight)
+        let imageRect = context.imageContentRectInView ?? context.maskViewBounds
+        guard imageRect.width > 0,
+              imageRect.height > 0,
+              imageRect.contains(context.pointInMaskView) else {
+            return nil
+        }
+
+        let imageX = Float((context.pointInMaskView.x - imageRect.minX) / imageRect.width) * Float(snapshot.imageWidth)
+        let imageY = Float((context.pointInMaskView.y - imageRect.minY) / imageRect.height) * Float(snapshot.imageHeight)
 
         let bboxHalfWidth = detection.w * 0.5
         let bboxHalfHeight = detection.h * 0.5
@@ -155,11 +166,27 @@ enum FurnitureFitTapSelection {
         let bboxMaxX = detection.x + bboxHalfWidth
         let bboxMinY = detection.y - bboxHalfHeight
         let bboxMaxY = detection.y + bboxHalfHeight
-        guard modelX >= bboxMinX,
-              modelX <= bboxMaxX,
-              modelY >= bboxMinY,
-              modelY <= bboxMaxY else {
+        guard imageX >= bboxMinX,
+              imageX <= bboxMaxX,
+              imageY >= bboxMinY,
+              imageY <= bboxMaxY else {
             return nil
+        }
+
+        let modelX: Float
+        let modelY: Float
+        if snapshot.usesLetterbox {
+            let gain = min(
+                Float(snapshot.modelSide) / Float(snapshot.imageWidth),
+                Float(snapshot.modelSide) / Float(snapshot.imageHeight)
+            )
+            let padX = (Float(snapshot.modelSide) - Float(snapshot.imageWidth) * gain) * 0.5
+            let padY = (Float(snapshot.modelSide) - Float(snapshot.imageHeight) * gain) * 0.5
+            modelX = imageX * gain + padX
+            modelY = imageY * gain + padY
+        } else {
+            modelX = imageX * Float(snapshot.modelSide) / Float(snapshot.imageWidth)
+            modelY = imageY * Float(snapshot.modelSide) / Float(snapshot.imageHeight)
         }
 
         let protoX = min(

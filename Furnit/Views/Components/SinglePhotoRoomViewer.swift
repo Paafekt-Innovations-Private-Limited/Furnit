@@ -44,14 +44,12 @@ struct RoomBoundaryDetectionView: View {
                 let isLandscapeScreen = outerGeometry.size.width > outerGeometry.size.height
 
                 if isLandscapeScreen {
-                    // Landscape layout: full-screen image with horizontal bottom overlay
-                    ZStack {
-                        // Black background to fill any gaps
-                        Color.black.ignoresSafeArea()
-
-                        // Image area - uses full screen
+                    // Landscape layout: image centered in the usable area above the bottom controls.
+                    VStack(spacing: 0) {
                         GeometryReader { geometry in
                             ZStack {
+                                Color.black
+
                                 Image(uiImage: originalImage)
                                     .resizable()
                                     .scaledToFit()
@@ -80,15 +78,10 @@ struct RoomBoundaryDetectionView: View {
                                 )
                             }
                         }
-                        .ignoresSafeArea()
 
-                        // Horizontal bottom overlay bar
-                        VStack {
-                            Spacer()
-                            landscapeBottomBar
-                        }
-                        .ignoresSafeArea(edges: .horizontal)
+                        landscapeBottomBar
                     }
+                    .background(Color.black.ignoresSafeArea())
                     .ignoresSafeArea()
                 } else {
                     // Portrait layout: image on top, controls below

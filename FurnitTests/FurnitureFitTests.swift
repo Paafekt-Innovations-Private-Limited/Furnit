@@ -544,7 +544,8 @@ final class FurnitureFitTests: XCTestCase {
             protoHeight: 1,
             modelSide: 200,
             imageWidth: 100,
-            imageHeight: 100
+            imageHeight: 100,
+            usesLetterbox: false
         )
         let context = FurnitureFitTapSelectionContext(
             pointInMaskView: tapPoint,
@@ -555,7 +556,49 @@ final class FurnitureFitTests: XCTestCase {
             ],
             candidates: [negativeCandidate, positiveCandidate],
             tapMaskSnapshot: snapshot,
-            isShowingLiveVideoIdentifications: false
+            isShowingLiveVideoIdentifications: false,
+            imageContentRectInView: nil
+        )
+
+        let selectedIndex = FurnitureFitTapSelection.candidateIndex(context: context)
+
+        XCTAssertEqual(selectedIndex, 1)
+    }
+
+    func testTapSelectionUsesLetterboxPaddingForMaskPresence() {
+        var planes = [Float](repeating: 0, count: 32 * 4 * 4)
+        let expectedProtoIndex = 1 * 4 + 2
+        for channel in 0..<32 {
+            planes[channel * 16 + expectedProtoIndex] = 1
+        }
+        let snapshot = FurnitureFitTapMaskSnapshot(
+            planes: planes,
+            protoWidth: 4,
+            protoHeight: 4,
+            modelSide: 200,
+            imageWidth: 200,
+            imageHeight: 100,
+            usesLetterbox: true
+        )
+        let positiveCandidate = FurnitureFitDetection(
+            x: 100, y: 10, w: 80, h: 20,
+            confidence: 0.7, classIdx: 1, coeffs: [Float](repeating: 1, count: 32)
+        )
+        let negativeCandidate = FurnitureFitDetection(
+            x: 100, y: 10, w: 80, h: 20,
+            confidence: 0.95, classIdx: 1, coeffs: [Float](repeating: -1, count: 32)
+        )
+        let context = FurnitureFitTapSelectionContext(
+            pointInMaskView: CGPoint(x: 100, y: 10),
+            maskViewBounds: CGRect(x: 0, y: 0, width: 200, height: 100),
+            candidateRectsInView: [
+                CGRect(x: 60, y: 0, width: 80, height: 20),
+                CGRect(x: 60, y: 0, width: 80, height: 20)
+            ],
+            candidates: [negativeCandidate, positiveCandidate],
+            tapMaskSnapshot: snapshot,
+            isShowingLiveVideoIdentifications: false,
+            imageContentRectInView: nil
         )
 
         let selectedIndex = FurnitureFitTapSelection.candidateIndex(context: context)
@@ -581,9 +624,11 @@ final class FurnitureFitTests: XCTestCase {
                 protoHeight: 0,
                 modelSide: 0,
                 imageWidth: 0,
-                imageHeight: 0
+                imageHeight: 0,
+                usesLetterbox: false
             ),
-            isShowingLiveVideoIdentifications: true
+            isShowingLiveVideoIdentifications: true,
+            imageContentRectInView: nil
         )
 
         let selectedIndex = FurnitureFitTapSelection.candidateIndex(context: context)

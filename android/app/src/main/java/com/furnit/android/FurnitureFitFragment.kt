@@ -512,7 +512,7 @@ class FurnitureFitFragment : Fragment() {
                 }
                 statusLabel.text = if (labels.isNotEmpty()) labels else getString(R.string.smartypants_detected)
 
-                val primaryDetection = result.detections.firstOrNull()
+                val primaryDetection = result.primaryDetection ?: result.detections.firstOrNull()
                 if (primaryDetection != null && result.inputSize > 0) {
                     if (isArPath) {
                         val inpF = result.inputSize.coerceAtLeast(1).toFloat()
@@ -546,6 +546,9 @@ class FurnitureFitFragment : Fragment() {
                         ),
                         effectiveDisplayedFurnitureHeightMeters(),
                         effectiveRoomHeightMetersForSizing(),
+                        clusters = result.detectionClusters,
+                        sourceWidth = result.sourceWidth,
+                        sourceHeight = result.sourceHeight,
                     )
                 } else {
                     arCameraController?.clearBboxHint()
@@ -558,6 +561,9 @@ class FurnitureFitFragment : Fragment() {
                         1f,
                         effectiveDisplayedFurnitureHeightMeters(),
                         effectiveRoomHeightMetersForSizing(),
+                        clusters = result.detectionClusters,
+                        sourceWidth = result.sourceWidth,
+                        sourceHeight = result.sourceHeight,
                     )
                 }
                 updateCalibrationPill()

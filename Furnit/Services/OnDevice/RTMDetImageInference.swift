@@ -57,11 +57,102 @@ enum RTMDetImageInference {
     private static let rawMaskSide = 160
     private static let rawMaskAffinityThreshold: Float = 0.12
     private static let rawMaskAffinityBitThreshold: Float = 0.5
+    private static let rawMaskRenderThreshold: Float = 0.30
+
+    private enum PixelRGBLayout {
+        case bgra
+        case rgba
+        case argb
+
+        init(pixelFormat: OSType) {
+            switch pixelFormat {
+            case kCVPixelFormatType_32RGBA:
+                self = .rgba
+            case kCVPixelFormatType_32ARGB:
+                self = .argb
+            default:
+                self = .bgra
+            }
+        }
+    }
+
+    private static func rgbBytes(
+        from row: UnsafePointer<UInt8>,
+        offset: Int,
+        layout: PixelRGBLayout
+    ) -> (r: UInt8, g: UInt8, b: UInt8) {
+        switch layout {
+        case .bgra:
+            return (row[offset + 2], row[offset + 1], row[offset])
+        case .rgba:
+            return (row[offset], row[offset + 1], row[offset + 2])
+        case .argb:
+            return (row[offset + 1], row[offset + 2], row[offset + 3])
+        }
+    }
+
+    private static func isDirectRGBPixelFormat(_ pixelFormat: OSType) -> Bool {
+        pixelFormat == kCVPixelFormatType_32BGRA ||
+            pixelFormat == kCVPixelFormatType_32RGBA ||
+            pixelFormat == kCVPixelFormatType_32ARGB
+    }
 
     /// Shared GPU-backed Core Image context. Creating a `CIContext` allocates Metal/GPU state, so it
     /// must never be built per frame — reuse this one for every resize. `CIContext` rendering is
     /// thread-safe; inference runs on a single serial queue regardless.
     private static let sharedCIContext = CIContext()
+
+    private static func rgbCompositingBuffer(
+        for buffer: CVPixelBuffer,
+        width: Int,
+        height: Int
+    ) -> CVPixelBuffer? {
+        guard width > 0, height > 0 else { return nil }
+        let pixelFormat = CVPixelBufferGetPixelFormatType(buffer)
+        if isDirectRGBPixelFormat(pixelFormat) {
+            return buffer
+        }
+
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferIOSurfacePropertiesKey: [:]
+        ]
+        var convertedBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &convertedBuffer
+        )
+        guard status == kCVReturnSuccess, let convertedBuffer else { return nil }
+
+        var image = CIImage(cvPixelBuffer: buffer)
+        let extent = image.extent
+        if extent.origin != .zero {
+            image = image.transformed(by: CGAffineTransform(translationX: -extent.origin.x, y: -extent.origin.y))
+        }
+        if extent.width > 0,
+           extent.height > 0,
+           (abs(extent.width - CGFloat(width)) > 0.5 || abs(extent.height - CGFloat(height)) > 0.5) {
+            image = image.transformed(
+                by: CGAffineTransform(
+                    scaleX: CGFloat(width) / extent.width,
+                    y: CGFloat(height) / extent.height
+                )
+            )
+        }
+
+        sharedCIContext.render(
+            image,
+            to: convertedBuffer,
+            bounds: CGRect(x: 0, y: 0, width: width, height: height),
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        )
+        return convertedBuffer
+    }
 
     /// Reused pool of square model-input buffers so each frame recycles a buffer instead of calling
     /// `CVPixelBufferCreate`. Recreated only if the model input side changes. (Inference is serial.)
@@ -1258,10 +1349,12 @@ enum RTMDetImageInference {
 
         var rgba = [UInt8](repeating: 0, count: sourceWidth * sourceHeight * 4)
 
-        CVPixelBufferLockBaseAddress(sourceBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(sourceBuffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(sourceBuffer) else { return nil }
-        let rowBytes = CVPixelBufferGetBytesPerRow(sourceBuffer)
+        let compositingBuffer = rgbCompositingBuffer(for: sourceBuffer, width: sourceWidth, height: sourceHeight) ?? sourceBuffer
+        CVPixelBufferLockBaseAddress(compositingBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(compositingBuffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(compositingBuffer) else { return nil }
+        let rowBytes = CVPixelBufferGetBytesPerRow(compositingBuffer)
+        let sourceLayout = PixelRGBLayout(pixelFormat: CVPixelBufferGetPixelFormatType(compositingBuffer))
 
         var paintedPixels = 0
         let count = min(max(1, maxMaskCount), boxes.count, rawMaskPlanes.count)
@@ -1270,9 +1363,9 @@ enum RTMDetImageInference {
             let box = boxes[index]
             let boxWidth = max(0, box.x2 - box.x1)
             let boxHeight = max(0, box.y2 - box.y1)
-            let padX = Int(ceil(Double(boxWidth) * 0.10))
-            let padTop = Int(ceil(Double(boxHeight) * 0.25))
-            let padBottom = Int(ceil(Double(boxHeight) * 0.10))
+            let padX = Int(ceil(Double(boxWidth) * 0.20))
+            let padTop = Int(ceil(Double(boxHeight) * 1.00))
+            let padBottom = Int(ceil(Double(boxHeight) * 0.25))
             let xMin = max(0, min(sourceWidth - 1, Int(floor(box.x1)) - padX))
             let yMin = max(0, min(sourceHeight - 1, Int(floor(box.y1)) - padTop))
             let xMax = max(0, min(sourceWidth - 1, Int(ceil(box.x2)) + padX))
@@ -1292,7 +1385,7 @@ enum RTMDetImageInference {
                         mapping: mapping
                     )
                     let value = plane[sampleY * rawMaskSide + sampleX]
-                    guard value.isFinite, value > 0.5 else { continue }
+                    guard value.isFinite, value > rawMaskRenderThreshold else { continue }
                     if planeTopSourceY == nil {
                         planeTopSourceY = y
                     }
@@ -1302,9 +1395,10 @@ enum RTMDetImageInference {
                     let dest = (y * sourceWidth + x) * 4
                     let source = x * 4
                     if rgba[dest + 3] == 0 { paintedPixels += 1 }
-                    rgba[dest] = sourceRow[source + 2]
-                    rgba[dest + 1] = sourceRow[source + 1]
-                    rgba[dest + 2] = sourceRow[source]
+                    let rgb = rgbBytes(from: sourceRow, offset: source, layout: sourceLayout)
+                    rgba[dest] = rgb.r
+                    rgba[dest + 1] = rgb.g
+                    rgba[dest + 2] = rgb.b
                     rgba[dest + 3] = 255
                 }
             }
@@ -1758,11 +1852,13 @@ enum RTMDetImageInference {
                     if rgba[dest + 3] == 0 {
                         paintedPixels += 1
                     }
-                    rgba[dest] = b
-                    rgba[dest + 1] = g
-                    rgba[dest + 2] = r
                     let alpha = UInt8(max(28, min(150, Int((confidence * 150).rounded()))))
-                    rgba[dest + 3] = max(rgba[dest + 3], alpha)
+                    guard alpha >= rgba[dest + 3] else { continue }
+                    let premultipliedAlpha = Float(alpha) / 255.0
+                    rgba[dest] = UInt8((Float(r) * premultipliedAlpha).rounded())
+                    rgba[dest + 1] = UInt8((Float(g) * premultipliedAlpha).rounded())
+                    rgba[dest + 2] = UInt8((Float(b) * premultipliedAlpha).rounded())
+                    rgba[dest + 3] = alpha
                 }
             }
         }
@@ -2069,7 +2165,7 @@ enum RTMDetImageInference {
         guard rgba.count == width * height * 4 else { return nil }
         let data = Data(rgba)
         guard let provider = CGDataProvider(data: data as CFData) else { return nil }
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let cgImage = CGImage(
             width: width,
             height: height,

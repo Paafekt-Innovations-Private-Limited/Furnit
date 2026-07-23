@@ -211,7 +211,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
-        iv.contentMode = .scaleAspectFill  // Match camera preview's resizeAspectFill
+        iv.contentMode = .scaleAspectFill
         iv.backgroundColor = .clear
         iv.isOpaque = false
         iv.clipsToBounds = true
@@ -309,6 +309,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var showFullVideoWithIdentifications: Bool = false {
         didSet {
             guard oldValue != showFullVideoWithIdentifications else { return }
+            startPreferredCameraPathIfNeeded()
             updateVideoIdentificationPresentation()
         }
     }
@@ -893,7 +894,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView", event: "init")
         
         previewLayer.session = captureSession
-        previewLayer.videoGravity = .resizeAspectFill
+        updatePreviewFramingMode()
         previewLayer.isHidden = !shouldShowLiveCameraPreview
         logDebug("📺 [FurnitureFit] previewLayer initial hidden=\(previewLayer.isHidden) rtmDet=\(currentModelIsRTMDet) showLivePreview=\(showIdentifyLivePreview)")
         addSubview(previewContainerView)
@@ -1079,11 +1080,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     override func layoutSubviews() {
         super.layoutSubviews()
+        updatePreviewFramingMode()
         previewLayer.frame = cameraPreviewHostView.bounds
         if isUsingLiveFrameAlignedOverlay {
             applyLockedOrientationVideoRotation()
         }
         cachedARViewportSize = previewContainerView.bounds.size
+    }
+
+    private func updatePreviewFramingMode() {
+        let useUncroppedLivePreview = shouldShowLiveCameraPreview || isUsingLiveFrameAlignedOverlay
+        previewLayer.videoGravity = useUncroppedLivePreview ? .resizeAspect : .resizeAspectFill
+        maskImageView.contentMode = useUncroppedLivePreview ? .scaleAspectFit : .scaleAspectFill
     }
 
     /// When AR/LiDAR sizing is unavailable, fall back to the detected bbox pixel proportion
@@ -1215,6 +1223,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 self.maskImageView.image = nil
                 self.previewLayer.frame = self.cameraPreviewHostView.bounds
             }
+            self.updatePreviewFramingMode()
             self.applyLockedOrientationVideoRotation()
             self.applyCurrentOverlayScaleTransform()
         }
@@ -1822,8 +1831,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let viewWidth = maskImageView.bounds.width
         let viewHeight = maskImageView.bounds.height
         guard viewWidth > 0, viewHeight > 0 else { return .zero }
-        if currentModelIsRTMDet && previewLayer.videoGravity == .resizeAspectFill {
-            let fillScale = max(viewWidth / CGFloat(imageWidth), viewHeight / CGFloat(imageHeight))
+        if currentModelIsRTMDet &&
+            (previewLayer.videoGravity == .resizeAspectFill || previewLayer.videoGravity == .resizeAspect) {
+            let fillScale = previewLayer.videoGravity == .resizeAspectFill
+                ? max(viewWidth / CGFloat(imageWidth), viewHeight / CGFloat(imageHeight))
+                : min(viewWidth / CGFloat(imageWidth), viewHeight / CGFloat(imageHeight))
             let offsetX = (viewWidth - CGFloat(imageWidth) * fillScale) * 0.5
             let offsetY = (viewHeight - CGFloat(imageHeight) * fillScale) * 0.5
             return CGRect(
@@ -1838,6 +1850,32 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             y: bufferRect.minY / CGFloat(imageHeight) * viewHeight,
             width: bufferRect.width / CGFloat(imageWidth) * viewWidth,
             height: bufferRect.height / CGFloat(imageHeight) * viewHeight
+        )
+    }
+
+    private func imageContentRectInMaskView(imageWidth: Int, imageHeight: Int) -> CGRect? {
+        guard imageWidth > 0, imageHeight > 0 else { return nil }
+        let viewWidth = maskImageView.bounds.width
+        let viewHeight = maskImageView.bounds.height
+        guard viewWidth > 0, viewHeight > 0 else { return nil }
+
+        let imageSize = CGSize(width: imageWidth, height: imageHeight)
+        let scale: CGFloat
+        if currentModelIsRTMDet &&
+            (previewLayer.videoGravity == .resizeAspectFill || previewLayer.videoGravity == .resizeAspect) {
+            scale = previewLayer.videoGravity == .resizeAspectFill
+                ? max(viewWidth / imageSize.width, viewHeight / imageSize.height)
+                : min(viewWidth / imageSize.width, viewHeight / imageSize.height)
+        } else {
+            return maskImageView.bounds
+        }
+
+        let drawnSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: (viewWidth - drawnSize.width) * 0.5,
+            y: (viewHeight - drawnSize.height) * 0.5,
+            width: drawnSize.width,
+            height: drawnSize.height
         )
     }
 
@@ -1929,6 +1967,75 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return clusters
     }
 
+    private func defaultPrimaryCluster(
+        candidates: [FurnitureFitDetection],
+        decoderOffsets: [Int],
+        graph: RTMDetMaskAffinityGraph?,
+        imageWidth: Int,
+        imageHeight: Int,
+        preferCenter: Bool
+    ) -> (representative: Int, members: [Int])? {
+        guard !candidates.isEmpty else { return nil }
+        let clusters: [[Int]]
+        if let graph, graph.nodeCount > 0, !decoderOffsets.isEmpty {
+            clusters = buildClustersFromAffinityGraph(
+                candidateCount: candidates.count,
+                decoderOffsets: decoderOffsets,
+                graph: graph
+            )
+        } else {
+            clusters = candidates.indices.map { [$0] }
+        }
+
+        let rankedClusters = clusters.compactMap { members -> (representative: Int, members: [Int], confidence: Float, centerDistance: CGFloat, area: CGFloat)? in
+            guard let representative = representativeIndex(for: members, candidates: candidates) else { return nil }
+            let rect = members.reduce(CGRect.null) { union, idx in
+                idx < candidates.count ? union.union(candidates[idx].boundingBox) : union
+            }
+            guard !rect.isNull, rect.width > 0, rect.height > 0 else { return nil }
+            let centerX = CGFloat(max(1, imageWidth)) * 0.5
+            let centerY = CGFloat(max(1, imageHeight)) * 0.5
+            let dx = (rect.midX - centerX) / max(centerX, 1)
+            let dy = (rect.midY - centerY) / max(centerY, 1)
+            return (
+                representative: representative,
+                members: members,
+                confidence: candidates[representative].confidence,
+                centerDistance: sqrt(dx * dx + dy * dy),
+                area: rect.width * rect.height
+            )
+        }
+        guard let maxConfidence = rankedClusters.map(\.confidence).max() else { return nil }
+        if !preferCenter {
+            return rankedClusters.max { left, right in
+                if abs(left.confidence - right.confidence) > 1e-6 {
+                    return left.confidence < right.confidence
+                }
+                if abs(left.area - right.area) > 1 {
+                    return left.area < right.area
+                }
+                return left.representative > right.representative
+            }.map { (representative: $0.representative, members: $0.members) }
+        }
+
+        let confidenceFloor = max(Self.rtmDetLiveConfidenceThreshold, maxConfidence * 0.82)
+        return rankedClusters.max { left, right in
+            let leftEligible = left.confidence >= confidenceFloor
+            let rightEligible = right.confidence >= confidenceFloor
+            if leftEligible != rightEligible { return !leftEligible && rightEligible }
+            if leftEligible && abs(left.centerDistance - right.centerDistance) > 0.08 {
+                return left.centerDistance > right.centerDistance
+            }
+            if abs(left.confidence - right.confidence) > 1e-6 {
+                return left.confidence < right.confidence
+            }
+            if abs(left.area - right.area) > 1 {
+                return left.area < right.area
+            }
+            return left.representative > right.representative
+        }.map { (representative: $0.representative, members: $0.members) }
+    }
+
     private func updateDetectionOverlay(
         candidates: [FurnitureFitDetection],
         selectedIndex: Int?,
@@ -2016,13 +2123,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 isSelected: anySelected
             )
         }
+        let showAllIdentifyClusterBoxes =
+            currentModelIsRTMDet && segmentationMode == .identifyOnly && showFullVideoWithIdentifications
         #if DEBUG
-        if !debugMode {
+        if !debugMode && !showAllIdentifyClusterBoxes {
             overlayItems = overlayItems.filter(\.isSelected)
         }
         detectionBBoxOverlayView.showsDiagnosticLabels = debugMode
         #else
-        overlayItems = overlayItems.filter(\.isSelected)
+        if !showAllIdentifyClusterBoxes {
+            overlayItems = overlayItems.filter(\.isSelected)
+        }
         detectionBBoxOverlayView.showsDiagnosticLabels = false
         #endif
         detectionBBoxOverlayView.items = overlayItems
@@ -2056,7 +2167,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         protoHeight: Int,
         modelSide: Int,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        usesLetterbox: Bool
     ) {
         tapMaskState.update(
             planes: planes,
@@ -2064,7 +2176,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             protoHeight: protoHeight,
             modelSide: modelSide,
             imageWidth: imageWidth,
-            imageHeight: imageHeight
+            imageHeight: imageHeight,
+            usesLetterbox: usesLetterbox
         )
     }
 
@@ -2073,40 +2186,47 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func candidateIndexForTap(_ pointInMaskView: CGPoint) -> Int? {
-        if isShowingLiveVideoIdentifications,
-           !latestDisplayedClusters.isEmpty,
-           clusterBboxesInView.count == latestDisplayedClusters.count {
-            let paddedClusterMatches = clusterBboxesInView.enumerated().filter { _, rect in
-                rect.insetBy(dx: -22, dy: -22).contains(pointInMaskView)
-            }
-            if let clusterMatch = paddedClusterMatches.max(by: { leftEntry, rightEntry in
-                let leftArea = leftEntry.element.width * leftEntry.element.height
-                let rightArea = rightEntry.element.width * rightEntry.element.height
-                if abs(leftArea - rightArea) > 1 {
-                    return leftArea > rightArea
-                }
-                let leftRep = representativeIndex(for: latestDisplayedClusters[leftEntry.offset], candidates: latestDisplayedCandidates)
-                let rightRep = representativeIndex(for: latestDisplayedClusters[rightEntry.offset], candidates: latestDisplayedCandidates)
-                let leftConfidence = leftRep.map { latestDisplayedCandidates[$0].confidence } ?? 0
-                let rightConfidence = rightRep.map { latestDisplayedCandidates[$0].confidence } ?? 0
-                return leftConfidence < rightConfidence
-            }),
-               clusterMatch.offset < latestDisplayedClusters.count,
-               let representative = representativeIndex(
-                    for: latestDisplayedClusters[clusterMatch.offset],
-                    candidates: latestDisplayedCandidates
-               ) {
-                return representative
-            }
-        }
+//        if isShowingLiveVideoIdentifications,
+//           !latestDisplayedClusters.isEmpty,
+//           clusterBboxesInView.count == latestDisplayedClusters.count {
+//            let paddedClusterMatches = clusterBboxesInView.enumerated().filter { _, rect in
+//                rect.insetBy(dx: -22, dy: -22).contains(pointInMaskView)
+//            }
+//            if let clusterMatch = paddedClusterMatches.max(by: { leftEntry, rightEntry in
+//                let leftArea = leftEntry.element.width * leftEntry.element.height
+//                let rightArea = rightEntry.element.width * rightEntry.element.height
+//                if abs(leftArea - rightArea) > 1 {
+//                    return leftArea > rightArea
+//                }
+//                let leftRep = representativeIndex(for: latestDisplayedClusters[leftEntry.offset], candidates: latestDisplayedCandidates)
+//                let rightRep = representativeIndex(for: latestDisplayedClusters[rightEntry.offset], candidates: latestDisplayedCandidates)
+//                let leftConfidence = leftRep.map { latestDisplayedCandidates[$0].confidence } ?? 0
+//                let rightConfidence = rightRep.map { latestDisplayedCandidates[$0].confidence } ?? 0
+//                return leftConfidence < rightConfidence
+//            }),
+//               clusterMatch.offset < latestDisplayedClusters.count,
+//               let representative = representativeIndex(
+//                    for: latestDisplayedClusters[clusterMatch.offset],
+//                    candidates: latestDisplayedCandidates
+//               ) {
+//                return representative
+//            }
+//        }
 
+        let tapMaskSnapshot = tapMaskState.snapshot()
         let selectionContext = FurnitureFitTapSelectionContext(
             pointInMaskView: pointInMaskView,
             maskViewBounds: maskImageView.bounds,
             candidateRectsInView: candidateBboxesInView,
             candidates: latestDisplayedCandidates,
-            tapMaskSnapshot: tapMaskState.snapshot(),
-            isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications
+            tapMaskSnapshot: tapMaskSnapshot,
+            isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications,
+            imageContentRectInView: tapMaskSnapshot.hasUsableState
+                ? imageContentRectInMaskView(
+                    imageWidth: tapMaskSnapshot.imageWidth,
+                    imageHeight: tapMaskSnapshot.imageHeight
+                )
+                : nil
         )
         return FurnitureFitTapSelection.candidateIndex(context: selectionContext)
     }
@@ -2435,15 +2555,51 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: - Camera Setup
     private func setupCamera() {
         captureSession.beginConfiguration()
-        captureSession.sessionPreset = .hd1280x720
+        if #available(iOS 13.0, *) {
+            captureSession.automaticallyConfiguresCaptureDeviceForWideColor = false
+        }
+        if captureSession.canSetSessionPreset(.inputPriority) {
+            captureSession.sessionPreset = .inputPriority
+        } else {
+            captureSession.sessionPreset = .photo
+        }
         captureSession.inputs.forEach { captureSession.removeInput($0) }
         captureSession.outputs.forEach { captureSession.removeOutput($0) }
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+        let preferUltraWide = lockedOrientation == .landscape && shouldShowLiveCameraPreview
+        let selectedDevice = preferUltraWide
+            ? (AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back)
+                ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back))
+            : AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+
+        guard let device = selectedDevice,
               let input = try? AVCaptureDeviceInput(device: device),
               captureSession.canAddInput(input) else {
             captureSession.commitConfiguration()
             return
+        }
+        do {
+            try device.lockForConfiguration()
+            if device.isRampingVideoZoom {
+                device.cancelVideoZoomRamp()
+            }
+            if let format = preferredUncroppedVideoFormat(for: device) {
+                device.activeFormat = format
+            }
+            if device.activeFormat.isVideoHDRSupported {
+                device.automaticallyAdjustsVideoHDREnabled = false
+                device.isVideoHDREnabled = false
+            }
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                device.whiteBalanceMode = .continuousAutoWhiteBalance
+            }
+            device.videoZoomFactor = min(max(1.0, device.minAvailableVideoZoomFactor), device.maxAvailableVideoZoomFactor)
+            device.unlockForConfiguration()
+        } catch {
+            logDebug("📷 [Camera] Could not force native zoom: \(error.localizedDescription)")
         }
         
         captureSession.addInput(input)
@@ -2457,11 +2613,50 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         captureSession.commitConfiguration()
         if lockedOrientation == .landscape {
-            logDebug("📷 [Camera] Landscape room: using 0° rotation (1280x720)")
+            let lens = device.deviceType == .builtInUltraWideCamera ? "0.5x ultra-wide" : "1x wide"
+            let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+            logDebug("📷 [Camera] Landscape room: using \(lens), 0° rotation, native format \(dims.width)x\(dims.height)")
         } else {
-            logDebug("📷 [Camera] Portrait room: using 90° rotation (720x1280)")
+            let lens = device.deviceType == .builtInUltraWideCamera ? "0.5x ultra-wide" : "1x wide"
+            let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+            logDebug("📷 [Camera] Portrait room: using \(lens), 90° rotation, native format \(dims.width)x\(dims.height)")
         }
         applyLockedOrientationVideoRotation()
+    }
+
+    private func preferredUncroppedVideoFormat(for device: AVCaptureDevice) -> AVCaptureDevice.Format? {
+        let targetAspect = 4.0 / 3.0
+        let maxPreferredWidth: Int32 = 1920
+        let minWidth: Int32 = 640
+        return device.formats
+            .compactMap { format -> (format: AVCaptureDevice.Format, dims: CMVideoDimensions, score: Double)? in
+                let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+                let width = max(dims.width, dims.height)
+                let height = min(dims.width, dims.height)
+                guard width >= minWidth, height > 0 else { return nil }
+                let aspect = Double(width) / Double(height)
+                let aspectPenalty = abs(aspect - targetAspect)
+                guard aspectPenalty < 0.04 else { return nil }
+                let sizePenalty: Double
+                if width > maxPreferredWidth {
+                    sizePenalty = Double(width - maxPreferredWidth) / Double(maxPreferredWidth)
+                } else {
+                    sizePenalty = Double(maxPreferredWidth - width) / Double(maxPreferredWidth) * 0.15
+                }
+                let fpsPenalty = format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 24 }
+                    ? 0
+                    : 1
+                return (format, dims, aspectPenalty * 10 + sizePenalty + Double(fpsPenalty))
+            }
+            .min { left, right in
+                if abs(left.score - right.score) > 1e-6 {
+                    return left.score < right.score
+                }
+                let leftWidth = max(left.dims.width, left.dims.height)
+                let rightWidth = max(right.dims.width, right.dims.height)
+                return leftWidth > rightWidth
+            }?
+            .format
     }
 
     private func requestCameraPermissionAndStart() {
@@ -2482,7 +2677,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Splat Room already supplies splat-surface depth.
     /// Keep Furniture Fit on the classic path there unless the viewer explicitly opts into AR sizing.
     private var shouldForceClassicCameraPath: Bool {
-        splatRoomMeasurementHost != nil && !arAssistedSizingEnabled
+        (splatRoomMeasurementHost != nil && !arAssistedSizingEnabled)
+            || shouldShowLiveCameraPreview
     }
 
     private func startPreferredCameraPathIfNeeded() {
@@ -2642,9 +2838,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
 
             if self.debugMode {
-                let reason = self.shouldForceClassicCameraPath
-                    ? "splat_room_uses_splat_depth"
-                    : "ar_path_not_selected"
+                let reason: String
+                if self.shouldShowLiveCameraPreview {
+                    reason = "live_preview_uses_uncropped_avcapture"
+                } else if self.shouldForceClassicCameraPath {
+                    reason = "splat_room_uses_splat_depth"
+                } else {
+                    reason = "ar_path_not_selected"
+                }
                 logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active reason=\(reason)")
             }
 
@@ -2851,6 +3052,123 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             .map(\.detection)
     }
 
+    private enum PixelRGBLayout: Equatable {
+        case bgra
+        case rgba
+        case argb
+
+        init(pixelFormat: OSType) {
+            switch pixelFormat {
+            case kCVPixelFormatType_32RGBA:
+                self = .rgba
+            case kCVPixelFormatType_32ARGB:
+                self = .argb
+            default:
+                self = .bgra
+            }
+        }
+    }
+
+    private static func pixelFormatFourCC(_ format: OSType) -> String {
+        let bytes: [UInt8] = [
+            UInt8((format >> 24) & 0xff),
+            UInt8((format >> 16) & 0xff),
+            UInt8((format >> 8) & 0xff),
+            UInt8(format & 0xff)
+        ]
+        let fourCC = bytes.map { byte -> String in
+            if byte >= 32, byte <= 126, let scalar = UnicodeScalar(Int(byte)) {
+                return String(Character(scalar))
+            }
+            return String(format: "\\x%02X", byte)
+        }.joined()
+        return "\(fourCC) 0x\(String(format: "%08X", UInt32(format)))"
+    }
+
+    private static func pixelBufferColorSpaceDescription(_ buffer: CVPixelBuffer) -> String {
+        if let unmanagedColorSpace = CVImageBufferGetColorSpace(buffer) {
+            let colorSpace = unmanagedColorSpace.takeUnretainedValue()
+            if let name = colorSpace.name {
+                return name as String
+            }
+            return "\(colorSpace)"
+        }
+        return "unknown"
+    }
+
+    private static func rgbBytes(
+        from row: UnsafePointer<UInt8>,
+        offset: Int,
+        layout: PixelRGBLayout
+    ) -> (r: UInt8, g: UInt8, b: UInt8) {
+        switch layout {
+        case .bgra:
+            return (row[offset + 2], row[offset + 1], row[offset])
+        case .rgba:
+            return (row[offset], row[offset + 1], row[offset + 2])
+        case .argb:
+            return (row[offset + 1], row[offset + 2], row[offset + 3])
+        }
+    }
+
+    private static func isDirectRGBPixelFormat(_ pixelFormat: OSType) -> Bool {
+        pixelFormat == kCVPixelFormatType_32BGRA ||
+            pixelFormat == kCVPixelFormatType_32RGBA ||
+            pixelFormat == kCVPixelFormatType_32ARGB
+    }
+
+    private func rgbCompositingBuffer(
+        for buffer: CVPixelBuffer,
+        width: Int,
+        height: Int
+    ) -> CVPixelBuffer? {
+        guard width > 0, height > 0 else { return nil }
+        let pixelFormat = CVPixelBufferGetPixelFormatType(buffer)
+        if Self.isDirectRGBPixelFormat(pixelFormat) {
+            return buffer
+        }
+
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferIOSurfacePropertiesKey: [:]
+        ]
+        var convertedBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &convertedBuffer
+        )
+        guard status == kCVReturnSuccess, let convertedBuffer else { return nil }
+
+        var image = CIImage(cvPixelBuffer: buffer)
+        let extent = image.extent
+        if extent.origin != .zero {
+            image = image.transformed(by: CGAffineTransform(translationX: -extent.origin.x, y: -extent.origin.y))
+        }
+        if extent.width > 0,
+           extent.height > 0,
+           (abs(extent.width - CGFloat(width)) > 0.5 || abs(extent.height - CGFloat(height)) > 0.5) {
+            image = image.transformed(
+                by: CGAffineTransform(
+                    scaleX: CGFloat(width) / extent.width,
+                    y: CGFloat(height) / extent.height
+                )
+            )
+        }
+
+        arCIContext.render(
+            image,
+            to: convertedBuffer,
+            bounds: CGRect(x: 0, y: 0, width: width, height: height),
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        )
+        return convertedBuffer
+    }
+
     private func compositeCpuCameraBandAccelerated(
         outBase: UnsafeMutablePointer<UInt8>,
         origBase: UnsafePointer<UInt8>,
@@ -2858,6 +3176,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         origW: Int,
         camRowBytes: Int,
         bytesPerRowOut: Int,
+        sourcePixelFormat: OSType,
         x0: Int,
         x1: Int,
         y0: Int,
@@ -2865,6 +3184,28 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     ) {
         let w = x1 - x0
         guard w > 0, y1 > y0 else { return }
+        let sourceLayout = PixelRGBLayout(pixelFormat: sourcePixelFormat)
+        guard sourceLayout == .bgra else {
+            for y in y0..<y1 {
+                let outRowPtr = outBase.advanced(by: y * bytesPerRowOut)
+                let origRowPtr = origBase.advanced(by: y * camRowBytes)
+                let maskRowPtr = maskBase.advanced(by: y * origW + x0)
+                for mx in 0..<w {
+                    let alpha = maskRowPtr[mx]
+                    guard alpha > 0 else { continue }
+                    let x = x0 + mx
+                    let sourceOffset = x * 4
+                    let outOffset = x * 4
+                    let rgb = Self.rgbBytes(from: origRowPtr, offset: sourceOffset, layout: sourceLayout)
+                    let a = Float(alpha) / 255.0
+                    outRowPtr[outOffset] = UInt8((Float(rgb.r) * a).rounded())
+                    outRowPtr[outOffset + 1] = UInt8((Float(rgb.g) * a).rounded())
+                    outRowPtr[outOffset + 2] = UInt8((Float(rgb.b) * a).rounded())
+                    outRowPtr[outOffset + 3] = alpha
+                }
+            }
+            return
+        }
         let need = 5 * w
         if compositeCpuScratchFloats.count < need {
             compositeCpuScratchFloats = [Float](repeating: 0, count: need)
@@ -2984,15 +3325,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             height: origH,
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         let bytesPerRowOut = cgBitmapAllocatedBytesPerRow(ctx)
 
-        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
-        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
+        let compositingBuffer = rgbCompositingBuffer(for: processBuffer, width: origW, height: origH) ?? processBuffer
+        CVPixelBufferLockBaseAddress(compositingBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(compositingBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(compositingBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let camRowBytes = CVPixelBufferGetBytesPerRow(compositingBuffer)
+        let sourcePixelFormat = CVPixelBufferGetPixelFormatType(compositingBuffer)
         guard let outData = ctx.data else { return nil }
         let outBase = outData.assumingMemoryBound(to: UInt8.self)
 
@@ -3088,6 +3431,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 origW: origW,
                 camRowBytes: camRowBytes,
                 bytesPerRowOut: bytesPerRowOut,
+                sourcePixelFormat: sourcePixelFormat,
                 x0: xStart,
                 x1: xEnd,
                 y0: yStart,
@@ -3198,16 +3542,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             height: origH,
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         let outBytesPerRow = cgBitmapAllocatedBytesPerRow(ctx)
 
-        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self),
+        let compositingBuffer = rgbCompositingBuffer(for: processBuffer, width: origW, height: origH) ?? processBuffer
+        CVPixelBufferLockBaseAddress(compositingBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(compositingBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(compositingBuffer)?.assumingMemoryBound(to: UInt8.self),
               let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
-        let origBytesPerRow = CVPixelBufferGetBytesPerRow(processBuffer)
+        let origBytesPerRow = CVPixelBufferGetBytesPerRow(compositingBuffer)
+        let sourceLayout = PixelRGBLayout(pixelFormat: CVPixelBufferGetPixelFormatType(compositingBuffer))
 
         fillCompositeBufferTransparent(
             outBase: outBase,
@@ -3223,9 +3569,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 guard clippedFullMask[maskRow + x] != 0 else { continue }
                 let outOffset = outRow + x * 4
                 let origOffset = origRow + x * 4
-                outBase[outOffset + 0] = origBase[origOffset + 2]
-                outBase[outOffset + 1] = origBase[origOffset + 1]
-                outBase[outOffset + 2] = origBase[origOffset + 0]
+                let rgb = Self.rgbBytes(from: origBase, offset: origOffset, layout: sourceLayout)
+                outBase[outOffset + 0] = rgb.r
+                outBase[outOffset + 1] = rgb.g
+                outBase[outOffset + 2] = rgb.b
                 outBase[outOffset + 3] = 255
             }
         }
@@ -3513,16 +3860,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             height: origH,
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         let bytesPerRowOut = cgBitmapAllocatedBytesPerRow(ctx)
 
-        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?
+        let compositingBuffer = rgbCompositingBuffer(for: processBuffer, width: origW, height: origH) ?? processBuffer
+        CVPixelBufferLockBaseAddress(compositingBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(compositingBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(compositingBuffer)?
                 .assumingMemoryBound(to: UInt8.self) else { return nil }
-        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
+        let camRowBytes = CVPixelBufferGetBytesPerRow(compositingBuffer)
+        let sourceLayout = PixelRGBLayout(pixelFormat: CVPixelBufferGetPixelFormatType(compositingBuffer))
         guard let outData = ctx.data else { return nil }
         let outBase = outData.assumingMemoryBound(to: UInt8.self)
 
@@ -3542,9 +3891,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 let x = xStart + bx
                 let outOff = x * 4
                 let camOff = x * 4
-                outRowPtr[outOff + 0] = origRowPtr[camOff + 2]  // B → R
-                outRowPtr[outOff + 1] = origRowPtr[camOff + 1]  // G → G
-                outRowPtr[outOff + 2] = origRowPtr[camOff + 0]  // R → B
+                let rgb = Self.rgbBytes(from: origRowPtr, offset: camOff, layout: sourceLayout)
+                outRowPtr[outOff + 0] = rgb.r
+                outRowPtr[outOff + 1] = rgb.g
+                outRowPtr[outOff + 2] = rgb.b
                 outRowPtr[outOff + 3] = 255
             }
         }
@@ -3571,8 +3921,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             height: origH,
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
         ctx.draw(baseImage, in: CGRect(x: 0, y: 0, width: origW, height: origH))
@@ -3836,8 +4186,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             height: height,
             bitsPerComponent: 8,
             bytesPerRow: bytesPerRow,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
             return nil
         }
@@ -4169,6 +4519,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logDebug("\n⏱️ ═══════════════════════════════════════════")
             logDebug("⏱️ RTMDET LIVE @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
             logDebug("⏱️ Buffer: \(bufW)x\(bufH) (processBuffer) → RTMDet final dets/masks")
+            logDebug(
+                "🎨 [CameraBuffer] pixfmt=\(Self.pixelFormatFourCC(CVPixelBufferGetPixelFormatType(processBuffer))) " +
+                "colorSpace=\(Self.pixelBufferColorSpaceDescription(processBuffer))"
+            )
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
@@ -4239,22 +4593,37 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             consecutiveEmptyMaskFrames = 0
             pruneSelectedPinsMissingFromCurrentCandidates(candidates)
 
-            // Match the current auto-primary flow for both identify and segment-primary: choose
-            // from a wider post-NMS pool using area shortlist + confidence score + hysteresis.
-            var primaryIdx = segmentationMode != .segmentSelected
-                ? (FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
-                    candidates: candidates,
-                    config: autoPrimarySelectionConfig,
-                    state: &autoPrimarySelectionState
-                ) ?? 0)
-                : 0
+            let rankedDecoderOffsets = rankedCandidates.map { $0.offset }
+            let shouldPreferCenteredLivePrimary = shouldShowLiveCameraPreview || isUsingLiveFrameAlignedOverlay
+            let defaultClusterSelection = defaultPrimaryCluster(
+                candidates: candidates,
+                decoderOffsets: rankedDecoderOffsets,
+                graph: result.maskAffinityGraph,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                preferCenter: shouldPreferCenteredLivePrimary
+            )
+
+            // Default RTMDet path: live landscape camera prefers the confident cluster nearest
+            // center; other modes remain confidence-first. Always union the chosen affinity cluster.
+            var primaryIdx: Int
+            if segmentationMode != .segmentSelected, let defaultClusterSelection {
+                primaryIdx = defaultClusterSelection.representative
+                autoPrimarySelectionState.reset()
+            } else if segmentationMode != .segmentSelected {
+                primaryIdx = 0
+                autoPrimarySelectionState.reset()
+            } else {
+                primaryIdx = 0
+            }
             var primary = candidates[primaryIdx]
             // Candidate indices to composite into the cutout. For multi-select, the Segment button
             // cuts out every selected item together (union of their instance masks); empty/one entry
             // falls back to the single primaryIdx mask.
-            var selectedMaskCompositeIndices: [Int] = []
-
-            let rankedDecoderOffsets = rankedCandidates.map { $0.offset }
+            var selectedMaskCompositeIndices: [Int] =
+                segmentationMode != .segmentSelected && (defaultClusterSelection?.members.count ?? 0) > 1
+                    ? defaultClusterSelection?.members ?? []
+                    : []
 
             storeRTMDetLiveMaskCache(
                 result.maskBuildCache,
@@ -4382,11 +4751,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 logDebug(
                     "🧠 [RTMDet primary bbox] center=(\(Int(p.x)),\(Int(p.y))) size=(\(Int(p.w))x\(Int(p.h))) " +
                     "bufferRect=(\(Int(bufRect.minX)),\(Int(bufRect.minY)),\(Int(bufRect.width))x\(Int(bufRect.height))) " +
-                    "viewRect=(\(Int(viewRectPrimary.minX)),\(Int(viewRectPrimary.minY)),\(Int(viewRectPrimary.width))x\(Int(viewRectPrimary.height)))"
+                    "viewRect=(\(Int(viewRectPrimary.minX)),\(Int(viewRectPrimary.minY)),\(Int(viewRectPrimary.width))x\(Int(viewRectPrimary.height))) " +
+                    "gravity=\(previewLayer.videoGravity.rawValue) maskMode=\(maskImageView.contentMode.rawValue) " +
+                    "maskBounds=\(Int(maskImageView.bounds.width))x\(Int(maskImageView.bounds.height)) " +
+                    "locked=\(lockedOrientation.rawValue) preferCenter=\(shouldPreferCenteredLivePrimary)"
                 )
             }
 
-            if selectedMaskCompositeIndices.count > 1,
+            if segmentationMode == .segmentSelected,
+               selectedMaskCompositeIndices.count > 1,
                let buildCache = result.maskBuildCache,
                !isFullVideoSelectedSegmentation {
                 let maskDetections = selectedMaskCompositeIndices.compactMap { idx in
@@ -4439,7 +4812,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
 
             let maskDetections: [FurnitureFitDetection]
-            if isFullVideoSelectedSegmentation, !selectedMaskCompositeIndices.isEmpty {
+            if !selectedMaskCompositeIndices.isEmpty {
                 maskDetections = selectedMaskCompositeIndices.compactMap { idx in
                     idx < candidates.count ? candidates[idx] : nil
                 }

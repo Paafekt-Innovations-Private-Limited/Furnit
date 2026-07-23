@@ -1042,12 +1042,16 @@ class FurnitureFitManager(private val context: Context) {
                     selectedClassIds.isEmpty() -> keepDets
                     else -> keepDets.filter { it.classId in selectedClassIds }
                 }
-                val primaryDet = pickPrimaryOnnxDetection(
-                    detections = primaryCandidates,
-                    frameWidth = inputW.toFloat(),
-                    frameHeight = inputH.toFloat(),
-                    minimumConfidence = DEFAULT_CONFIDENCE_THRESHOLD,
-                )
+                val primaryDet = if (!restrictToSelection) {
+                    primaryCandidates.firstOrNull()
+                } else {
+                    pickPrimaryOnnxDetection(
+                        detections = primaryCandidates,
+                        frameWidth = inputW.toFloat(),
+                        frameHeight = inputH.toFloat(),
+                        minimumConfidence = DEFAULT_CONFIDENCE_THRESHOLD,
+                    )
+                }
                 val maskSourceDetections = if (restrictToSelection) primaryCandidates else emptyList()
                 val maskDetectionsForBuild = if (restrictToSelection) {
                     maskSourceDetections.map { detection ->
@@ -1391,12 +1395,7 @@ class FurnitureFitManager(private val context: Context) {
 
         val pinList = pinnedDetections.orEmpty()
         if (!includeMask && !requireClusters && selectedClassIds.isEmpty() && pinList.isEmpty()) {
-            val primaryDet = pickPrimaryOnnxDetection(
-                detections = keepDets,
-                frameWidth = inputW.toFloat(),
-                frameHeight = inputH.toFloat(),
-                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
-            )
+            val primaryDet = keepDets.firstOrNull()
             val orderedDisplayDetections = if (primaryDet != null) {
                 buildList {
                     add(primaryDet)
@@ -1464,12 +1463,18 @@ class FurnitureFitManager(private val context: Context) {
             selectedClassIds.isEmpty() -> keepDets
             else -> keepDets.filter { it.classId in selectedClassIds }
         }
-        val primaryDet = pickPrimaryOnnxDetection(
-            detections = primaryCandidates,
-            frameWidth = inputW.toFloat(),
-            frameHeight = inputH.toFloat(),
-            minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
-        )
+        val primaryDet = if (!restrictToSelection) {
+            // Default RTMDet path: highest-confidence detection first, then union its
+            // affinity cluster. Do not re-rank toward area/"complete" bbox in landscape.
+            keepDets.firstOrNull()
+        } else {
+            pickPrimaryOnnxDetection(
+                detections = primaryCandidates,
+                frameWidth = inputW.toFloat(),
+                frameHeight = inputH.toFloat(),
+                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
+            )
+        }
 
         val orderedDisplayDetections = if (primaryDet != null) {
             buildList {
@@ -1557,23 +1562,36 @@ class FurnitureFitManager(private val context: Context) {
             for (rawIndex in maskRawIndices) {
                 val detection = keepDets.getOrNull(rawIndex) ?: continue
                 val plane = rawMaskPlanes.getOrNull(rawIndex) ?: continue
-                val refinedPlane = refineRtmdetMaskPlaneForDetection(
-                    plane = plane,
-                    detection = detection,
-                    inputW = inputW,
-                    inputH = inputH,
-                    protoW = protoW,
-                    protoH = protoH,
-                )
+                val refinedPlane = if (restrictToSelection) {
+                    refineRtmdetMaskPlaneForDetection(
+                        plane = plane,
+                        detection = detection,
+                        inputW = inputW,
+                        inputH = inputH,
+                        protoW = protoW,
+                        protoH = protoH,
+                    )
+                } else {
+                    plane
+                }
                 for (i in refinedPlane.indices) {
                     if (refinedPlane[i] > maskProto[i]) maskProto[i] = refinedPlane[i]
                 }
             }
 
-            val clipLeftModel = maskDetectionsForBuild.minOfOrNull { it.x - it.w / 2f } ?: (primaryDet.x - primaryDet.w / 2f)
-            val clipTopModel = maskDetectionsForBuild.minOfOrNull { it.y - it.h / 2f } ?: (primaryDet.y - primaryDet.h / 2f)
-            val clipRightModel = maskDetectionsForBuild.maxOfOrNull { it.x + it.w / 2f } ?: (primaryDet.x + primaryDet.w / 2f)
-            val clipBottomModel = maskDetectionsForBuild.maxOfOrNull { it.y + it.h / 2f } ?: (primaryDet.y + primaryDet.h / 2f)
+            val rawClipLeftModel = maskDetectionsForBuild.minOfOrNull { it.x - it.w / 2f } ?: (primaryDet.x - primaryDet.w / 2f)
+            val rawClipTopModel = maskDetectionsForBuild.minOfOrNull { it.y - it.h / 2f } ?: (primaryDet.y - primaryDet.h / 2f)
+            val rawClipRightModel = maskDetectionsForBuild.maxOfOrNull { it.x + it.w / 2f } ?: (primaryDet.x + primaryDet.w / 2f)
+            val rawClipBottomModel = maskDetectionsForBuild.maxOfOrNull { it.y + it.h / 2f } ?: (primaryDet.y + primaryDet.h / 2f)
+            val clipWidthModel = max(1f, rawClipRightModel - rawClipLeftModel)
+            val clipHeightModel = max(1f, rawClipBottomModel - rawClipTopModel)
+            val defaultPadX = if (restrictToSelection) 0f else clipWidthModel * 0.10f
+            val defaultPadTop = if (restrictToSelection) 0f else clipHeightModel * 0.25f
+            val defaultPadBottom = if (restrictToSelection) 0f else clipHeightModel * 0.10f
+            val clipLeftModel = (rawClipLeftModel - defaultPadX).coerceAtLeast(0f)
+            val clipTopModel = (rawClipTopModel - defaultPadTop).coerceAtLeast(0f)
+            val clipRightModel = (rawClipRightModel + defaultPadX).coerceAtMost(inputW.toFloat())
+            val clipBottomModel = (rawClipBottomModel + defaultPadBottom).coerceAtMost(inputH.toFloat())
             val protoScaleX = inputW.toFloat() / protoW.toFloat()
             val protoScaleY = inputH.toFloat() / protoH.toFloat()
             clipProtoMaskOutsideRect(

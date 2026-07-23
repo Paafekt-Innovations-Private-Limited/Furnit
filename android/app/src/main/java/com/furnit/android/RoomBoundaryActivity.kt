@@ -239,6 +239,17 @@ class RoomBoundaryActivity : AppCompatActivity() {
         bottomBar.addView(doneBtn)
 
         rootLayout.addView(bottomBar)
+        bottomBar.post {
+            val reservedBottom = bottomBar.height + dpToPx(24)
+            val params = imageContainer.layoutParams as? FrameLayout.LayoutParams
+            if (params != null && params.bottomMargin != reservedBottom) {
+                params.bottomMargin = reservedBottom
+                imageContainer.layoutParams = params
+                imageContainer.post {
+                    boundaryView.setImageBounds(getImageBoundsInView())
+                }
+            }
+        }
     }
 
     private fun createTopBar(): LinearLayout {

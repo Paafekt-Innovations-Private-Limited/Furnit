@@ -31,7 +31,7 @@ final class DetectionBBoxOverlayView: UIView {
     var items: [DetectionOverlayItem] = [] {
         didSet { setNeedsDisplay() }
     }
-    /// When false, only selected clusters render and labels are hidden (production full-video).
+    /// When false, labels are hidden; callers decide which cluster boxes are visible.
     var showsDiagnosticLabels = false
 
     private static let accentGold = UIColor(red: 201 / 255, green: 162 / 255, blue: 75 / 255, alpha: 1)
