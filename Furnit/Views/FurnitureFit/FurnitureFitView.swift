@@ -2005,7 +2005,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 area: rect.width * rect.height
             )
         }
-        guard let maxConfidence = rankedClusters.map(\.confidence).max() else { return nil }
+        guard !rankedClusters.isEmpty else { return nil }
         if !preferCenter {
             return rankedClusters.max { left, right in
                 if abs(left.confidence - right.confidence) > 1e-6 {
@@ -2018,7 +2018,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }.map { (representative: $0.representative, members: $0.members) }
         }
 
-        let confidenceFloor = max(Self.rtmDetLiveConfidenceThreshold, maxConfidence * 0.82)
+        let confidenceFloor = Self.rtmDetLiveConfidenceThreshold
         return rankedClusters.max { left, right in
             let leftEligible = left.confidence >= confidenceFloor
             let rightEligible = right.confidence >= confidenceFloor
@@ -3166,6 +3166,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bounds: CGRect(x: 0, y: 0, width: width, height: height),
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         )
+        if debugMode {
+            logDebug(
+                "🎨 [CameraBuffer] converted \(Self.pixelFormatFourCC(pixelFormat)) -> " +
+                "\(Self.pixelFormatFourCC(CVPixelBufferGetPixelFormatType(convertedBuffer)))"
+            )
+        }
         return convertedBuffer
     }
 
@@ -4594,7 +4600,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             pruneSelectedPinsMissingFromCurrentCandidates(candidates)
 
             let rankedDecoderOffsets = rankedCandidates.map { $0.offset }
-            let shouldPreferCenteredLivePrimary = shouldShowLiveCameraPreview || isUsingLiveFrameAlignedOverlay
+            let shouldPreferCenteredLivePrimary = true
             let defaultClusterSelection = defaultPrimaryCluster(
                 candidates: candidates,
                 decoderOffsets: rankedDecoderOffsets,
@@ -4604,8 +4610,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 preferCenter: shouldPreferCenteredLivePrimary
             )
 
-            // Default RTMDet path: live landscape camera prefers the confident cluster nearest
-            // center; other modes remain confidence-first. Always union the chosen affinity cluster.
+            // Default RTMDet live path: prefer the confident cluster nearest frame center, then
+            // use confidence/area as tie-breakers. Always union the chosen affinity cluster.
             var primaryIdx: Int
             if segmentationMode != .segmentSelected, let defaultClusterSelection {
                 primaryIdx = defaultClusterSelection.representative
