@@ -1,6 +1,9 @@
 package com.furnit.android.theme
 
 import android.app.Activity
+import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -9,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -37,6 +41,7 @@ object PaafektDialogs {
         val density = activity.resources.displayMetrics.density
         val pad = (20 * density).toInt()
         val maxWidth = (420 * density).toInt()
+        val sideMargin = (16 * density).toInt()
 
         val input = EditText(activity).apply {
             setText(initialName)
@@ -48,7 +53,8 @@ object PaafektDialogs {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             setPadding(pad, pad, pad, pad)
             background = PaafektDrawables.secondaryButton()
-            imeOptions = EditorInfo.IME_ACTION_DONE
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            isSingleLine = true
         }
 
         val buttonRow = LinearLayout(activity).apply {
@@ -76,23 +82,33 @@ object PaafektDialogs {
             text = activity.getString(R.string.common_save)
             setTextColor(PaafektColors.accentText)
             backgroundTintList = android.content.res.ColorStateList.valueOf(PaafektColors.accent)
-            setOnClickListener {
-                val typedName = input.text?.toString()?.trim().orEmpty()
-                if (!DisplayNameValidation.isValid(typedName)) {
-                    Toast.makeText(
-                        activity,
-                        activity.getString(R.string.room_viewer_invalid_room_name),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                    return@setOnClickListener
-                }
-                onSave(typedName) { dialog.dismiss() }
-            }
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         buttonRow.addView(cancelButton)
         buttonRow.addView(saveButton)
+
+        fun attemptSave() {
+            val typedName = input.text?.toString()?.trim().orEmpty()
+            if (!DisplayNameValidation.isValid(typedName)) {
+                Toast.makeText(
+                    activity,
+                    activity.getString(R.string.room_viewer_invalid_room_name),
+                    Toast.LENGTH_SHORT,
+                ).show()
+                return
+            }
+            onSave(typedName) { dialog.dismiss() }
+        }
+        saveButton.setOnClickListener { attemptSave() }
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                attemptSave()
+                true
+            } else {
+                false
+            }
+        }
 
         val nameHint = TextView(activity).apply {
             text = activity.getString(R.string.room_viewer_name_hint)
@@ -103,7 +119,10 @@ object PaafektDialogs {
 
         fun refreshNameHint() {
             val typed = input.text?.toString()?.trim().orEmpty()
-            if (typed.isNotEmpty() && !DisplayNameValidation.isValid(typed)) {
+            val valid = DisplayNameValidation.isValid(typed)
+            saveButton.isEnabled = valid
+            saveButton.alpha = if (valid) 1f else 0.45f
+            if (typed.isNotEmpty() && !valid) {
                 nameHint.text = activity.getString(R.string.room_viewer_invalid_room_name)
                 nameHint.setTextColor(PaafektColors.accent)
             } else {
@@ -118,9 +137,25 @@ object PaafektDialogs {
         })
         refreshNameHint()
 
+        val titleView = TextView(activity).apply {
+            text = title
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(PaafektColors.textPrimary)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, (16 * density).toInt())
+        }
+
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, pad)
+            addView(
+                titleView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
             addView(input, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -142,6 +177,7 @@ object PaafektDialogs {
         }
 
         val scroll = ScrollView(activity).apply {
+            isFillViewport = false
             addView(content, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -149,17 +185,35 @@ object PaafektDialogs {
         }
 
         dialog = AlertDialog.Builder(activity, R.style.DarkDialogTheme)
-            .setTitle(title)
             .setView(scroll)
             .create()
 
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        dialog.setOnShowListener {
+            input.requestFocus()
+            input.post {
+                dialog.window?.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE,
+                )
+                val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                imm?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
         dialog.show()
-        dialog.window?.setLayout(
-            minOf((activity.resources.displayMetrics.widthPixels * 0.92f).toInt(), maxWidth),
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
-        input.requestFocus()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE,
+            )
+            setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            attributes = attributes.apply {
+                width = minOf(activity.resources.displayMetrics.widthPixels - sideMargin * 2, maxWidth)
+                height = WindowManager.LayoutParams.WRAP_CONTENT
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                y = (12 * density).toInt()
+            }
+        }
     }
 
     fun showDeleteRoomDialog(

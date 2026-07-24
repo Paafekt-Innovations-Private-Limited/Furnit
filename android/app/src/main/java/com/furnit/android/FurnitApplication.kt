@@ -3,6 +3,7 @@ package com.furnit.android
 import android.app.Application
 import android.content.Intent
 import android.os.Process
+import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
 import com.google.firebase.FirebaseApp
@@ -31,6 +32,8 @@ class FurnitApplication : Application() {
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to initialize Firebase", e)
         }
+
+        FurnitureFitManager.preloadAndWarmSharedAsync(this)
     }
 
     private fun installCrashHandler() {

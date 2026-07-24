@@ -87,7 +87,7 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var helpButton: ImageButton
     private lateinit var brainButton: ImageButton
     private lateinit var screenshotButton: ImageButton
-    private lateinit var orientationLabel: LinearLayout
+    private var orientationLabel: LinearLayout? = null
     private lateinit var boundaryManager: RoomBoundaryManager
     private lateinit var viewerRootLayout: FrameLayout
     private lateinit var hintController: PaafektHintController
@@ -147,7 +147,7 @@ class ModelDetailActivity : AppCompatActivity() {
         firstRunCoachController = PaafektFirstRunCoachMarkController(viewerRootLayout)
 
         findViewById<View>(R.id.topBarContainer).visibility = View.GONE
-        orientationLabel.visibility = View.GONE
+        orientationLabel?.visibility = View.GONE
 
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
         installImmersiveViewerChrome()
@@ -165,8 +165,6 @@ class ModelDetailActivity : AppCompatActivity() {
 
         // Help — accessible from long-press on toolbar tap icon if needed; hide legacy bar.
         helpButton.visibility = View.GONE
-
-        updateOrientationLabel()
 
         viewerRootLayout.post {
             firstRunCoachController.showIfNeeded(this) {

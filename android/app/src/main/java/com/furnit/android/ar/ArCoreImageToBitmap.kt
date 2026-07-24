@@ -56,6 +56,7 @@ fun Image.yuv420888ToBitmap(jpegQuality: Int = 90): Bitmap? {
         val out = ByteArrayOutputStream()
         yuvImage.compressToJpeg(Rect(0, 0, width, height), jpegQuality, out)
         BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
+            ?.copy(Bitmap.Config.ARGB_8888, false)
     } catch (e: Exception) {
         LogUtil.e("ArCoreImage", "yuv420888ToBitmap failed: ${e.message}", e)
         null

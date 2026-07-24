@@ -12,12 +12,16 @@ import com.furnit.android.utils.LogUtil
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtException
+import ai.onnxruntime.OrtProvider
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
 import com.furnit.android.DetectionResult
 import com.furnit.android.ar.ArSupportChecker
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
 import org.json.JSONObject
 import kotlin.math.ceil
 import kotlin.math.exp
@@ -58,7 +62,6 @@ class FurnitureFitManager(private val context: Context) {
         private const val DEFAULT_ONNX_MODEL_ASSET = RTMDET_ONNX_MODEL_ASSET
         private const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
         private const val RTMDET_CONFIDENCE_THRESHOLD = 0.30f
-        private const val PRIMARY_CANDIDATE_POOL_LIMIT = 12
         private const val LOW_CONFIDENCE_OVERSIZED_THRESHOLD = 0.65f
         private const val OVERSIZED_BOX_AREA_FRACTION = 0.45f
         private const val RTMDET_MASK_KEEP_THRESHOLD = 0.80f
@@ -81,6 +84,8 @@ class FurnitureFitManager(private val context: Context) {
 
         private val sharedBackendLock = Any()
         @Volatile private var sharedBackend: OnnxBackend? = null
+        private val sharedWarmupStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+        @Volatile private var sharedWarmupFinished: Boolean = false
         private val sharedInferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         /**
@@ -98,6 +103,33 @@ class FurnitureFitManager(private val context: Context) {
             return sharedOnnxBackend(context.applicationContext, DEFAULT_ONNX_MODEL_ASSET) != null
         }
 
+        /**
+         * Process-level RTMDet preload + warmup. This keeps screen entry from launching a dummy
+         * segmentation request while the camera is already trying to process the first real frame.
+         */
+        fun preloadAndWarmSharedAsync(context: Context) {
+            if (sharedWarmupFinished || !sharedWarmupStarted.compareAndSet(false, true)) return
+            val appContext = context.applicationContext
+            Thread({
+                val manager = FurnitureFitManager(appContext)
+                try {
+                    val initialized = manager.initializeAuto()
+                    val warmed = initialized && manager.warmupInferenceBlocking()
+                    sharedWarmupFinished = warmed
+                    if (!warmed) sharedWarmupStarted.set(false)
+                    LogUtil.i(TAG, "Shared RTMDet preload/warmup initialized=$initialized warmed=$warmed")
+                } catch (e: Exception) {
+                    LogUtil.w(TAG, "Shared RTMDet preload/warmup failed: ${e.message}")
+                    sharedWarmupStarted.set(false)
+                } finally {
+                    manager.close()
+                }
+            }, "rtmdet-preload-warmup").apply {
+                isDaemon = true
+                start()
+            }
+        }
+
         /** True when [preloadShared] / [initializeAuto] has already created the shared session. */
         fun isSharedBackendReady(): Boolean {
             return sharedBackend?.assetName == DEFAULT_ONNX_MODEL_ASSET
@@ -113,11 +145,29 @@ class FurnitureFitManager(private val context: Context) {
                     val appContext = context.applicationContext
                     val file = copyAssetToFile(appContext, onnxAssetName)
                     val env = OrtEnvironment.getEnvironment()
+                    val availableProviders = OrtEnvironment.getAvailableProviders()
                     val opts = SessionOptions().apply {
                         setOptimizationLevel(SessionOptions.OptLevel.ALL_OPT)
                         setExecutionMode(SessionOptions.ExecutionMode.SEQUENTIAL)
                         setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4))
                         setInterOpNumThreads(1)
+                        if (availableProviders.contains(OrtProvider.XNNPACK)) {
+                            try {
+                                addXnnpack(
+                                    mapOf(
+                                        "intra_op_num_threads" to Runtime.getRuntime()
+                                            .availableProcessors()
+                                            .coerceIn(2, 4)
+                                            .toString(),
+                                    ),
+                                )
+                                LogUtil.i(TAG, "ONNX execution provider requested: XNNPACK available=$availableProviders")
+                            } catch (e: OrtException) {
+                                LogUtil.w(TAG, "Failed to enable XNNPACK; falling back to CPU: ${e.message}")
+                            }
+                        } else {
+                            LogUtil.i(TAG, "ONNX execution provider requested: CPU; available=$availableProviders")
+                        }
                     }
                     val session = env.createSession(file.absolutePath, opts)
                     val backend = OnnxBackend(
@@ -188,6 +238,10 @@ class FurnitureFitManager(private val context: Context) {
     @Volatile private var ortEnv: OrtEnvironment? = null
     @Volatile private var ortSession: OrtSession? = null
     private var loadedOnnxAssetName: String? = null
+    private var reusableInputBuffer: FloatBuffer? = null
+    private var reusableInputFloatCount: Int = 0
+    private var reusableInputTensor: OnnxTensor? = null
+    private var reusableInputShape: LongArray? = null
 
     private data class OnnxBackend(
         val env: OrtEnvironment,
@@ -271,6 +325,45 @@ class FurnitureFitManager(private val context: Context) {
         } finally {
             if (!warmupBitmap.isRecycled) warmupBitmap.recycle()
         }
+    }
+
+    private fun inputFloatBuffer(floatCount: Int): FloatBuffer {
+        val current = reusableInputBuffer
+        val buffer = if (current == null || reusableInputFloatCount != floatCount) {
+            reusableInputTensor?.close()
+            reusableInputTensor = null
+            reusableInputShape = null
+            ByteBuffer
+                .allocateDirect(floatCount * java.lang.Float.BYTES)
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer()
+                .also {
+                    reusableInputBuffer = it
+                    reusableInputFloatCount = floatCount
+                    LogUtil.i(TAG, "Allocated direct ONNX input buffer: floats=$floatCount bytes=${floatCount * java.lang.Float.BYTES}")
+                }
+        } else {
+            current
+        }
+        buffer.clear()
+        return buffer
+    }
+
+    private fun inputTensor(env: OrtEnvironment, buffer: FloatBuffer, shape: LongArray): OnnxTensor {
+        val currentTensor = reusableInputTensor
+        val currentShape = reusableInputShape
+        if (currentTensor != null && currentShape != null && currentShape.contentEquals(shape)) {
+            buffer.rewind()
+            return currentTensor
+        }
+
+        currentTensor?.close()
+        buffer.rewind()
+        val tensor = OnnxTensor.createTensor(env, buffer, shape)
+        reusableInputTensor = tensor
+        reusableInputShape = shape.copyOf()
+        LogUtil.i(TAG, "Created reusable ONNX input tensor: shape=${shape.contentToString()}")
+        return tensor
     }
 
     fun segmentImageAsync(frame: Bitmap?, callback: (Bitmap?) -> Unit) {
@@ -903,7 +996,6 @@ class FurnitureFitManager(private val context: Context) {
         pinnedDetections: List<DetectionResult>? = null,
         requireClusters: Boolean = false,
     ): SegmentationResult? {
-        var tensor: OnnxTensor? = null
         return try {
             val totalStartNanos = System.nanoTime()
             val backend = ortBackend
@@ -923,7 +1015,7 @@ class FurnitureFitManager(private val context: Context) {
             val preparedBitmap = preprocessFrameForModel(frame, inputW, inputH, usesLetterboxPreprocess)
             val intValues = IntArray(inputW * inputH)
             preparedBitmap.getPixels(intValues, 0, inputW, 0, 0, inputW, inputH)
-            val inputFloats = FloatArray(3 * inputH * inputW)
+            val inputBuffer = inputFloatBuffer(3 * inputH * inputW)
             val hw = inputH * inputW
             for (y in 0 until inputH) {
                 val rowOff = y * inputW
@@ -934,13 +1026,13 @@ class FurnitureFitManager(private val context: Context) {
                     val g = ((v shr 8) and 0xFF).toFloat()
                     val b = (v and 0xFF).toFloat()
                     if (isRtmdetRaw) {
-                        inputFloats[0 * hw + pixelIdx] = (b - 103.53f) / 57.375f
-                        inputFloats[1 * hw + pixelIdx] = (g - 116.28f) / 57.12f
-                        inputFloats[2 * hw + pixelIdx] = (r - 123.675f) / 58.395f
+                        inputBuffer.put(0 * hw + pixelIdx, (b - 103.53f) / 57.375f)
+                        inputBuffer.put(1 * hw + pixelIdx, (g - 116.28f) / 57.12f)
+                        inputBuffer.put(2 * hw + pixelIdx, (r - 123.675f) / 58.395f)
                     } else {
-                        inputFloats[0 * hw + pixelIdx] = r / 255.0f
-                        inputFloats[1 * hw + pixelIdx] = g / 255.0f
-                        inputFloats[2 * hw + pixelIdx] = b / 255.0f
+                        inputBuffer.put(0 * hw + pixelIdx, r / 255.0f)
+                        inputBuffer.put(1 * hw + pixelIdx, g / 255.0f)
+                        inputBuffer.put(2 * hw + pixelIdx, b / 255.0f)
                     }
                 }
             }
@@ -948,7 +1040,7 @@ class FurnitureFitManager(private val context: Context) {
             LogUtil.i(TAG, "Furniture segmentation preprocess: ${preprocessMillis}ms")
 
             val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
-            tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
+            val tensor = inputTensor(env, inputBuffer, shapeLong)
 
             val inferenceStartNanos = System.nanoTime()
             val requestedOutputs =
@@ -1043,7 +1135,12 @@ class FurnitureFitManager(private val context: Context) {
                     else -> keepDets.filter { it.classId in selectedClassIds }
                 }
                 val primaryDet = if (!restrictToSelection) {
-                    primaryCandidates.firstOrNull()
+                    pickPrimaryOnnxDetection(
+                        detections = primaryCandidates,
+                        frameWidth = inputW.toFloat(),
+                        frameHeight = inputH.toFloat(),
+                        minimumConfidence = DEFAULT_CONFIDENCE_THRESHOLD,
+                    )
                 } else {
                     pickPrimaryOnnxDetection(
                         detections = primaryCandidates,
@@ -1224,8 +1321,6 @@ class FurnitureFitManager(private val context: Context) {
         } catch (e: Exception) {
             LogUtil.e(TAG, "ONNX segmentation once failed", e)
             null
-        } finally {
-            tensor?.close()
         }
     }
 
@@ -1395,7 +1490,12 @@ class FurnitureFitManager(private val context: Context) {
 
         val pinList = pinnedDetections.orEmpty()
         if (!includeMask && !requireClusters && selectedClassIds.isEmpty() && pinList.isEmpty()) {
-            val primaryDet = keepDets.firstOrNull()
+            val primaryDet = pickPrimaryOnnxDetection(
+                detections = keepDets,
+                frameWidth = inputW.toFloat(),
+                frameHeight = inputH.toFloat(),
+                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
+            )
             val orderedDisplayDetections = if (primaryDet != null) {
                 buildList {
                     add(primaryDet)
@@ -1464,9 +1564,15 @@ class FurnitureFitManager(private val context: Context) {
             else -> keepDets.filter { it.classId in selectedClassIds }
         }
         val primaryDet = if (!restrictToSelection) {
-            // Default RTMDet path: highest-confidence detection first, then union its
-            // affinity cluster. Do not re-rank toward area/"complete" bbox in landscape.
-            keepDets.firstOrNull()
+            // Default RTMDet path: prefer the confident detection nearest frame center, then union
+            // its affinity cluster. This matches the user's live-camera intent better than taking
+            // an edge sliver solely because it has the highest global confidence.
+            pickPrimaryOnnxDetection(
+                detections = primaryCandidates,
+                frameWidth = inputW.toFloat(),
+                frameHeight = inputH.toFloat(),
+                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
+            )
         } else {
             pickPrimaryOnnxDetection(
                 detections = primaryCandidates,
@@ -2122,7 +2228,14 @@ class FurnitureFitManager(private val context: Context) {
             return -1f
         }
 
-        return 0.75f * confidence + 0.25f * areaNormalized
+        val centerX = frameWidth * 0.5f
+        val centerY = frameHeight * 0.5f
+        val dx = (detection.x - centerX) / centerX.coerceAtLeast(1f)
+        val dy = (detection.y - centerY) / centerY.coerceAtLeast(1f)
+        val centerDistance = kotlin.math.sqrt(dx * dx + dy * dy).coerceIn(0f, 1.4142136f)
+        val centerScore = (1f - centerDistance / 1.4142136f).coerceIn(0f, 1f)
+
+        return 0.70f * centerScore + 0.20f * confidence + 0.10f * areaNormalized
     }
 
     private fun pickPrimaryOnnxDetection(
@@ -2143,11 +2256,6 @@ class FurnitureFitManager(private val context: Context) {
                     detection.w > 0f &&
                     detection.h > 0f
             }
-            .sortedWith(
-                compareByDescending<Detection> { it.confidence }
-                    .thenByDescending { it.w * it.h }
-            )
-            .take(PRIMARY_CANDIDATE_POOL_LIMIT)
             .toList()
         if (viable.isEmpty()) return detections.maxByOrNull { it.confidence }
 
@@ -2169,8 +2277,12 @@ class FurnitureFitManager(private val context: Context) {
         if (selected != null) {
             val summary = viable.take(4).joinToString(" | ") { detection ->
                 val areaFraction = (detection.w * detection.h / (frameWidth * frameHeight).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                val centerDistance = kotlin.math.sqrt(
+                    ((detection.x - frameWidth * 0.5f) / (frameWidth * 0.5f).coerceAtLeast(1f)).let { it * it } +
+                        ((detection.y - frameHeight * 0.5f) / (frameHeight * 0.5f).coerceAtLeast(1f)).let { it * it },
+                )
                 "${labelForClassId(detection.classId)}:${String.format("%.2f", detection.confidence)} " +
-                    "box=${String.format("%.2f", areaFraction)}"
+                    "box=${String.format("%.2f", areaFraction)} center=${String.format("%.2f", centerDistance)}"
             }
             LogUtil.i(
                 TAG,
@@ -2717,6 +2829,11 @@ class FurnitureFitManager(private val context: Context) {
         ortSession = null
         ortEnv = null
         loadedOnnxAssetName = null
+        reusableInputTensor?.close()
+        reusableInputTensor = null
+        reusableInputShape = null
+        reusableInputBuffer = null
+        reusableInputFloatCount = 0
     }
 
     private fun flattenArrayToFloat(arr: Array<*>): FloatArray {

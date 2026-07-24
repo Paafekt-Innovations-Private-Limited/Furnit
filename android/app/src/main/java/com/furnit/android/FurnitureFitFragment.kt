@@ -109,8 +109,6 @@ class FurnitureFitFragment : Fragment() {
     private lateinit var manager: FurnitureFitManager
     private var isProcessing = false
     private val thermalCadence = FurnitureFitThermalCadence(logTag = "FurnitureFitThermal")
-    private val pendingCameraBitmapLock = Any()
-    private var pendingCameraBitmap: Bitmap? = null
     private var hasFirstDetection = false
     /** After first segmentation in this fragment lifetime, skip startup progress on view/camera restart. */
     private var segmentationCompletedOnceThisSession = false
@@ -168,12 +166,6 @@ class FurnitureFitFragment : Fragment() {
         LogUtil.d("FurnitureFit", "Calling initializeAuto...")
         val success = manager.initializeAuto()
         LogUtil.d("FurnitureFit", "initializeAuto completed, success=$success")
-        // Pay ORT cold-start on a background thread so the first camera frame is not the first run.
-        if (success) {
-            cameraExecutor.execute {
-                manager.warmupInferenceBlocking()
-            }
-        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -432,7 +424,7 @@ class FurnitureFitFragment : Fragment() {
 
         activity?.runOnUiThread {
             statusLabel.text = if (hasRoomBackground) {
-                getString(R.string.smartypants_detecting_furniture)
+                getString(R.string.smartypants_scanning_for_furniture)
             } else {
                 getString(R.string.smartypants_camera_ready)
             }
@@ -991,10 +983,6 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun releaseCameraUseCases() {
-        synchronized(pendingCameraBitmapLock) {
-            pendingCameraBitmap?.takeIf { !it.isRecycled }?.recycle()
-            pendingCameraBitmap = null
-        }
         try {
             boundPreview?.setSurfaceProvider(null)
         } catch (_: Exception) {
@@ -1093,7 +1081,7 @@ class FurnitureFitFragment : Fragment() {
                 cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
             }
             activity?.runOnUiThread {
-                statusLabel.text = if (hasRoomBackground) getString(R.string.smartypants_detecting_furniture) else getString(R.string.smartypants_camera_ready)
+                statusLabel.text = if (hasRoomBackground) getString(R.string.smartypants_scanning_for_furniture) else getString(R.string.smartypants_camera_ready)
             }
         } catch (e: Exception) {
             LogUtil.e("FurnitureFit", "bindToLifecycle failed", e)
@@ -1106,14 +1094,7 @@ class FurnitureFitFragment : Fragment() {
 
     private fun processFrame(imageProxy: ImageProxy) {
         if (isProcessing) {
-            val pendingBitmap = imageProxy.toBitmapSafe()
             imageProxy.close()
-            if (pendingBitmap != null) {
-                synchronized(pendingCameraBitmapLock) {
-                    pendingCameraBitmap?.takeIf { it !== pendingBitmap && !it.isRecycled }?.recycle()
-                    pendingCameraBitmap = pendingBitmap
-                }
-            }
             return
         }
         if (FurnitureFitFrameUsability.isFullyDark(imageProxy)) {
@@ -1167,7 +1148,6 @@ class FurnitureFitFragment : Fragment() {
     private fun runCameraXSegmentation(bitmap: Bitmap) {
         if (!isAdded || view == null) {
             bitmap.recycle()
-            clearPendingCameraBitmap()
             isProcessing = false
             arCameraController?.onInferenceFinished()
             return
@@ -1182,48 +1162,14 @@ class FurnitureFitFragment : Fragment() {
         manager.segmentWithDetectionsAsync(alignedBitmap) { result ->
             if (!isAdded || view == null) {
                 alignedBitmap.recycle()
-                clearPendingCameraBitmap()
                 isProcessing = false
                 arCameraController?.onInferenceFinished()
                 return@segmentWithDetectionsAsync
             }
             handleSegmentationResult(result, alignedBitmap, isArPath = false)
-            val nextCameraBitmap = synchronized(pendingCameraBitmapLock) {
-                val pendingBitmap = pendingCameraBitmap
-                pendingCameraBitmap = null
-                pendingBitmap
-            }
-            if (nextCameraBitmap != null) {
-                if (FurnitureFitFrameUsability.isFullyDark(nextCameraBitmap)) {
-                    nextCameraBitmap.recycle()
-                    isProcessing = false
-                    arCameraController?.onInferenceFinished()
-                    activity?.runOnUiThread {
-                        if (isAdded && !hasFirstDetection) {
-                            progressContainer.visibility = View.GONE
-                        }
-                    }
-                } else if (thermalCadence.tryBeginInference()) {
-                    runCameraXSegmentation(nextCameraBitmap)
-                } else {
-                    nextCameraBitmap.recycle()
-                    isProcessing = false
-                    arCameraController?.onInferenceFinished()
-                }
-            } else {
-                isProcessing = false
-                arCameraController?.onInferenceFinished()
-            }
+            isProcessing = false
+            arCameraController?.onInferenceFinished()
         }
-    }
-
-    private fun clearPendingCameraBitmap() {
-        val pendingBitmap = synchronized(pendingCameraBitmapLock) {
-            val current = pendingCameraBitmap
-            pendingCameraBitmap = null
-            current
-        }
-        pendingBitmap?.takeIf { !it.isRecycled }?.recycle()
     }
 
     private fun setProgress(value: Int, text: String) {
@@ -1473,6 +1419,8 @@ fun ImageProxy.toBitmapSafe(): Bitmap? {
         val imageBytes = out.toByteArray()
 
         var bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            ?.copy(Bitmap.Config.ARGB_8888, false)
+            ?: return null
 
         // Rotate if needed based on image rotation
         val rotation = imageInfo.rotationDegrees

@@ -448,7 +448,6 @@ class GLBRoomActivity : AppCompatActivity() {
                 LogUtil.w(TAG, "Inline brain: RTMDet preload failed")
                 return@launch
             }
-            manager.warmupInferenceBlocking()
             withContext(Dispatchers.Main) {
                 if (isDestroyed) {
                     if (furnitureFitManager !== manager) manager.close()
@@ -1099,9 +1098,7 @@ class GLBRoomActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val manager = furnitureFitManager ?: withContext(Dispatchers.IO) {
                 FurnitureFitManager(this@GLBRoomActivity).takeIf { manager ->
-                    manager.initializeAuto().also { ok ->
-                        if (ok) manager.warmupInferenceBlocking()
-                    }
+                    manager.initializeAuto()
                 }
             }
             if (manager == null) {
