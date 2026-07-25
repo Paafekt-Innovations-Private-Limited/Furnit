@@ -6,11 +6,12 @@ This folder mirrors the Swift photo-to-3D-room asset contract:
 - GeoCalib pinhole CNN for focal length and gravity hints
 - RTMDet-Ins for furniture segmentation in GLB room viewers; the Swift room-measurement path also uses RTMDet as an object anchor.
 
-Packaged Android assets:
+Packaged Android assets (shipped via install-time Play Asset Delivery packs; this
+folder in the app module is kept only for the asset contract documentation):
 
-- `depth_anything/depth_anything_v2_metric_indoor_small.onnx`
-- `geocalib/geocalib_pinhole_cnn.onnx`
-- `../rtmdet-ins-m-raw.onnx`
+- `room_generation_models/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx`
+- `room_generation_models/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx`
+- `rtmdet_models/src/main/assets/rtmdet-ins-m-raw.onnx`
 
 The Android GeoCalib ONNX and iOS GeoCalib ML package are exported from the same
 pretrained pinhole checkpoint. Their platform-native inference wrappers feed the same

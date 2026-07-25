@@ -2,6 +2,18 @@
 
 This document records the local release state for the iOS/Swift and Android builds prepared on July 20, 2026. It is a handoff checklist for App Store Connect and Google Play Console submission.
 
+## Update - 2026-07-25 (supersedes Android facts below)
+
+The Android body of this document is a July 20 snapshot. The following changed on July 25:
+
+- Application ID is now `com.paafekt.android` (was `com.furnit.android`). The Kotlin namespace stays `com.furnit.android`. The ID is permanent at first publish.
+- A matching Firebase Android app was registered in `paafektprod`: app ID `1:613415224058:android:8d0a97fe4990e559a13f43`, with all certificate fingerprints (including the upload key SHA-1/SHA-256 listed below) copied from the old entry. `android/app/google-services.json` now contains both clients.
+- R8 is enabled for release (`minifyEnabled true`, `shrinkResources true`, `app/proguard-rules.pro`). Archive `app/build/outputs/mapping/release/mapping.txt` per release; emailed crash reports need it for retracing.
+- Model assets moved out of app assets into install-time Play Asset Delivery packs (`rtmdet_models` ~110 MB, `room_generation_models` ~205 MB). The AAB is ~369 MB total, but the base module is small; the July 20 "Android Size Watch" recommendation is implemented.
+- Signed builds must run from a normal terminal: sandboxed agent shells override `GRADLE_USER_HOME`, so Gradle misses `~/.gradle/gradle.properties` and emits an unsigned AAB.
+- A release build (debug-key signed via bundletool for local testing) was installed and launched on a Pixel 9a on July 25.
+- Current submission checklist lives in `android/SUBMISSION_POLICY_AUDIT.md`; build/signing steps in `android/README_ANDROID.md`.
+
 ## Overall Status
 
 | Platform | Status | Upload artifact | Notes |

@@ -21,7 +21,7 @@ cd android && ./gradlew :app:assembleDebug :app:compileDebugAndroidTestKotlin --
 | Codebase grep | Cross-checked Lint string/color candidates against `R.string.*` / `@string/*` / `@color/*` in `.kt`, `.java`, `.xml`. |
 | `./gradlew :app:dependencies --configuration debugRuntimeClasspath` | Gradle dependency audit (see below). |
 | detekt / ktlint | Not configured in this repo. |
-| R8 `-printusage` | Not run (`minifyEnabled false` in release). |
+| R8 `-printusage` | Available since 2026-07-25: release builds enable R8 (`minifyEnabled true`); not yet run for this audit. |
 
 Lint report (when generated): `android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt`
 
@@ -98,7 +98,7 @@ Categories removed (unused on Android today):
 | Pre-existing Lint `NewApi` errors (`Bitmap.Config.HARDWARE`, etc.) | Fix separately; blocks clean `lintDebug` gate. |
 | `fragment-ktx` without direct `viewModels` usage | Retained; low risk, required by fragment hosting pattern. |
 | ExecuTorch / old CPU/Vulkan variants | Removed; the app now has one flavorless runtime path. |
-| R8 usage report | Deferred until `minifyEnabled true`. |
+| R8 usage report | Unblocked 2026-07-25: release builds now set `minifyEnabled true`; add `-printusage` to `app/proguard-rules.pro` for the next audit pass. |
 | detekt in CI | Recommended follow-up. |
 
 ---

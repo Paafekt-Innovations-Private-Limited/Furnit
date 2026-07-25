@@ -18,10 +18,10 @@ This is a pragmatic release checklist, not legal advice.
 
 ## Build and signing items before upload
 
-- Build the bundle with the `PAAFEKT_UPLOAD_*` signing properties set; an unsigned `bundleRelease` output is rejected by Play. See "Release Build and Signing" in `README_ANDROID.md`.
+- Build the bundle with the `PAAFEKT_UPLOAD_*` signing properties set; an unsigned `bundleRelease` output is rejected by Play. The upload keystore and credentials already exist on this machine (`~/.gradle/paafekt/paafekt-upload-key.jks`, values in `~/.gradle/gradle.properties`). Run the signed build from a normal terminal — sandboxed agent shells override `GRADLE_USER_HOME` and produce an unsigned AAB. See "Release Build and Signing" in `README_ANDROID.md`.
 - Release builds are R8-minified. Archive `app/build/outputs/mapping/release/mapping.txt` per release and upload it to Play Console; emailed crash reports from `CrashReportActivity` need it for retracing.
 - After enrolling in Play App Signing, add the Play App Signing key's SHA-256 to the Firebase Android app, or phone-number OTP login will fail in the store build.
-- The application ID is now `com.paafekt.android` (permanent at first publish; Kotlin namespace stays `com.furnit.android`). The matching Firebase Android app (`1:613415224058:android:8d0a97fe4990e559a13f43`) is registered in `paafektprod` with the same certificate fingerprints as the old `com.furnit.android` entry, and `google-services.json` contains both clients. After enrolling in Play App Signing, add that key's SHA-256 to the new app entry.
+- The application ID is now `com.paafekt.android` (permanent at first publish; Kotlin namespace stays `com.furnit.android`). The matching Firebase Android app (`1:613415224058:android:8d0a97fe4990e559a13f43`) is registered in `paafektprod` with the same certificate fingerprints as the old `com.furnit.android` entry (including the upload key's SHA-1/SHA-256), and `google-services.json` contains both clients. After enrolling in Play App Signing, add that key's SHA-256 to the new app entry.
 
 ## Play Console / website items to verify before submission
 

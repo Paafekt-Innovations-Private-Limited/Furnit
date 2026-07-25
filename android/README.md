@@ -37,14 +37,17 @@ kernels plus `mask_feat` to build cutouts.
 
 ## Packaged Assets
 
-Room-generation assets are tracked under `app/src/main/assets/room_generation/`:
+Model assets ship via install-time Play Asset Delivery packs (see `settings.gradle` and
+`assetPacks` in `app/build.gradle`), not inside the app module:
 
-- `depth_anything/depth_anything_v2_metric_indoor_small.onnx`
-- `geocalib/.gitkeep`
+- `room_generation_models/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx`
+- `room_generation_models/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx`
+- `rtmdet_models/src/main/assets/rtmdet-ins-m-raw.onnx`
 
-`RoomGenerationAssets` also checks for `rtmdet-ins-m-raw.onnx`, which is packaged at the root of app assets for furniture segmentation.
+Install-time packs are merged into the app's `AssetManager` at runtime, so code still loads
+them by the same relative paths (`room_generation/...`, `rtmdet-ins-m-raw.onnx`).
 
-GeoCalib still needs an Android ONNX or TFLite export before Android can fully match the Swift metric reconstruction pipeline. Do not copy Core ML packages into Android assets.
+Do not copy Core ML packages into Android assets.
 
 ## Build
 

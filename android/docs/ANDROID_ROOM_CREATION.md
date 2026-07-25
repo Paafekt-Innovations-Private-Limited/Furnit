@@ -38,20 +38,16 @@ files/rooms/<room-id>/metadata.txt
 
 ## Assets
 
-Tracked Android room-generation assets:
+Model assets live in install-time Play Asset Delivery packs (merged into the app's
+`AssetManager` at runtime, so load paths are unchanged):
 
 ```text
-app/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
-app/src/main/assets/rtmdet-ins-m-raw.onnx
+room_generation_models/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
+room_generation_models/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
+rtmdet_models/src/main/assets/rtmdet-ins-m-raw.onnx
 ```
 
-Optional local calibration asset:
-
-```text
-app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
-```
-
-The metric measurement pipeline is wired and runs Depth Anything plus RTMDet today. If the gitignored GeoCalib ONNX is absent, it uses fallback focal/gravity calibration.
+The metric measurement pipeline is wired and runs Depth Anything plus RTMDet today. If the GeoCalib ONNX is absent, it uses fallback focal/gravity calibration.
 
 ## Runtime
 

@@ -1,6 +1,6 @@
 # Store submission status (Paafekt)
 
-Last updated: 20 July 2026
+Last updated: 25 July 2026
 
 ## iOS — App Store Connect
 
@@ -52,6 +52,8 @@ Automatically release when approved (as selected in App Review / version setting
 
 When verification clears: create app → Data safety → store listing → AAB → (new personal accounts may also need closed testing rules; org path may differ) → see [android-play-review-checklist.md](android-play-review-checklist.md).
 
+Repo-side readiness (25 Jul 2026): application ID switched to `com.paafekt.android` with a matching Firebase app registered, R8 enabled for release, model assets ship as install-time asset packs, and a release build was smoke-installed on a Pixel 9a. Create the app in Play Console as `com.paafekt.android`. Details: `android/SUBMISSION_POLICY_AUDIT.md` and `docs/release-status-2026-07-20.md` (2026-07-25 update section).
+
 ---
 
 ## Firebase (`paafektprod`)
@@ -59,6 +61,7 @@ When verification clears: create app → Data safety → store listing → AAB �
 | Item | Status |
 |------|--------|
 | Phone Auth | Enabled |
+| Android app entries | `com.paafekt.android` (active, `1:613415224058:android:8d0a97fe4990e559a13f43`) and legacy `com.furnit.android` (delete after launch) |
 | SMS region policy | Allowlist of launch countries (includes **FR**, **US**, **DE**, **CN**, **IN**, etc.) — not worldwide |
 | Apply/update allowlist | `./scripts/set_firebase_sms_regions.sh` (needs `gcloud auth`) |
 

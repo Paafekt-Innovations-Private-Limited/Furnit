@@ -25,8 +25,11 @@ values from Gradle properties or environment variables (nothing is committed):
 - `PAAFEKT_UPLOAD_KEY_ALIAS`
 - `PAAFEKT_UPLOAD_KEY_PASSWORD`
 
-One-time upload keystore creation (keep the file and passwords in a password
-manager; losing the upload key means a reset request through Play support):
+On this machine the upload keystore already exists at
+`~/.gradle/paafekt/paafekt-upload-key.jks` (alias `paafekt_upload`) and the four
+values are set in `~/.gradle/gradle.properties`. Only recreate a keystore for a
+new machine (keep the file and passwords in a password manager; losing the
+upload key means a reset request through Play support):
 
 ```bash
 keytool -genkeypair -v \
@@ -35,12 +38,16 @@ keytool -genkeypair -v \
   -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-Put the four values in `~/.gradle/gradle.properties` (machine-global, outside the
-repo), then build:
+Build the signed bundle:
 
 ```bash
 ./gradlew :app:bundleRelease
 ```
+
+Run signed builds from a normal terminal. Sandboxed agent shells override
+`GRADLE_USER_HOME` to a temporary directory, so Gradle never sees the signing
+properties in `~/.gradle/gradle.properties` and silently produces an unsigned
+bundle (verify with `jarsigner -verify` on the AAB).
 
 Output: `app/build/outputs/bundle/release/app-release.aab`.
 
@@ -68,11 +75,11 @@ Per-release checklist:
 - `RoomGenerationAssets` records the packaged Swift-parity asset contract.
 - Generated preview folders are promoted into `files/rooms/` only when the user saves the room.
 
-Android currently packages the Depth Anything metric depth ONNX asset and the existing RTMDet furniture segmentation ONNX asset. GeoCalib needs an Android export before the full Swift metric reconstruction path can be wired.
+Android packages the Depth Anything metric depth, GeoCalib pinhole, and RTMDet furniture segmentation ONNX models via install-time Play Asset Delivery packs (`room_generation_models`, `rtmdet_models`). Install-time packs merge into the app's `AssetManager`, so runtime asset paths are unchanged.
 
 ## Furniture Segmentation
 
-- Model: `rtmdet-ins-m-raw.onnx` in app assets.
+- Model: `rtmdet-ins-m-raw.onnx` in the `rtmdet_models` install-time asset pack.
 - Runtime: ONNX Runtime Android.
 - Manager: `app/src/main/java/com/furnit/android/services/FurnitureFitManager.kt`.
 - Backend lifetime: shared process-wide `OrtEnvironment`, `OrtSession`, session options, and single-thread executor.
@@ -111,6 +118,6 @@ Bundled sample room assets live in `app/src/main/assets/bundled_rooms/`.
 
 ## Local Asset Notes
 
-The root repository ignores `*.onnx` by default. Android's `.gitignore` explicitly allows the tracked Depth Anything ONNX asset under `room_generation/`.
+The root repository ignores `*.onnx` by default. Android's `.gitignore` explicitly allows the Depth Anything and GeoCalib ONNX assets in the `room_generation_models` asset pack. The RTMDet ONNX has never been git-tracked; copy it in locally if it is missing after a fresh clone.
 
 Do not add old native room-generation model exports or large local experiment folders back into app assets.

@@ -4,5 +4,6 @@
 keystore.properties
 
 # The top-level repo ignores *.onnx by default; shipped room-measurement models are versioned.
-!app/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
-!app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
+# Models ship via install-time Play Asset Delivery packs (moved out of app/src/main/assets).
+!room_generation_models/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
+!room_generation_models/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
