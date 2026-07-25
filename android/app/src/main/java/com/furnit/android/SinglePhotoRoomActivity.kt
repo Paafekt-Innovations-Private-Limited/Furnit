@@ -1111,7 +1111,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
             if (bitmap == null) {
                 DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to decode image")
-                Toast.makeText(this@SinglePhotoRoomActivity, "Failed to load image", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@SinglePhotoRoomActivity,
+                    getString(R.string.photo_room_failed_load_image),
+                    Toast.LENGTH_SHORT,
+                ).show()
                 CrashReporter.report(
                     this@SinglePhotoRoomActivity,
                     IllegalStateException("Bitmap decode returned null"),
@@ -1376,7 +1380,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun onAIRoomSelected() {
         DebugLogger.d("SinglePhotoRoom", "AI Room selected")
         if (selectedBitmap == null) {
-            Toast.makeText(this, "No image selected", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.photo_room_no_image_selected), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1402,7 +1406,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun openGeneratedRoomWithResult(result: PhotoRoomGenerationService.GenerationResult) {
         val intent = Intent(this, GLBRoomActivity::class.java).apply {
             putExtra(GLBRoomActivity.EXTRA_GLB_PATH, result.glbFile.absolutePath)
-            putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, "Your Room")
+            putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, getString(R.string.room_viewer_your_room))
             putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
             putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
             putExtra("ROOM_DEPTH", result.roomDepth)
@@ -1424,7 +1428,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         cancelAndReleaseAI()
         val uri = selectedImageUri
         if (uri == null) {
-            Toast.makeText(this, "No image selected", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.photo_room_no_image_selected), Toast.LENGTH_SHORT).show()
             return
         }
 

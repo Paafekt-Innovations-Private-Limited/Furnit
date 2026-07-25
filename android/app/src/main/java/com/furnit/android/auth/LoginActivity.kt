@@ -362,7 +362,7 @@ class LoginActivity : AppCompatActivity() {
         val countryNames = countries.map { it.displayName }.toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle("Select Country")
+            .setTitle(R.string.country_picker_title)
             .setItems(countryNames) { _, which ->
                 selectedCountry = countries[which]
                 countryButton.text = selectedCountry.shortDisplay

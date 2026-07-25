@@ -94,7 +94,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
         loadImage(imageUri)
 
         if (imageBitmap == null) {
-            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.photo_room_failed_load_image), Toast.LENGTH_SHORT).show()
             finish()
             return
         }

@@ -45,7 +45,7 @@
                 android:background="@drawable/circle_button_dark"
                 android:scaleType="centerInside"
                 android:padding="10dp"
-                android:contentDescription="Back" />
+                android:contentDescription="@string/common_back" />
 
             <!-- Title -->
             <TextView
@@ -69,7 +69,7 @@
                 android:scaleType="centerInside"
                 android:padding="10dp"
                 android:layout_marginStart="8dp"
-                android:contentDescription="Help" />
+                android:contentDescription="@string/common_help" />
 
             <!-- Save button (circle) - down arrow -->
             <ImageButton
@@ -81,7 +81,7 @@
                 android:scaleType="centerInside"
                 android:padding="10dp"
                 android:layout_marginStart="8dp"
-                android:contentDescription="Save Room" />
+                android:contentDescription="@string/model_detail_cd_save_room" />
 
             <!-- Share button (circle) - up arrow -->
             <ImageButton
@@ -93,7 +93,7 @@
                 android:scaleType="centerInside"
                 android:padding="10dp"
                 android:layout_marginStart="8dp"
-                android:contentDescription="Share Room" />
+                android:contentDescription="@string/model_detail_cd_share_room" />
         </LinearLayout>
     </LinearLayout>
 
@@ -132,7 +132,7 @@
             android:padding="12dp"
             android:clickable="true"
             android:focusable="true"
-            android:contentDescription="AI Segment Furniture" />
+            android:contentDescription="@string/model_detail_cd_ai_segment_furniture" />
 
         <!-- Center controls - hint and orientation -->
         <LinearLayout
@@ -199,7 +199,7 @@
             android:background="@drawable/circle_button_blue"
             android:scaleType="centerInside"
             android:padding="12dp"
-            android:contentDescription="Take Screenshot" />
+            android:contentDescription="@string/model_detail_cd_take_screenshot" />
     </FrameLayout>
 
 </FrameLayout>

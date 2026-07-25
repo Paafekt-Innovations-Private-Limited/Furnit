@@ -605,9 +605,9 @@ class ModelDetailActivity : AppCompatActivity() {
 
     private fun showHelpDialog() {
         AlertDialog.Builder(this)
-            .setTitle("3D Room Controls")
-            .setMessage("• Drag on screen to look around\n\n• Pinch to zoom in/out\n\n• Tap the gold Fit button (bottom-right) to try furniture fit\n\n• Tap the room to summon controls, then Capture to save a screenshot")
-            .setPositiveButton("OK", null)
+            .setTitle(R.string.model_detail_controls_title)
+            .setMessage(R.string.model_detail_controls_message)
+            .setPositiveButton(android.R.string.ok, null)
             .show()
     }
 
