@@ -23,7 +23,9 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.furnit.android"
+        // Store identity is Paafekt; permanent after first Play publish.
+        // Kotlin code stays in the com.furnit.android namespace on purpose.
+        applicationId "com.paafekt.android"
         minSdk 24
         targetSdk 36
         versionCode 1
@@ -45,7 +47,9 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (hasPaafektUploadSigning) {
                 signingConfig signingConfigs.release
             }

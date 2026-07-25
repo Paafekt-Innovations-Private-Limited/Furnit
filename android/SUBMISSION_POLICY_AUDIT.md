@@ -16,6 +16,13 @@ This is a pragmatic release checklist, not legal advice.
 - Licenses and credits screens exist in Settings and cover shipped Android runtime libraries, model assets, datasets, and AI/tool credits.
 - SIM/network country lookup was removed from login country preselection; Android now uses locale only and lets the user choose manually.
 
+## Build and signing items before upload
+
+- Build the bundle with the `PAAFEKT_UPLOAD_*` signing properties set; an unsigned `bundleRelease` output is rejected by Play. See "Release Build and Signing" in `README_ANDROID.md`.
+- Release builds are R8-minified. Archive `app/build/outputs/mapping/release/mapping.txt` per release and upload it to Play Console; emailed crash reports from `CrashReportActivity` need it for retracing.
+- After enrolling in Play App Signing, add the Play App Signing key's SHA-256 to the Firebase Android app, or phone-number OTP login will fail in the store build.
+- The application ID is now `com.paafekt.android` (permanent at first publish; Kotlin namespace stays `com.furnit.android`). The matching Firebase Android app (`1:613415224058:android:8d0a97fe4990e559a13f43`) is registered in `paafektprod` with the same certificate fingerprints as the old `com.furnit.android` entry, and `google-services.json` contains both clients. After enrolling in Play App Signing, add that key's SHA-256 to the new app entry.
+
 ## Play Console / website items to verify before submission
 
 - Privacy Policy URL must be live, public, non-geofenced, non-PDF, and match the Play Console Data Safety form.

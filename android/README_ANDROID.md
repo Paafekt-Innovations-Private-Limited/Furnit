@@ -15,6 +15,47 @@ Terminal build:
 ./gradlew :app:assembleDebug
 ```
 
+## Release Build and Signing
+
+Play only accepts a signed App Bundle. The release signing config reads these four
+values from Gradle properties or environment variables (nothing is committed):
+
+- `PAAFEKT_UPLOAD_STORE_FILE`
+- `PAAFEKT_UPLOAD_STORE_PASSWORD`
+- `PAAFEKT_UPLOAD_KEY_ALIAS`
+- `PAAFEKT_UPLOAD_KEY_PASSWORD`
+
+One-time upload keystore creation (keep the file and passwords in a password
+manager; losing the upload key means a reset request through Play support):
+
+```bash
+keytool -genkeypair -v \
+  -keystore ~/keystores/paafekt-upload.jks \
+  -alias paafekt-upload \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Put the four values in `~/.gradle/gradle.properties` (machine-global, outside the
+repo), then build:
+
+```bash
+./gradlew :app:bundleRelease
+```
+
+Output: `app/build/outputs/bundle/release/app-release.aab`.
+
+Per-release checklist:
+
+- Archive `app/build/outputs/mapping/release/mapping.txt` and upload it with the
+  release in Play Console. Release builds are R8-minified, so crash reports
+  (including ones users email from `CrashReportActivity`) must be retraced with
+  this file (`$ANDROID_HOME/cmdline-tools/latest/bin/retrace mapping.txt trace.txt`).
+- After enrolling in Play App Signing, add the **Play App Signing key's SHA-256**
+  (Play Console > Test and release > App integrity) to the Firebase project's
+  Android app settings. Without it, Firebase phone auth fails in the store build
+  even though local builds work.
+- Bump `versionCode` in `app/build.gradle` for every upload.
+
 ## Room Creation
 
 - `SinglePhotoRoomActivity` owns the take-photo/select-photo screen.

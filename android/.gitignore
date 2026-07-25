@@ -1,3 +1,8 @@
+# Signing: never commit upload keystores or credentials.
+*.jks
+*.keystore
+keystore.properties
+
 # The top-level repo ignores *.onnx by default; shipped room-measurement models are versioned.
 !app/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
 !app/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
