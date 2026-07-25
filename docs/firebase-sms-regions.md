@@ -21,11 +21,12 @@ Firebase CLI **does not** have a built-in SMS-region command. This repo has:
 # Preview body (no network write)
 ./scripts/set_firebase_sms_regions.sh --dry-run
 
-# Apply to paafektprod (needs gcloud auth)
+# Apply to paafektprod (needs gcloud auth as support@paafekt.com)
 brew install --cask google-cloud-sdk   # once, if gcloud missing
-gcloud auth login
+gcloud auth login support@paafekt.com
 gcloud config set project paafektprod
-./scripts/set_firebase_sms_regions.sh
+./scripts/set_firebase_sms_regions.sh --global      # worldwide OTP (current)
+# ./scripts/set_firebase_sms_regions.sh --allowlist # tighter policy if SMS abuse appears
 ```
 
 Optional system-wide Firebase CLI: `brew install firebase-cli`.
@@ -35,18 +36,28 @@ Optional system-wide Firebase CLI: `brew install firebase-cli`.
 1. Open [Firebase Console](https://console.firebase.google.com) → Paafekt project (`paafektprod`).
 2. **Authentication** → **Sign-in method** → confirm **Phone** is enabled.
 3. **Authentication** → **Settings** → **SMS region policy**.
-4. Choose **Allow** (allowlist-only).
-5. Add every country you ship OTP for (at minimum include **France / FR**).
-6. Save.
+4. Current production setting: **Allow by default** (global). For a tighter policy, switch to allowlist-only and add launch countries (include **France / FR** for review traffic).
+5. Save.
 7. Test a real `+33` number, or use a Firebase **test phone number** for App Review / Play review.
 
-## Regions to allowlist (match app country picker)
+## Current policy (2026-07-25)
 
-Allowlist at least these region codes (same set as iOS `LoginView` / Android `CountryCode`):
+**Global:** `paafektprod` uses Firebase SMS **allow by default** (all regions). This matches a worldwide Play release. Watch Firebase Usage / billing for SMS abuse; switch back to allowlist with:
+
+```bash
+./scripts/set_firebase_sms_regions.sh --allowlist
+```
+
+## Regions for allowlist mode (match app country picker)
+
+If you re-enable allowlist-only, use at least these codes (same set as iOS `LoginView` / Android `CountryCode`):
 
 `IN`, `US`, `GB`, `CA`, `AU`, `DE`, `FR`, `IT`, `ES`, `BR`, `MX`, `JP`, `KR`, `CN`, `SG`, `MY`, `ID`, `TH`, `VN`, `PH`, `PK`, `BD`, `LK`, `NP`, `AE`, `SA`, `QA`, `KW`, `OM`, `BH`, `ZA`, `NG`, `KE`, `EG`, `RU`, `NL`, `BE`, `CH`, `AT`, `SE`, `NO`, `DK`, `FI`, `IE`, `PT`, `GR`, `TR`, `PL`, `NZ`, `AR`, `CL`, `CO`, `PE`, `IL`
 
-Add any other dial-code countries you enable later. Prefer allowlist-only over “allow all” to reduce SMS abuse risk. The script above uses this full list.
+```bash
+./scripts/set_firebase_sms_regions.sh --global      # all countries (default)
+./scripts/set_firebase_sms_regions.sh --allowlist   # limited list above
+```
 
 ## “More details” form (copy-paste answers)
 

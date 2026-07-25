@@ -62,7 +62,7 @@ Repo-side readiness (25 Jul 2026): application ID switched to `com.paafekt.andro
 |------|--------|
 | Phone Auth | Enabled |
 | Android app entries | `com.paafekt.android` (active, `1:613415224058:android:8d0a97fe4990e559a13f43`) and legacy `com.furnit.android` (delete after launch) |
-| SMS region policy | Allowlist of launch countries (includes **FR**, **US**, **DE**, **CN**, **IN**, etc.) — not worldwide |
+| SMS region policy | **Global** (allow by default) as of 2026-07-25 — matches worldwide Play release; use `--allowlist` on `set_firebase_sms_regions.sh` to tighten later |
 | Apply/update allowlist | `./scripts/set_firebase_sms_regions.sh` (needs `gcloud auth`) |
 
 ---
