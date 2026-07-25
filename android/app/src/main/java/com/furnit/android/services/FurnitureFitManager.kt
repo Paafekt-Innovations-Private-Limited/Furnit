@@ -87,6 +87,10 @@ class FurnitureFitManager(private val context: Context) {
         private val sharedWarmupStarted = java.util.concurrent.atomic.AtomicBoolean(false)
         @Volatile private var sharedWarmupFinished: Boolean = false
         private val sharedInferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        private var sharedInputBuffer: FloatBuffer? = null
+        private var sharedInputFloatCount: Int = 0
+        private var sharedInputTensor: OnnxTensor? = null
+        private var sharedInputShape: LongArray? = null
 
         /**
          * Metric overlay sizing uses ARCore depth/planes when the device supports ARCore; otherwise non-metric fallback.
@@ -149,8 +153,11 @@ class FurnitureFitManager(private val context: Context) {
                     val opts = SessionOptions().apply {
                         setOptimizationLevel(SessionOptions.OptLevel.ALL_OPT)
                         setExecutionMode(SessionOptions.ExecutionMode.SEQUENTIAL)
-                        setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4))
+                        // XNNPACK uses its own worker pool. Keep ORT's intra-op pool single-threaded
+                        // and non-spinning so the two pools do not fight on the first live frames.
+                        setIntraOpNumThreads(1)
                         setInterOpNumThreads(1)
+                        addConfigEntry("session.intra_op.allow_spinning", "0")
                         if (availableProviders.contains(OrtProvider.XNNPACK)) {
                             try {
                                 addXnnpack(
@@ -238,10 +245,6 @@ class FurnitureFitManager(private val context: Context) {
     @Volatile private var ortEnv: OrtEnvironment? = null
     @Volatile private var ortSession: OrtSession? = null
     private var loadedOnnxAssetName: String? = null
-    private var reusableInputBuffer: FloatBuffer? = null
-    private var reusableInputFloatCount: Int = 0
-    private var reusableInputTensor: OnnxTensor? = null
-    private var reusableInputShape: LongArray? = null
 
     private data class OnnxBackend(
         val env: OrtEnvironment,
@@ -328,18 +331,18 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     private fun inputFloatBuffer(floatCount: Int): FloatBuffer {
-        val current = reusableInputBuffer
-        val buffer = if (current == null || reusableInputFloatCount != floatCount) {
-            reusableInputTensor?.close()
-            reusableInputTensor = null
-            reusableInputShape = null
+        val current = sharedInputBuffer
+        val buffer = if (current == null || sharedInputFloatCount != floatCount) {
+            sharedInputTensor?.close()
+            sharedInputTensor = null
+            sharedInputShape = null
             ByteBuffer
                 .allocateDirect(floatCount * java.lang.Float.BYTES)
                 .order(ByteOrder.nativeOrder())
                 .asFloatBuffer()
                 .also {
-                    reusableInputBuffer = it
-                    reusableInputFloatCount = floatCount
+                    sharedInputBuffer = it
+                    sharedInputFloatCount = floatCount
                     LogUtil.i(TAG, "Allocated direct ONNX input buffer: floats=$floatCount bytes=${floatCount * java.lang.Float.BYTES}")
                 }
         } else {
@@ -350,8 +353,8 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     private fun inputTensor(env: OrtEnvironment, buffer: FloatBuffer, shape: LongArray): OnnxTensor {
-        val currentTensor = reusableInputTensor
-        val currentShape = reusableInputShape
+        val currentTensor = sharedInputTensor
+        val currentShape = sharedInputShape
         if (currentTensor != null && currentShape != null && currentShape.contentEquals(shape)) {
             buffer.rewind()
             return currentTensor
@@ -360,8 +363,8 @@ class FurnitureFitManager(private val context: Context) {
         currentTensor?.close()
         buffer.rewind()
         val tensor = OnnxTensor.createTensor(env, buffer, shape)
-        reusableInputTensor = tensor
-        reusableInputShape = shape.copyOf()
+        sharedInputTensor = tensor
+        sharedInputShape = shape.copyOf()
         LogUtil.i(TAG, "Created reusable ONNX input tensor: shape=${shape.contentToString()}")
         return tensor
     }
@@ -2829,11 +2832,6 @@ class FurnitureFitManager(private val context: Context) {
         ortSession = null
         ortEnv = null
         loadedOnnxAssetName = null
-        reusableInputTensor?.close()
-        reusableInputTensor = null
-        reusableInputShape = null
-        reusableInputBuffer = null
-        reusableInputFloatCount = 0
     }
 
     private fun flattenArrayToFloat(arr: Array<*>): FloatArray {

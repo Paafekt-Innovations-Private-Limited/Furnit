@@ -439,6 +439,7 @@ class GLBRoomActivity : AppCompatActivity() {
      * Android previously created the ~110MB OrtSession only on Fit tap, serializing camera bind behind it.
      */
     private fun preloadFurnitureFitModelInBackground() {
+        FurnitureFitManager.preloadAndWarmSharedAsync(this)
         lifecycleScope.launch(Dispatchers.IO) {
             val existingManager = furnitureFitManager
             val manager = existingManager ?: FurnitureFitManager(this@GLBRoomActivity)
