@@ -2,6 +2,7 @@ package com.furnit.android
 
 import android.content.Context
 import android.graphics.*
+import android.os.Build
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -446,7 +447,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
 
         val pixels = IntArray(bmp.width * bmp.height)
         val readBitmap =
-            if (bmp.config == Bitmap.Config.HARDWARE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bmp.config == Bitmap.Config.HARDWARE) {
                 bmp.copy(Bitmap.Config.ARGB_8888, false)
             } else {
                 bmp

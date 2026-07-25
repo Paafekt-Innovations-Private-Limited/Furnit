@@ -1,7 +1,5 @@
 package com.furnit.android.auth
 
-import android.content.Context
-import android.telephony.TelephonyManager
 import java.util.Locale
 
 /**
@@ -87,39 +85,10 @@ data class CountryCode(
         )
 
         /**
-         * Get country code based on SIM card country, network country, or device locale
+         * Get country code from device locale only. Users can change the country manually.
          */
-        fun getDefaultCountry(context: Context? = null): CountryCode {
-            var countryCode: String? = null
-
-            // Try to get country from TelephonyManager (most accurate for phone apps)
-            if (context != null) {
-                try {
-                    val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-                    if (telephonyManager != null) {
-                        // First try SIM country (most reliable)
-                        val simCountry = telephonyManager.simCountryIso
-                        if (!simCountry.isNullOrBlank()) {
-                            countryCode = simCountry.uppercase()
-                        }
-                        // Fallback to network country
-                        if (countryCode == null) {
-                            val networkCountry = telephonyManager.networkCountryIso
-                            if (!networkCountry.isNullOrBlank()) {
-                                countryCode = networkCountry.uppercase()
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Ignore telephony errors
-                }
-            }
-
-            // Fallback to device locale
-            if (countryCode == null) {
-                countryCode = Locale.getDefault().country.uppercase()
-            }
-
+        fun getDefaultCountry(): CountryCode {
+            val countryCode = Locale.getDefault().country.uppercase()
             return countries.find { it.code == countryCode } ?: countries[0]
         }
 

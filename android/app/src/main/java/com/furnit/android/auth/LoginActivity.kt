@@ -56,8 +56,8 @@ class LoginActivity : AppCompatActivity() {
 
         authManager = AuthenticationManager.getInstance(this)
 
-        // Initialize country code based on SIM/network/locale
-        selectedCountry = CountryCode.getDefaultCountry(this)
+        // Initialize country code from locale; users can change it manually.
+        selectedCountry = CountryCode.getDefaultCountry()
 
         // Check if already authenticated
         if (authManager.isAuthenticated) {

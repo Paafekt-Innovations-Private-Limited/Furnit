@@ -1435,7 +1435,6 @@ fun ImageProxy.toBitmapSafe(): Bitmap? {
         bitmap
     } catch (e: Exception) {
         LogUtil.e("FurnitureFit", "toBitmap failed: ${e.message}")
-        e.printStackTrace()
         null
     }
 }

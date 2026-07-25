@@ -162,12 +162,10 @@
     <string name="photo_room_title">फोटो से 3D कमरा</string>
     <string name="photo_room_create_title">3D कमरा बनाएं</string>
     <string name="room_viewer_title">3D रूम व्यू</string>
-    <string name="room_viewer_room_name">कमरे का नाम</string>
     <string name="room_viewer_name_your_room">अपने कमरे का नाम रखें</string>
     <string name="room_viewer_room_name_placeholder">जैसे: लिविंग रूम</string>
     <string name="room_viewer_save_success">कमरा \'%s\' सफलतापूर्वक सहेजा गया!</string>
     <string name="crash_report_submit_report">रिपोर्ट सबमिट करें</string>
-    <string name="crash_report_email_not_configured">ईमेल उपलब्ध नहीं</string>
     <string name="crash_report_email_not_configured_message">इस डिवाइस पर ईमेल कॉन्फ़िगर नहीं है। आप त्रुटि विवरण कॉपी करके support@paafekt.com पर मैन्युअल रूप से भेज सकते हैं</string>
     <string name="crash_report_copy_details">विवरण कॉपी करें</string>
     <string name="faq_ai_features">AI सुविधाएं</string>
@@ -193,7 +191,6 @@
     <string name="photo_room_select_photo">फ़ोटो चुनें</string>
     <string name="photo_room_from_library">अपनी फ़ोटो लाइब्रेरी से</string>
     <string name="photo_room_loading">3D रूम लोड हो रहा है…</string>
-    <string name="photo_room_error">आपका 3D मॉडल बनाते समय एक त्रुटि हुई।</string>
     <string name="photo_room_building_room">आपका 3D कमरा बनाया जा रहा है…</string>
     <string name="photo_room_building_room_subtext">इसमें आमतौर पर कुछ सेकंड लगते हैं।</string>
     <string name="orientation_portrait">पोर्ट्रेट</string>
@@ -228,7 +225,6 @@
         <item quantity="one">%d रूम</item>
         <item quantity="other">%d रूम</item>
     </plurals>
-    <string name="home_3d_room_model">3D रूम मॉडल</string>
     <string name="home_opening">%s खोला जा रहा है…</string>
     <string name="home_failed_delete">हटाने में विफल: %s</string>
 
@@ -260,21 +256,17 @@
     <string name="ai_progress_working_on_it">काम चल रहा है…</string>
     <string name="ai_progress_almost_there">लगभग हो गया…</string>
     <string name="ai_progress_finishing_up">पूरा किया जा रहा है…</string>
-    <string name="ai_progress_ready_tap_to_view">तैयार — देखने के लिए टैप करें</string>
 
     <!-- Room Boundary -->
-    <string name="boundary_back">\u2039 वापस</string>
     <string name="boundary_no_image">कोई इमेज उपलब्ध नहीं</string>
     <string name="boundary_failed_create">रूम बनाने में विफल</string>
     <string name="boundary_processing">प्रोसेस हो रहा है…</string>
 
     <!-- Model Detail -->
     <string name="model_detail_preview">3D रूम पूर्वावलोकन</string>
-    <string name="model_detail_save_first">AI डिटेक्शन के लिए पहले रूम सहेजें</string>
     <string name="model_detail_taking_screenshot">स्क्रीनशॉट लिया जा रहा है…</string>
     <string name="model_detail_room_not_found">रूम फ़ाइल नहीं मिली</string>
     <string name="model_detail_no_room_data">सहेजने के लिए कोई रूम डेटा नहीं</string>
-    <string name="model_detail_failed_save">रूम सहेजने में विफल</string>
     <string name="model_detail_failed_share">रूम साझा करने में विफल</string>
     <string name="model_detail_screenshot_failed">स्क्रीनशॉट विफल</string>
     <string name="model_detail_failed_capture">स्क्रीनशॉट कैप्चर करने में विफल</string>
@@ -299,7 +291,6 @@
     <!-- Auth / Login -->
     <string name="login_send_code">सत्यापन कोड भेजें</string>
     <string name="login_terms_agree">जारी रखकर, आप हमारी सेवा की शर्तें और गोपनीयता नीति से सहमत हैं</string>
-    <string name="otp_back">\u2039 वापस</string>
     <string name="otp_code_sent">कोड भेज दिया गया!</string>
     <string name="room_viewer_full_video_with_identifications">पहचान सहित पूरा वीडियो</string>
     <string name="segment_furniture_action">सेगमेंट</string>
@@ -322,7 +313,6 @@
     <string name="home_rename_room">नाम बदलें</string>
     <string name="home_rename_room_title">अपने कमरे का नाम रखें</string>
     <string name="home_rename_room_hint">जैसे: लिविंग रूम</string>
-    <string name="home_rename_room_empty">एक नाम दर्ज करें</string>
     <string name="home_rename_room_failed">रूम का नाम नहीं बदला जा सका</string>
     <string name="home_room_name_duplicate">इस नाम का रूम पहले से मौजूद है</string>
     <string name="home_room_renamed">नाम बदलकर %s किया गया</string>
@@ -346,15 +336,12 @@
     <string name="photo_room_use_camera">कैमरा उपयोग करें</string>
     <string name="photo_room_choose_different">दूसरी फ़ोटो चुनें</string>
     <string name="photo_room_capture_subtitle">अपने रूम की फ़ोटो लें या चुनें</string>
-    <string name="photo_room_creating">आपका 3D रूम बनाया जा रहा है…</string>
-    <string name="photo_room_ai_generation">AI-powered room generation</string>
     <string name="room_preview_leave_title">बिना सहेजे वापस जाएँ?</string>
     <string name="room_preview_leave_message">आपका कमरा अभी सहेजा नहीं गया है। अगर अब वापस जाते हैं, तो यह पूर्वावलोकन खो सकता है।</string>
     <string name="room_preview_leave_stay">रुकें</string>
     <string name="room_preview_leave_confirm">वापस जाएँ</string>
     <string name="crash_report_title">कुछ गलत हो गया</string>
     <string name="crash_report_message">ऐप में त्रुटि हुई। इसे ठीक करने में मदद के लिए आप रिपोर्ट भेज सकते हैं।</string>
-    <string name="crash_report_submit">रिपोर्ट सबमिट करें</string>
     <string name="camera_permission_required">कमरे की फ़ोटो लेने तथा AR फ़र्नीचर पहचान और प्लेसमेंट के लिए कैमरा एक्सेस आवश्यक है</string>
     <string name="no_email_app">कोई ईमेल ऐप नहीं मिला</string>
     <string name="email_copied_clipboard">ईमेल क्लिपबोर्ड पर कॉपी हुआ</string>
@@ -382,7 +369,6 @@
     <string name="licenses_coco">RTMDet को COCO का उपयोग करके प्रशिक्षित किया गया। COCO एनोटेशन CC BY 4.0 के अंतर्गत लाइसेंस प्राप्त हैं; अलग-अलग चित्र उनके मालिकों की शर्तों के अधीन हैं।</string>
     <string name="credits_google_title">Google</string>
     <string name="credits_google_body">Android, ARCore, Filament और Firebase Paafekt में उपयोग की जाने वाली प्लेटफ़ॉर्म, AR, 3D-रेंडरिंग और प्रमाणीकरण क्षमताएँ प्रदान करते हैं।</string>
-    <string name="camera_title">कैमरा</string>
     <string name="camera_choose_mode">कैमरा मोड चुनें</string>
     <string name="camera_choose_mode_hint">अपने रूम के लिए कैमरा लेंस चुनें</string>
     <string name="camera_standard">स्टैंडर्ड</string>
@@ -410,7 +396,6 @@
     <string name="generation_progress_generating_3d_model">3D मॉडल बनाया जा रहा है</string>
     <string name="app_version_dynamic">Paafekt %1$s (%2$d)</string>
     <string name="room_viewer_segmentation_done">हो गया</string>
-    <string name="room_viewer_furniture_height_estimate">फर्नीचर की ऊँचाई ~ %.2f मी</string>
     <string name="furniture_fit_ar_not_supported">इस डिवाइस पर AR-सहायित साइजिंग समर्थित नहीं है</string>
     <string name="placement_intelligence_title">Placement Intelligence</string>
     <string name="placement_intelligence_expand">Placement Intelligence फैलाएँ</string>

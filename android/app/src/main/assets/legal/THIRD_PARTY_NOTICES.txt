@@ -1,0 +1,33 @@
+Paafekt for Android - Third-Party Notices
+
+This file summarizes key third-party software, model assets, datasets, and platform SDKs
+distributed with or used by the Android app. It is a diligence aid and does not replace
+the full license texts at the linked upstream sources.
+
+Android / Google platform components
+- AndroidX Core, AppCompat, Activity, Fragment, Lifecycle, WebKit, ExifInterface, CameraX,
+  Material Components, Kotlin, and Kotlin Coroutines: Apache License 2.0.
+- Additional permissive runtime dependencies may be pulled transitively by the libraries above,
+  including Compose runtime/UI components, OkHttp/Okio, Fuel, Guava ListenableFuture,
+  jspecify annotations, and kotlin-math. These are used as implementation dependencies of
+  the Android UI, networking/auth, and rendering stacks.
+- ARCore: Google ARCore SDK terms and Apache License 2.0 notices where applicable.
+- Firebase Authentication: Google Firebase terms; Firebase Android SDKs are licensed under
+  Apache License 2.0.
+
+Rendering and inference
+- SceneView and Google Filament: Apache License 2.0.
+- ONNX Runtime for Android: MIT License, Microsoft Corporation.
+- Three.js r170: MIT License, three.js authors.
+
+Model assets and datasets
+- RTMDet-Ins / MMDetection: Apache License 2.0, OpenMMLab.
+- COCO annotations used for RTMDet training: Creative Commons Attribution 4.0; individual
+  COCO images remain subject to their owners' terms.
+- Depth Anything V2 Metric Indoor Small: Small weights are stated upstream as Apache
+  License 2.0. The metric indoor model was fine-tuned using Apple's Hypersim dataset.
+- Hypersim dataset: Creative Commons Attribution-ShareAlike 3.0 Unported.
+- GeoCalib: code Apache License 2.0, ETH Zurich; shipped pinhole weights Creative Commons
+  Attribution 4.0.
+
+In-app Settings > Licenses and Settings > Credits provide user-facing attribution and links.

@@ -123,12 +123,10 @@
     <string name="photo_room_title">ఫోటో నుండి 3D గది</string>
     <string name="photo_room_create_title">3D గది సృష్టించు</string>
     <string name="room_viewer_title">3D గది వ్యూ</string>
-    <string name="room_viewer_room_name">గది పేరు</string>
     <string name="room_viewer_name_your_room">మీ గదికి పేరు పెట్టండి</string>
     <string name="room_viewer_room_name_placeholder">ఉదా. లివింగ్ రూమ్</string>
     <string name="room_viewer_save_success">గది \'%s\' విజయవంతంగా సేవ్ అయింది!</string>
     <string name="crash_report_submit_report">రిపోర్ట్ సబ్మిట్ చేయి</string>
-    <string name="crash_report_email_not_configured">ఇమెయిల్ అందుబాటులో లేదు</string>
     <string name="crash_report_email_not_configured_message">ఈ పరికరంలో ఇమెయిల్ కాన్ఫిగర్ చేయబడలేదు. మీరు ఎర్రర్ వివరాలను కాపీ చేసి support@paafekt.com కు మాన్యువల్‌గా పంపవచ్చు</string>
     <string name="crash_report_copy_details">వివరాలు కాపీ చేయి</string>
     <string name="faq_ai_features">ఫర్నిచర్ గుర్తింపు మరియు పరిమాణ నిర్ధారణ</string>
@@ -154,7 +152,6 @@
     <string name="photo_room_select_photo">ఫోటో ఎంచుకోండి</string>
     <string name="photo_room_from_library">మీ ఫోటో లైబ్రరీ నుండి</string>
     <string name="photo_room_loading">3D గది లోడ్ అవుతోంది…</string>
-    <string name="photo_room_error">మీ 3D మోడల్‌ను రూపొందించేటప్పుడు లోపం సంభవించింది.</string>
     <string name="photo_room_building_room">మీ 3D గది నిర్మించబడుతోంది…</string>
     <string name="photo_room_building_room_subtext">దీనికి సాధారణంగా కొన్ని సెకన్లు పడుతుంది.</string>
     <string name="orientation_portrait">పోర్ట్రెయిట్</string>
@@ -179,7 +176,6 @@
     <string name="home_total">మొత్తం</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">ఇంకా గదులు లేవు</string>
-    <string name="home_3d_room_model">3D గది మోడల్</string>
     <string name="home_opening">%s తెరుస్తోంది…</string>
     <string name="home_failed_delete">తొలగించడం విఫలమైంది: %s</string>
 
@@ -211,21 +207,17 @@
     <string name="ai_progress_working_on_it">పని జరుగుతోంది…</string>
     <string name="ai_progress_almost_there">దాదాపు పూర్తయింది…</string>
     <string name="ai_progress_finishing_up">పూర్తి చేస్తోంది…</string>
-    <string name="ai_progress_ready_tap_to_view">సిద్ధం — చూడడానికి ట్యాప్ చేయండి</string>
 
     <!-- Room Boundary -->
-    <string name="boundary_back">\u2039 వెనుక</string>
     <string name="boundary_no_image">ఇమేజ్ అందుబాటులో లేదు</string>
     <string name="boundary_failed_create">గది సృష్టించడం విఫలమైంది</string>
     <string name="boundary_processing">ప్రాసెస్ చేస్తోంది…</string>
 
     <!-- Model Detail -->
     <string name="model_detail_preview">3D గది ప్రివ్యూ</string>
-    <string name="model_detail_save_first">AI డిటెక్షన్ ఉపయోగించడానికి ముందుగా గదిని సేవ్ చేయండి</string>
     <string name="model_detail_taking_screenshot">స్క్రీన్‌షాట్ తీస్తోంది…</string>
     <string name="model_detail_room_not_found">గది ఫైల్ కనుగొనబడలేదు</string>
     <string name="model_detail_no_room_data">సేవ్ చేయడానికి గది డేటా లేదు</string>
-    <string name="model_detail_failed_save">గది సేవ్ చేయడం విఫలమైంది</string>
     <string name="model_detail_failed_share">గది షేర్ చేయడం విఫలమైంది</string>
     <string name="model_detail_screenshot_failed">స్క్రీన్‌షాట్ విఫలం</string>
     <string name="model_detail_failed_capture">స్క్రీన్‌షాట్ క్యాప్చర్ చేయడం విఫలమైంది</string>
@@ -250,7 +242,6 @@
     <!-- Auth / Login -->
     <string name="login_send_code">వెరిఫికేషన్ కోడ్ పంపండి</string>
     <string name="login_terms_agree">కొనసాగడం ద్వారా, మీరు మా సేవా నిబంధనలు మరియు గోప్యతా విధానాన్ని అంగీకరిస్తున్నారు</string>
-    <string name="otp_back">\u2039 వెనుక</string>
     <string name="otp_code_sent">కోడ్ పంపబడింది!</string>
     <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
@@ -270,7 +261,6 @@
     <string name="home_rename_room">Rename</string>
     <string name="home_rename_room_title">మీ గదికి పేరు పెట్టండి</string>
     <string name="home_rename_room_hint">ఉదా. లివింగ్ రూమ్</string>
-    <string name="home_rename_room_empty">Enter a name</string>
     <string name="home_rename_room_failed">Couldn\'t rename room</string>
     <string name="home_room_name_duplicate">A room with this name already exists</string>
     <string name="home_room_renamed">Renamed to %s</string>
@@ -294,15 +284,12 @@
     <string name="photo_room_use_camera">Use your camera</string>
     <string name="photo_room_choose_different">వేరే ఫోటోను ఎంచుకోండి</string>
     <string name="photo_room_capture_subtitle">Capture or select a photo of your room</string>
-    <string name="photo_room_creating">Creating your 3D room…</string>
-    <string name="photo_room_ai_generation">AI-powered room generation</string>
     <string name="room_preview_leave_title">సేవ్ చేయకుండా వెనక్కి వెళ్లాలా?</string>
     <string name="room_preview_leave_message">మీ గది ఇంకా సేవ్ కాలేదు. ఇప్పుడు వెనక్కి వెళితే ఈ ప్రివ్యూ పోవచ్చు.</string>
     <string name="room_preview_leave_stay">ఇక్కడే ఉండండి</string>
     <string name="room_preview_leave_confirm">వెనక్కి వెళ్లు</string>
     <string name="crash_report_title">ఏదో తప్పు జరిగింది</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
-    <string name="crash_report_submit">రిపోర్ట్ సబ్మిట్ చేయి</string>
     <string name="camera_permission_required">గది ఫోటోలను తీయడానికి మరియు AR ఫర్నిచర్ గుర్తింపు మరియు ఉంచడం కోసం కెమెరా యాక్సెస్ అవసరం</string>
     <string name="no_email_app">No email app found</string>
     <string name="email_copied_clipboard">Email copied to clipboard</string>
@@ -366,7 +353,6 @@
     <string name="generation_progress_generating_3d_model">3D మోడల్ రూపొందుతోంది</string>
     <string name="detector_segmenting_selection">ఎంచుకున్న ఫర్నిచర్ సెగ్మెంట్ అవుతోంది…</string>
     <string name="furniture_fit_ar_not_supported">ఈ పరికరంలో AR-సహాయ పరిమాణ నిర్ధారణకు మద్దతు లేదు</string>
-    <string name="camera_title">కెమెరా</string>
     <string name="camera_choose_mode">కెమెరా మోడ్ ఎంచుకోండి</string>
     <string name="camera_choose_mode_hint">మీ గదికి కెమెరా లెన్స్ ఎంచుకోండి</string>
     <string name="camera_standard">ప్రామాణిక</string>
@@ -450,7 +436,6 @@
     <string name="room_viewer_display_all_helpers">సంజ్ఞ సూచనలు చూపించు</string>
     <string name="room_viewer_ar_sizing_enable">కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ప్రారంభించు</string>
     <string name="room_viewer_segmentation_done">పూర్తయింది</string>
-    <string name="room_viewer_furniture_height_estimate">ఫర్నిచర్ ఎత్తు ~ %.2f మీ</string>
     <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Paafektలో ఒకే ఫోటోతో గది పునర్నిర్మాణానికి శక్తినిచ్చే మెట్రిక్ ఇండోర్ లోతు అంచనా.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>

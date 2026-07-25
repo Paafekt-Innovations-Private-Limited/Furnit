@@ -1,5 +1,6 @@
 package com.furnit.android.services
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -298,6 +299,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
         private const val PREVIEW_DIR = "room_preview"
         private const val ROOMS_DIR = "rooms"
 
+        @SuppressLint("StaticFieldLeak")
         @Volatile
         private var instance: PhotoRoomGenerationService? = null
 

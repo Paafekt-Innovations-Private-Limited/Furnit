@@ -2525,6 +2525,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("MissingSuperCall")
     override fun onBackPressed() {
         handleBackNavigation()
     }

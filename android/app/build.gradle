@@ -16,6 +16,7 @@ def hasPaafektUploadSigning = paafektUploadStoreFile &&
 android {
     namespace 'com.furnit.android'
     compileSdk 36
+    assetPacks = [":rtmdet_models", ":room_generation_models"]
 
     buildFeatures {
         buildConfig true
@@ -49,6 +50,13 @@ android {
                 signingConfig signingConfigs.release
             }
         }
+    }
+
+    lint {
+        // Locale files are intentionally partial; Android falls back to default strings.
+        // Keep hardcoded visible text out of code/XML, but do not block Play release on
+        // unfinished translations for every supported language.
+        disable 'MissingTranslation'
     }
 
     compileOptions {

@@ -38,6 +38,9 @@ class LicensesActivity : AppCompatActivity() {
                 getString(R.string.licenses_view_apache_2_code) to urlApache2,
             ),
         )
+        addSection(layout, getString(R.string.licenses_android_platform_title), getString(R.string.licenses_android_platform), licenseUrl = urlApache2)
+        addSection(layout, getString(R.string.licenses_other_runtime_title), getString(R.string.licenses_other_runtime))
+        addSection(layout, getString(R.string.licenses_arcore_title), getString(R.string.licenses_arcore), licenseUrl = "https://developers.google.com/ar/develop/terms")
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_coco_title), getString(R.string.licenses_coco), licenseUrl = urlCoco)

@@ -305,7 +305,7 @@ class RoomViewerActivity : AppCompatActivity() {
                     ?.toFloatOrNull()
                 val dimsView = TextView(this@RoomViewerActivity).apply {
                     text = if (heightMeters != null && heightMeters > 0f) {
-                        getString(R.string.approximate_room_height, heightMeters)
+                        getString(R.string.approximate_room_height, heightMeters.toFloat())
                     } else {
                         getString(R.string.room_viewer_dimensions, dimensionsFile.readText().replace("\n", ", "))
                     }

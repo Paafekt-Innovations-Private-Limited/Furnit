@@ -1,2 +1,4 @@
 rootProject.name = "FurnitAndroid"
 include ":app"
+include ":rtmdet_models"
+include ":room_generation_models"

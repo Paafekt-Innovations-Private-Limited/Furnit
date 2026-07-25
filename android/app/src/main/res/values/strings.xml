@@ -12,7 +12,6 @@
     <string name="common_delete">Delete</string>
     <string name="common_save">Save</string>
     <string name="common_help">Help</string>
-    <string name="common_share">Share</string>
 
     <!-- Login View -->
     <string name="login_your_name">Your Name</string>
@@ -42,7 +41,6 @@
     <string name="home_rename_room_title">Name your room</string>
     <string name="home_rename_room_hint">e.g. Living Room</string>
     <string name="home_delete_room_action_hint">Delete from this device</string>
-    <string name="home_rename_room_empty">Enter a name</string>
     <string name="home_rename_room_failed">Couldn\'t rename room</string>
     <string name="home_room_name_duplicate">A room with this name already exists</string>
     <string name="home_room_renamed">Renamed to %s</string>
@@ -108,8 +106,14 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Code licensed under Apache License 2.0. Shipped pinhole weights licensed under Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_view_full_license">View full license</string>
-<string name="licenses_view_apache_2_code">View Apache 2.0 license (code)</string>
-<string name="licenses_view_cc_by_4">View CC BY 4.0 license</string>
+    <string name="licenses_view_apache_2_code">View Apache 2.0 license (code)</string>
+    <string name="licenses_view_cc_by_4">View CC BY 4.0 license</string>
+    <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
+    <string name="licenses_android_platform">Android platform support libraries, Kotlin runtime components, CameraX, WebKit, ExifInterface, and Material Components are used for app UI, camera, lifecycle, and platform integration. Licensed under Apache License 2.0.</string>
+    <string name="licenses_other_runtime_title">Other Android runtime libraries</string>
+    <string name="licenses_other_runtime">Additional permissive runtime dependencies are pulled transitively by Firebase, SceneView, Filament, and AndroidX, including Compose components, OkHttp/Okio, Fuel, Guava ListenableFuture, jspecify annotations, and kotlin-math.</string>
+    <string name="licenses_arcore_title">ARCore</string>
+    <string name="licenses_arcore">Optional AR camera and depth-related capability on supported Android devices. Provided by Google under ARCore SDK terms and applicable open-source notices.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Licensed under the Apache License 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
@@ -273,7 +277,6 @@
     <string name="photo_room_select_photo">Select Photo</string>
     <string name="photo_room_from_library">From your photo library</string>
     <string name="photo_room_loading">Loading 3D room…</string>
-    <string name="photo_room_error">An error occurred while generating your 3D model.</string>
     <string name="photo_room_building_room">Building your room</string>
     <string name="photo_room_building_room_subtext">This usually takes a few seconds.</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
@@ -283,11 +286,8 @@
     <string name="photo_room_use_camera">Portrait or landscape</string>
     <string name="photo_room_choose_different">Choose Different Photo</string>
     <string name="photo_room_capture_subtitle">Capture or select a photo of your room</string>
-    <string name="photo_room_creating">Creating your 3D room…</string>
-    <string name="photo_room_ai_generation">Generating measured photo room</string>
 
     <!-- Camera mode chooser (iOS CameraCaptureView parity) -->
-    <string name="camera_title">Camera</string>
     <string name="camera_choose_mode">Choose Camera Mode</string>
     <string name="camera_choose_mode_hint">Select camera lens for your room</string>
     <string name="camera_standard">Standard</string>
@@ -316,7 +316,6 @@
     <string name="room_viewer_name_hint">Use at least 3 characters, including one letter.</string>
     <string name="room_viewer_invalid_room_name">Please enter at least 3 characters, including one letter.</string>
     <string name="room_viewer_room_name_placeholder">e.g. Living Room</string>
-    <string name="room_viewer_room_name">Room Name</string>
     <string name="room_viewer_save_success">\'%s\' saved to your rooms</string>
     <string name="room_viewer_saving_room">Saving Room</string>
     <string name="room_viewer_measuring_room">Measuring room…</string>
@@ -330,8 +329,6 @@
     <!-- Crash Report -->
     <string name="crash_report_title">Something went wrong</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
-    <string name="crash_report_submit">Submit Report</string>
-    <string name="crash_report_email_not_configured">Email Not Available</string>
     <string name="crash_report_email_not_configured_message">Email is not configured on this device. You can copy the error details and send them manually to support@paafekt.com</string>
     <string name="crash_report_copy_details">Copy Details</string>
 
@@ -408,7 +405,6 @@
     <string name="smartypants_detected">Detected</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="room_viewer_segmentation_done">Done</string>
-    <string name="room_viewer_furniture_height_estimate">Furniture height ~ %.2f m</string>
     <string name="smartypants_camera_ready">Camera ready - detecting furniture…</string>
     <string name="smartypants_scanning_for_furniture">Scanning for furniture…</string>
     <string name="furniture_fit_ar_not_supported">AR-assisted sizing is not supported on this device</string>
@@ -457,7 +453,6 @@
         <item quantity="one">%d room</item>
         <item quantity="other">%d rooms</item>
     </plurals>
-    <string name="home_3d_room_model">3D Room Model</string>
     <string name="home_ai_based_3d_room">AI Based 3D Room</string>
     <string name="home_manual_based_3d_room">Manual Based 3D Room</string>
     <string name="home_room_model">Room Model</string>
@@ -497,21 +492,17 @@
     <string name="ai_progress_working_on_it">Working on it…</string>
     <string name="ai_progress_almost_there">Almost there…</string>
     <string name="ai_progress_finishing_up">Finishing up…</string>
-    <string name="ai_progress_ready_tap_to_view">Ready — tap to view</string>
 
     <!-- Room Boundary -->
-    <string name="boundary_back">\u2039 Back</string>
     <string name="boundary_no_image">No image available</string>
     <string name="boundary_failed_create">Failed to create room</string>
     <string name="boundary_processing">Processing…</string>
 
     <!-- Model Detail -->
     <string name="model_detail_preview">3D Room Preview</string>
-    <string name="model_detail_save_first">Save room first to use AI detection</string>
     <string name="model_detail_taking_screenshot">Taking screenshot…</string>
     <string name="model_detail_room_not_found">Room file not found</string>
     <string name="model_detail_no_room_data">No room data to save</string>
-    <string name="model_detail_failed_save">Failed to save room</string>
     <string name="model_detail_failed_share">Failed to share room</string>
     <string name="model_detail_screenshot_failed">Screenshot failed</string>
     <string name="model_detail_failed_capture">Failed to capture screenshot</string>
@@ -557,7 +548,6 @@
     <!-- Auth / Login -->
     <string name="login_send_code">Send Verification Code</string>
     <string name="login_terms_agree">By continuing, you agree to our Terms of Service and Privacy Policy</string>
-    <string name="otp_back">\u2039 Back</string>
     <string name="otp_code_sent">Code sent!</string>
 
     <!-- Login (legacy) -->

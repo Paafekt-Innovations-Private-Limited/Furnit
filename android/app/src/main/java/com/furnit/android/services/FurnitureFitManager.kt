@@ -960,7 +960,6 @@ class FurnitureFitManager(private val context: Context) {
             mainHandler.post { callback(null) }
         } catch (e: Exception) {
             LogUtil.e("FurnitureFitManager", "ONNX inference exception", e)
-            e.printStackTrace()
             mainHandler.post { callback(null) }
         }
     }

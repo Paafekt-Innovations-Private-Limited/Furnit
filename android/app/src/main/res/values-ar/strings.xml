@@ -177,12 +177,10 @@
     <string name="photo_room_title">صورة إلى غرفة ثلاثية الأبعاد</string>
     <string name="photo_room_create_title">إنشاء غرفة ثلاثية الأبعاد</string>
     <string name="room_viewer_title">عرض الغرفة ثلاثي الأبعاد</string>
-    <string name="room_viewer_room_name">اسم الغرفة</string>
     <string name="room_viewer_name_your_room">سمِّ غرفتك</string>
     <string name="room_viewer_room_name_placeholder">مثال: غرفة المعيشة</string>
     <string name="room_viewer_save_success">تم حفظ الغرفة \'%s\' بنجاح!</string>
     <string name="crash_report_submit_report">إرسال التقرير</string>
-    <string name="crash_report_email_not_configured">البريد الإلكتروني غير متاح</string>
     <string name="crash_report_email_not_configured_message">لم يتم إعداد البريد الإلكتروني على هذا الجهاز. يمكنك نسخ تفاصيل الخطأ وإرسالها يدوياً إلى support@paafekt.com</string>
     <string name="crash_report_copy_details">نسخ التفاصيل</string>
     <string name="photo_room_how_to_create">كيف تريد إنشاء غرفتك ثلاثية الأبعاد؟</string>
@@ -193,7 +191,6 @@
     <string name="photo_room_select_photo">اختر صورة</string>
     <string name="photo_room_from_library">من مكتبة الصور</string>
     <string name="photo_room_loading">جاري تحميل الغرفة ثلاثية الأبعاد…</string>
-    <string name="photo_room_error">حدث خطأ أثناء إنشاء النموذج ثلاثي الأبعاد.</string>
     <string name="photo_room_building_room">جاري بناء غرفتك ثلاثية الأبعاد…</string>
     <string name="photo_room_building_room_subtext">عادةً ما يستغرق ذلك بضع ثوانٍ.</string>
     <string name="orientation_portrait">عمودي</string>
@@ -232,7 +229,6 @@
         <item quantity="many">%d غرفة</item>
         <item quantity="other">%d غرفة</item>
     </plurals>
-    <string name="home_3d_room_model">نموذج غرفة ثلاثي الأبعاد</string>
     <string name="home_opening">جاري فتح %s…</string>
     <string name="home_failed_delete">فشل الحذف: %s</string>
 
@@ -264,21 +260,17 @@
     <string name="ai_progress_working_on_it">نعمل على ذلك…</string>
     <string name="ai_progress_almost_there">اقتربنا…</string>
     <string name="ai_progress_finishing_up">جاري الإنهاء…</string>
-    <string name="ai_progress_ready_tap_to_view">جاهز — اضغط للعرض</string>
 
     <!-- Room Boundary -->
-    <string name="boundary_back">\u2039 رجوع</string>
     <string name="boundary_no_image">لا توجد صورة متاحة</string>
     <string name="boundary_failed_create">فشل إنشاء الغرفة</string>
     <string name="boundary_processing">جاري المعالجة…</string>
 
     <!-- Model Detail -->
     <string name="model_detail_preview">معاينة الغرفة ثلاثية الأبعاد</string>
-    <string name="model_detail_save_first">احفظ الغرفة أولاً لاستخدام كشف الذكاء الاصطناعي</string>
     <string name="model_detail_taking_screenshot">جاري التقاط لقطة الشاشة…</string>
     <string name="model_detail_room_not_found">ملف الغرفة غير موجود</string>
     <string name="model_detail_no_room_data">لا توجد بيانات غرفة للحفظ</string>
-    <string name="model_detail_failed_save">فشل حفظ الغرفة</string>
     <string name="model_detail_failed_share">فشل مشاركة الغرفة</string>
     <string name="model_detail_screenshot_failed">فشلت لقطة الشاشة</string>
     <string name="model_detail_failed_capture">فشل التقاط لقطة الشاشة</string>
@@ -303,7 +295,6 @@
     <!-- Auth / Login -->
     <string name="login_send_code">إرسال رمز التحقق</string>
     <string name="login_terms_agree">بالمتابعة، أنت توافق على شروط الخدمة وسياسة الخصوصية</string>
-    <string name="otp_back">\u2039 رجوع</string>
     <string name="otp_code_sent">تم إرسال الرمز!</string>
     <string name="room_viewer_full_video_with_identifications">فيديو كامل مع عناصر التعريف</string>
     <string name="segment_furniture_action">تجزئة</string>
@@ -326,7 +317,6 @@
     <string name="home_rename_room">إعادة تسمية</string>
     <string name="home_rename_room_title">سمِّ غرفتك</string>
     <string name="home_rename_room_hint">مثال: غرفة المعيشة</string>
-    <string name="home_rename_room_empty">أدخل اسماً</string>
     <string name="home_rename_room_failed">تعذّرت إعادة تسمية الغرفة</string>
     <string name="home_room_name_duplicate">توجد غرفة بهذا الاسم بالفعل</string>
     <string name="home_room_renamed">تمت إعادة التسمية إلى %s</string>
@@ -350,15 +340,12 @@
     <string name="photo_room_use_camera">استخدم الكاميرا</string>
     <string name="photo_room_choose_different">اختيار صورة مختلفة</string>
     <string name="photo_room_capture_subtitle">التقط صورة لغرفتك أو اخترها</string>
-    <string name="photo_room_creating">جارٍ إنشاء غرفتك ثلاثية الأبعاد…</string>
-    <string name="photo_room_ai_generation">AI-powered room generation</string>
     <string name="room_preview_leave_title">المغادرة دون حفظ؟</string>
     <string name="room_preview_leave_message">لم يتم حفظ الغرفة بعد. إذا عدت الآن، ستفقد هذه المعاينة.</string>
     <string name="room_preview_leave_stay">البقاء</string>
     <string name="room_preview_leave_confirm">مغادرة</string>
     <string name="crash_report_title">حدث خطأ ما</string>
     <string name="crash_report_message">واجه التطبيق خطأ. يمكنك إرسال تقرير لمساعدتنا على إصلاحه.</string>
-    <string name="crash_report_submit">إرسال التقرير</string>
     <string name="camera_permission_required">يلزم الوصول إلى الكاميرا لالتقاط صور الغرف وللكشف عن الأثاث ووضعه بالواقع المعزز</string>
     <string name="no_email_app">لم يتم العثور على تطبيق بريد إلكتروني</string>
     <string name="email_copied_clipboard">تم نسخ البريد الإلكتروني إلى الحافظة</string>
@@ -386,7 +373,6 @@
     <string name="licenses_coco">تم تدريب RTMDet باستخدام COCO. تُرخّص تعليقات COCO التوضيحية بموجب CC BY 4.0؛ وتظل الصور الفردية خاضعة لشروط مالكيها.</string>
     <string name="credits_google_title">Google</string>
     <string name="credits_google_body">توفر Android وARCore وFilament وFirebase قدرات المنصة والواقع المعزز والعرض ثلاثي الأبعاد والمصادقة المستخدمة في Paafekt.</string>
-    <string name="camera_title">الكاميرا</string>
     <string name="camera_choose_mode">اختر وضع الكاميرا</string>
     <string name="camera_choose_mode_hint">اختر عدسة الكاميرا لغرفتك</string>
     <string name="camera_standard">قياسي</string>
@@ -414,7 +400,6 @@
     <string name="generation_progress_generating_3d_model">جارٍ إنشاء النموذج ثلاثي الأبعاد</string>
     <string name="app_version_dynamic">Paafekt %1$s (%2$d)</string>
     <string name="room_viewer_segmentation_done">تم</string>
-    <string name="room_viewer_furniture_height_estimate">ارتفاع الأثاث ~ %.2f م</string>
     <string name="furniture_fit_ar_not_supported">تحديد الحجم بمساعدة AR غير مدعوم على هذا الجهاز</string>
     <string name="placement_intelligence_title">Placement Intelligence</string>
     <string name="placement_intelligence_expand">توسيع Placement Intelligence</string>

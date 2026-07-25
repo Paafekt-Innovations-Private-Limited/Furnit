@@ -123,12 +123,10 @@
     <string name="photo_room_title">ഫോട്ടോയിൽ നിന്ന് 3D മുറി</string>
     <string name="photo_room_create_title">3D മുറി സൃഷ്ടിക്കുക</string>
     <string name="room_viewer_title">3D മുറി കാഴ്ച</string>
-    <string name="room_viewer_room_name">മുറി പേര്</string>
     <string name="room_viewer_name_your_room">നിങ്ങളുടെ മുറിക്ക് പേരിടുക</string>
     <string name="room_viewer_room_name_placeholder">ഉദാ. ലിവിംഗ് റൂം</string>
     <string name="room_viewer_save_success">മുറി \'%s\' വിജയകരമായി സേവ് ചെയ്തു!</string>
     <string name="crash_report_submit_report">റിപ്പോർട്ട് സമർപ്പിക്കുക</string>
-    <string name="crash_report_email_not_configured">ഇമെയിൽ ലഭ്യമല്ല</string>
     <string name="crash_report_email_not_configured_message">ഈ ഉപകരണത്തിൽ ഇമെയിൽ കോൺഫിഗർ ചെയ്തിട്ടില്ല. നിങ്ങൾക്ക് പിശക് വിശദാംശങ്ങൾ പകർത്തി support@paafekt.com ലേക്ക് മാനുവലായി അയയ്ക്കാം</string>
     <string name="crash_report_copy_details">വിശദാംശങ്ങൾ പകർത്തുക</string>
     <string name="faq_ai_features">ഫർണിച്ചർ കണ്ടെത്തലും വലുപ്പനിർണ്ണയവും</string>
@@ -154,7 +152,6 @@
     <string name="photo_room_select_photo">ഫോട്ടോ തിരഞ്ഞെടുക്കുക</string>
     <string name="photo_room_from_library">നിങ്ങളുടെ ഫോട്ടോ ലൈബ്രറിയിൽ നിന്ന്</string>
     <string name="photo_room_loading">3D മുറി ലോഡ് ചെയ്യുന്നു…</string>
-    <string name="photo_room_error">നിങ്ങളുടെ 3D മോഡൽ സൃഷ്ടിക്കുമ്പോൾ ഒരു പിശക് സംഭവിച്ചു.</string>
     <string name="photo_room_building_room">നിങ്ങളുടെ 3D മുറി നിർമ്മിക്കുന്നു…</string>
     <string name="photo_room_building_room_subtext">ഇതിന് സാധാരണയായി കുറച്ച് സെക്കൻഡുകൾ മതി.</string>
     <string name="orientation_portrait">പോർട്രെയ്റ്റ്</string>
@@ -179,7 +176,6 @@
     <string name="home_total">ആകെ</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">ഇതുവരെ മുറികളില്ല</string>
-    <string name="home_3d_room_model">3D മുറി മോഡൽ</string>
     <string name="home_opening">%s തുറക്കുന്നു…</string>
     <string name="home_failed_delete">ഇല്ലാതാക്കുന്നത് പരാജയപ്പെട്ടു: %s</string>
 
@@ -211,21 +207,17 @@
     <string name="ai_progress_working_on_it">പ്രവർത്തിക്കുന്നു…</string>
     <string name="ai_progress_almost_there">ഇനി കുറച്ച് മാത്രം…</string>
     <string name="ai_progress_finishing_up">പൂർത്തിയാക്കുന്നു…</string>
-    <string name="ai_progress_ready_tap_to_view">തയ്യാർ — കാണാൻ ടാപ്പ് ചെയ്യുക</string>
 
     <!-- Room Boundary -->
-    <string name="boundary_back">\u2039 പിന്നോട്ട്</string>
     <string name="boundary_no_image">ഇമേജ് ലഭ്യമല്ല</string>
     <string name="boundary_failed_create">മുറി സൃഷ്ടിക്കുന്നത് പരാജയപ്പെട്ടു</string>
     <string name="boundary_processing">പ്രോസസ്സ് ചെയ്യുന്നു…</string>
 
     <!-- Model Detail -->
     <string name="model_detail_preview">3D മുറി പ്രിവ്യൂ</string>
-    <string name="model_detail_save_first">AI ഡിറ്റക്ഷൻ ഉപയോഗിക്കാൻ ആദ്യം മുറി സേവ് ചെയ്യുക</string>
     <string name="model_detail_taking_screenshot">സ്ക്രീൻഷോട്ട് എടുക്കുന്നു…</string>
     <string name="model_detail_room_not_found">മുറി ഫയൽ കണ്ടെത്തിയില്ല</string>
     <string name="model_detail_no_room_data">സേവ് ചെയ്യാൻ മുറി ഡാറ്റയില്ല</string>
-    <string name="model_detail_failed_save">മുറി സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
     <string name="model_detail_failed_share">മുറി പങ്കിടുന്നത് പരാജയപ്പെട്ടു</string>
     <string name="model_detail_screenshot_failed">സ്ക്രീൻഷോട്ട് പരാജയം</string>
     <string name="model_detail_failed_capture">സ്ക്രീൻഷോട്ട് കാപ്ചർ ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
@@ -250,7 +242,6 @@
     <!-- Auth / Login -->
     <string name="login_send_code">സ്ഥിരീകരണ കോഡ് അയയ്ക്കുക</string>
     <string name="login_terms_agree">തുടരുന്നതിലൂടെ, നിങ്ങൾ ഞങ്ങളുടെ സേവന നിബന്ധനകളും സ്വകാര്യതാ നയവും അംഗീകരിക്കുന്നു</string>
-    <string name="otp_back">\u2039 പിന്നോട്ട്</string>
     <string name="otp_code_sent">കോഡ് അയച്ചു!</string>
     <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
@@ -270,7 +261,6 @@
     <string name="home_rename_room">Rename</string>
     <string name="home_rename_room_title">നിങ്ങളുടെ മുറിക്ക് പേരിടുക</string>
     <string name="home_rename_room_hint">ഉദാ. ലിവിംഗ് റൂം</string>
-    <string name="home_rename_room_empty">Enter a name</string>
     <string name="home_rename_room_failed">Couldn\'t rename room</string>
     <string name="home_room_name_duplicate">A room with this name already exists</string>
     <string name="home_room_renamed">Renamed to %s</string>
@@ -294,15 +284,12 @@
     <string name="photo_room_use_camera">Use your camera</string>
     <string name="photo_room_choose_different">മറ്റൊരു ഫോട്ടോ തിരഞ്ഞെടുക്കുക</string>
     <string name="photo_room_capture_subtitle">Capture or select a photo of your room</string>
-    <string name="photo_room_creating">Creating your 3D room…</string>
-    <string name="photo_room_ai_generation">AI-powered room generation</string>
     <string name="room_preview_leave_title">സേവ് ചെയ്യാതെ പിൻവാങ്ങണോ?</string>
     <string name="room_preview_leave_message">നിങ്ങളുടെ മുറി ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല. ഇപ്പോൾ പിൻവാങ്ങിയാൽ ഈ പ്രിവ്യൂ നഷ്ടപ്പെടാം.</string>
     <string name="room_preview_leave_stay">നിൽക്കുക</string>
     <string name="room_preview_leave_confirm">പിൻവാങ്ങുക</string>
     <string name="crash_report_title">എന്തോ തെറ്റായി</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
-    <string name="crash_report_submit">റിപ്പോർട്ട് സമർപ്പിക്കുക</string>
     <string name="camera_permission_required">മുറി ഫോട്ടോകൾ പകർത്താനും AR ഫർണിച്ചർ കണ്ടെത്തലിനും സ്ഥാനനിർണയത്തിനും ക്യാമറ ആക്‌സസ് ആവശ്യമാണ്</string>
     <string name="no_email_app">No email app found</string>
     <string name="email_copied_clipboard">Email copied to clipboard</string>
@@ -366,7 +353,6 @@
     <string name="generation_progress_generating_3d_model">3D മോഡൽ സൃഷ്ടിക്കുന്നു</string>
     <string name="detector_segmenting_selection">തിരഞ്ഞെടുത്ത ഫർണിച്ചർ സെഗ്മെന്റ് ചെയ്യുന്നു…</string>
     <string name="furniture_fit_ar_not_supported">ഈ ഉപകരണത്തിൽ AR-സഹായിത വലുപ്പനിർണ്ണയം പിന്തുണയ്ക്കുന്നില്ല</string>
-    <string name="camera_title">ക്യാമറ</string>
     <string name="camera_choose_mode">ക്യാമറ മോഡ് തിരഞ്ഞെടുക്കുക</string>
     <string name="camera_choose_mode_hint">നിങ്ങളുടെ മുറിക്കായി ക്യാമറ ലെൻസ് തിരഞ്ഞെടുക്കുക</string>
     <string name="camera_standard">സ്റ്റാൻഡേർഡ്</string>
@@ -450,7 +436,6 @@
     <string name="room_viewer_display_all_helpers">ജെസ്ചർ സൂചനകൾ കാണിക്കുക</string>
     <string name="room_viewer_ar_sizing_enable">ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓൺ ചെയ്യുക</string>
     <string name="room_viewer_segmentation_done">പൂർത്തിയായി</string>
-    <string name="room_viewer_furniture_height_estimate">ഫർണിച്ചർ ഉയരം ~ %.2f മീ</string>
     <string name="credits_depth_anything_title">Depth Anything V2 Metric Indoor Small</string>
     <string name="credits_depth_anything_body">Paafekt-ൽ ഒറ്റ ഫോട്ടോയിൽ നിന്നുള്ള മുറി പുനർനിർമ്മാണത്തിന് ശക്തി നൽകുന്ന മെട്രിക് ഇൻഡോർ ഡെപ്ത് എസ്റ്റിമേഷൻ.</string>
     <string name="credits_geo_calib_title">GeoCalib</string>

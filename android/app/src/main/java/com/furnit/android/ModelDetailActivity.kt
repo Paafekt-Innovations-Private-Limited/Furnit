@@ -953,7 +953,6 @@ class ModelDetailActivity : AppCompatActivity() {
 
             } catch (e: Exception) {
                 LogUtil.e(TAG, "Failed to load model", e)
-                e.printStackTrace()
                 loadingIndicator.visibility = View.GONE
                 modelTitle.text = getString(R.string.model_detail_failed_load, e.message ?: "")
                 runOnUiThread {

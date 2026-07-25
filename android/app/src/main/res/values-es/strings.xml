@@ -31,7 +31,6 @@
     <string name="home_rename_room_title">Ponle nombre a tu habitación</string>
     <string name="home_rename_room_hint">p. ej. Salón</string>
     <string name="home_delete_room_action_hint">Eliminar de este dispositivo</string>
-    <string name="home_rename_room_empty">Introduce un nombre</string>
     <string name="home_rename_room_failed">No se pudo cambiar el nombre de la habitación</string>
     <string name="home_room_name_duplicate">Ya existe una habitación con este nombre</string>
     <string name="home_room_renamed">Nombre cambiado a %s</string>
@@ -223,7 +222,6 @@
     <string name="photo_room_select_photo">Seleccionar foto</string>
     <string name="photo_room_from_library">Desde tu biblioteca de fotos</string>
     <string name="photo_room_loading">Cargando habitación 3D…</string>
-    <string name="photo_room_error">Ocurrió un error al generar tu modelo 3D.</string>
     <string name="photo_room_building_room">Construyendo tu habitación 3D…</string>
     <string name="photo_room_building_room_subtext">Esto suele tardar unos segundos.</string>
     <string name="photo_room_screenshot_warning">No selecciones capturas de pantalla; pueden causar manchas negras</string>
@@ -231,10 +229,7 @@
     <string name="photo_room_use_camera">Use your camera</string>
     <string name="photo_room_choose_different">Elegir otra foto</string>
     <string name="photo_room_capture_subtitle">Captura o selecciona una foto de tu habitación</string>
-    <string name="photo_room_creating">Creando tu habitación 3D…</string>
-    <string name="photo_room_ai_generation">AI-powered room generation</string>
     <!-- Camera mode chooser (iOS CameraCaptureView parity) -->
-    <string name="camera_title">Cámara</string>
     <string name="camera_choose_mode">Elegir modo de cámara</string>
     <string name="camera_choose_mode_hint">Selecciona el objetivo para tu habitación</string>
     <string name="camera_standard">Estándar</string>
@@ -260,7 +255,6 @@
     <string name="room_viewer_title">Vista de habitación 3D</string>
     <string name="room_viewer_name_your_room">Ponle nombre a tu habitación</string>
     <string name="room_viewer_room_name_placeholder">p. ej. Salón</string>
-    <string name="room_viewer_room_name">Nombre de habitación</string>
     <string name="room_viewer_save_success">¡Habitación \'%s\' guardada correctamente!</string>
     <string name="room_viewer_saving_room">Guardando habitación</string>
     <string name="room_viewer_measuring_room">Midiendo la habitación…</string>
@@ -273,8 +267,6 @@
     <!-- Crash Report -->
     <string name="crash_report_title">Algo salió mal</string>
     <string name="crash_report_message">La app ha encontrado un error. Puedes enviar un informe para ayudarnos a solucionarlo.</string>
-    <string name="crash_report_submit">Enviar informe</string>
-    <string name="crash_report_email_not_configured">Email no disponible</string>
     <string name="crash_report_email_not_configured_message">El email no está configurado en este dispositivo. Puedes copiar los detalles del error y enviarlos manualmente a support@paafekt.com</string>
     <string name="crash_report_copy_details">Copiar detalles</string>
     <!-- Accessibility -->
@@ -344,7 +336,6 @@
     <string name="smartypants_detected">Detectado</string>
     <string name="segment_furniture_action">Segmentar</string>
     <string name="room_viewer_segmentation_done">Hecho</string>
-    <string name="room_viewer_furniture_height_estimate">Altura del mueble ~ %.2f m</string>
     <string name="smartypants_camera_ready">Cámara lista - detectando muebles…</string>
     <string name="smartypants_scanning_for_furniture">Buscando muebles…</string>
     <string name="furniture_fit_ar_not_supported">El dimensionamiento asistido por AR no es compatible con este dispositivo</string>
@@ -391,7 +382,6 @@
         <item quantity="one">%d habitación</item>
         <item quantity="other">%d habitaciones</item>
     </plurals>
-    <string name="home_3d_room_model">Modelo de habitación 3D</string>
     <string name="home_opening">Abriendo %s…</string>
     <string name="home_failed_delete">Error al eliminar: %s</string>
     <!-- Single Photo Room -->
@@ -428,19 +418,15 @@
     <string name="ai_progress_working_on_it">Trabajando en ello…</string>
     <string name="ai_progress_almost_there">Ya casi…</string>
     <string name="ai_progress_finishing_up">Terminando…</string>
-    <string name="ai_progress_ready_tap_to_view">Listo — toca para ver</string>
     <!-- Room Boundary -->
-    <string name="boundary_back">\u2039 Atrás</string>
     <string name="boundary_no_image">No hay imagen disponible</string>
     <string name="boundary_failed_create">Error al crear habitación</string>
     <string name="boundary_processing">Procesando…</string>
     <!-- Model Detail -->
     <string name="model_detail_preview">Vista previa de habitación 3D</string>
-    <string name="model_detail_save_first">Guarda la habitación primero para usar detección AI</string>
     <string name="model_detail_taking_screenshot">Capturando pantalla…</string>
     <string name="model_detail_room_not_found">Archivo de habitación no encontrado</string>
     <string name="model_detail_no_room_data">No hay datos de habitación para guardar</string>
-    <string name="model_detail_failed_save">Error al guardar habitación</string>
     <string name="model_detail_failed_share">Error al compartir habitación</string>
     <string name="model_detail_screenshot_failed">Error en captura</string>
     <string name="model_detail_failed_capture">Error al capturar pantalla</string>
@@ -478,7 +464,6 @@ Arrastra para mirar alrededor y pellizca para ampliar.</string>
     <!-- Auth / Login -->
     <string name="login_send_code">Enviar código de verificación</string>
     <string name="login_terms_agree">Al continuar, aceptas nuestros Términos de servicio y Política de privacidad</string>
-    <string name="otp_back">\u2039 Atrás</string>
     <string name="otp_code_sent">¡Código enviado!</string>
     <!-- Login (legacy) -->
     <!-- ARCore distance measure (beta) -->
