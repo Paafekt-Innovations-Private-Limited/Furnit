@@ -295,15 +295,31 @@ class PlacementIntelligenceCardView(context: Context) : LinearLayout(context) {
         (value * resources.displayMetrics.density).roundToInt()
 
     companion object {
-        fun viewerLayoutParams(context: Context, topMarginDp: Int = 92): FrameLayout.LayoutParams =
+        fun viewerLayoutParams(
+            context: Context,
+            bottomMarginDp: Int = 104,
+            systemBarBottomInset: Int = 0,
+        ): FrameLayout.LayoutParams =
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
             ).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 marginStart = PaafektSpace.lg(context)
                 marginEnd = PaafektSpace.lg(context)
-                topMargin = (topMarginDp * context.resources.displayMetrics.density).toInt()
+                bottomMargin = systemBarBottomInset + (bottomMarginDp * context.resources.displayMetrics.density).toInt()
             }
+
+        fun updateViewerInsets(
+            view: View,
+            systemBarBottomInset: Int,
+            bottomMarginDp: Int = 104,
+        ) {
+            val lp = view.layoutParams as? FrameLayout.LayoutParams ?: return
+            lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            lp.bottomMargin = systemBarBottomInset +
+                (bottomMarginDp * view.resources.displayMetrics.density).toInt()
+            view.layoutParams = lp
+        }
     }
 }

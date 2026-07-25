@@ -349,7 +349,10 @@ class FurnitureFitFragment : Fragment() {
         uiHost.addView(backButton)
         uiHost.addView(bottomControls)
         placementIntelligenceCard = PlacementIntelligenceCardView(requireContext()).also { card ->
-            card.layoutParams = PlacementIntelligenceCardView.viewerLayoutParams(requireContext())
+            card.layoutParams = PlacementIntelligenceCardView.viewerLayoutParams(
+                requireContext(),
+                systemBarBottomInset = PaafektSpace.viewerBottomInset(requireContext()),
+            )
             uiHost.addView(card)
         }
         root.post { loadPlacementIntelligenceRoomPalette() }

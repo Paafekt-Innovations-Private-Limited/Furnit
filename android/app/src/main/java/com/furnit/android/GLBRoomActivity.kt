@@ -507,6 +507,9 @@ class GLBRoomActivity : AppCompatActivity() {
             }
         }
         PaafektViewerToolbar.updatePersistentPrimaryActionsInsets(immersivePersistentActions, bars.bottom)
+        if (::placementIntelligenceCard.isInitialized) {
+            PlacementIntelligenceCardView.updateViewerInsets(placementIntelligenceCard, bars.bottom)
+        }
         immersiveSummonButton?.layoutParams?.let { lp ->
             if (lp is FrameLayout.LayoutParams) {
                 lp.bottomMargin = bars.bottom + PaafektSpace.lg(this)
