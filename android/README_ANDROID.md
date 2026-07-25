@@ -118,6 +118,6 @@ Bundled sample room assets live in `app/src/main/assets/bundled_rooms/`.
 
 ## Local Asset Notes
 
-The root repository ignores `*.onnx` by default. Android's `.gitignore` explicitly allows the Depth Anything and GeoCalib ONNX assets in the `room_generation_models` asset pack. The RTMDet ONNX has never been git-tracked; copy it in locally if it is missing after a fresh clone.
+The root repository ignores `*.onnx` by default. Android's `.gitignore` explicitly allows the three shipped model ONNX files in the asset pack modules, and `.gitattributes` stores all `*.onnx` files in Git LFS. Run `git lfs pull` after a fresh clone if the model files are missing.
 
 Do not add old native room-generation model exports or large local experiment folders back into app assets.
