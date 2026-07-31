@@ -638,6 +638,69 @@ final class FurnitureFitTests: XCTestCase {
 
     // MARK: - Overlay Scaling Tests
 
+    func testFullVideoIdentificationKeepsCameraAlignmentAndRejectsPlacementGestures() {
+        let mode = FurnitureFitOverlayInteractionMode.resolve(
+            showFullVideoWithIdentifications: true,
+            showIdentifyLivePreview: true,
+            segmentationMode: .identifyOnly
+        )
+
+        XCTAssertEqual(mode, .liveIdentification)
+        XCTAssertTrue(mode.usesLiveFrameGeometry)
+        XCTAssertTrue(mode.preservesIdentityTransform)
+        XCTAssertFalse(mode.allowsPlacementGestures)
+    }
+
+    func testFullVideoSelectedSegmentationKeepsLiveGeometryAndAllowsPlacementGestures() {
+        let mode = FurnitureFitOverlayInteractionMode.resolve(
+            showFullVideoWithIdentifications: true,
+            showIdentifyLivePreview: true,
+            segmentationMode: .segmentSelected
+        )
+
+        XCTAssertEqual(mode, .liveSelectedPlacement)
+        XCTAssertTrue(mode.usesLiveFrameGeometry)
+        XCTAssertFalse(mode.preservesIdentityTransform)
+        XCTAssertTrue(mode.allowsPlacementGestures)
+    }
+
+    func testFullVideoSelectedSegmentationAppliesPinchAndPanTransform() {
+        let mode = FurnitureFitOverlayInteractionMode.resolve(
+            showFullVideoWithIdentifications: true,
+            showIdentifyLivePreview: true,
+            segmentationMode: .segmentSelected
+        )
+        let expected = CGAffineTransform(scaleX: 1.5, y: 1.5)
+            .concatenating(CGAffineTransform(translationX: 12, y: -8))
+
+        let result = FurnitureFitOverlayScaling.resolvedTransform(
+            currentLastAssistedLabel: "",
+            currentLastCombinedScale: -1,
+            autoScaleFromRoom: 1,
+            autoScaleFromAR: 1,
+            userPinchScale: 1.5,
+            userPanOffset: CGPoint(x: 12, y: -8),
+            userLockedAssistedOverlayScale: true,
+            arAssistedSizingEnabled: false,
+            hasARKitAssistedSizingPayload: false,
+            arAssistedScaleValid: false,
+            allowRoomProportionFallback: false,
+            defaultStaticOverlayScale: 1,
+            minCombinedOverlayScale: 0.08,
+            maxCombinedOverlayScale: 3,
+            isShowingLiveVideoIdentifications: mode.preservesIdentityTransform,
+            overlayPresentationMode: .measuredPlacement,
+            bounds: CGRect(x: 0, y: 0, width: 300, height: 200),
+            primaryBboxInView: CGRect(x: 100, y: 60, width: 100, height: 80),
+            debugFreezeOverlayScale: false
+        )
+
+        XCTAssertEqual(result.transform.a, expected.a, accuracy: 0.001)
+        XCTAssertEqual(result.transform.d, expected.d, accuracy: 0.001)
+        XCTAssertEqual(result.transform.tx, expected.tx, accuracy: 0.001)
+        XCTAssertEqual(result.transform.ty, expected.ty, accuracy: 0.001)
+    }
+
     func testOverlayScalingResolvesRoomScaleFromBBoxFractions() {
         let resolvedScale = FurnitureFitOverlayScaling.resolvedRoomScale(
             currentAutoScaleFromRoom: 1.0,

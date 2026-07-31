@@ -32,6 +32,7 @@ RTMDet object anchor → USDZ on first save**. Swift entry points: `SinglePhotoR
 3. Use the top controls for ruler/pinch/tap guidance, then tap **text.viewfinder** while brain is active. Live camera preview should appear with cluster boxes.
 4. Tap two or more furniture clusters.
 5. Tap **Segment**. Camera preview should hide; transparent cutouts should composite over the **3D room**.
+   Drag a cutout to move it and pinch it to resize it.
 6. Tap **Stop** to return to live identification boxes, or tap brain again to exit.
 
 Useful Xcode console filter: `FurnitureFit`, `BRAIN FLOW`, `RTMDet`.

@@ -334,14 +334,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             updateVideoIdentificationPresentation()
         }
     }
+    private var overlayInteractionMode: FurnitureFitOverlayInteractionMode {
+        FurnitureFitOverlayInteractionMode.resolve(
+            showFullVideoWithIdentifications: showFullVideoWithIdentifications,
+            showIdentifyLivePreview: showIdentifyLivePreview,
+            segmentationMode: segmentationMode
+        )
+    }
     private var isShowingLiveVideoIdentifications: Bool {
-        showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .identifyOnly
+        overlayInteractionMode == .liveIdentification
     }
     private var isFullVideoSelectedSegmentation: Bool {
-        showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .segmentSelected
+        overlayInteractionMode == .liveSelectedPlacement
     }
     private var isUsingLiveFrameAlignedOverlay: Bool {
-        isShowingLiveVideoIdentifications || isFullVideoSelectedSegmentation
+        overlayInteractionMode.usesLiveFrameGeometry
     }
     private var shouldAllowBoundingBoxTapSelection: Bool {
         isShowingLiveVideoIdentifications
@@ -1182,7 +1189,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             defaultStaticOverlayScale: defaultStaticOverlayScale,
             minCombinedOverlayScale: minCombinedOverlayScale,
             maxCombinedOverlayScale: maxCombinedOverlayScale,
-            isShowingLiveVideoIdentifications: isUsingLiveFrameAlignedOverlay,
+            // Live identification boxes must remain camera-aligned. A full-video selected mask
+            // still uses live-frame geometry, but it is now a placement cutout and must retain
+            // the user's pinch/pan transform.
+            isShowingLiveVideoIdentifications: overlayInteractionMode.preservesIdentityTransform,
             overlayPresentationMode: overlayPresentationMode,
             bounds: bounds,
             primaryBboxInView: primaryBboxInView,
@@ -6025,7 +6035,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Gestures
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        guard !isUsingLiveFrameAlignedOverlay else { return }
+        guard overlayInteractionMode.allowsPlacementGestures else { return }
 
         if usesIndependentOverlayItems {
             guard overlayItems.contains(where: { $0.imageView.image != nil }) else {
@@ -6112,7 +6122,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard !isUsingLiveFrameAlignedOverlay else { return }
+        guard overlayInteractionMode.allowsPlacementGestures else { return }
 
         if usesIndependentOverlayItems {
             let translation = gesture.translation(in: self)
@@ -6254,7 +6264,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return candidateIndexForTap(touchPoint) != nil
         }
 
-        if isUsingLiveFrameAlignedOverlay &&
+        if !overlayInteractionMode.allowsPlacementGestures &&
             (gestureRecognizer is UIPinchGestureRecognizer || gestureRecognizer is UIPanGestureRecognizer) {
             return false
         }

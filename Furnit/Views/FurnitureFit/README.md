@@ -35,6 +35,7 @@ Key implementation details:
 - Full-video is toggled by `showFullVideoWithIdentifications` via the **text.viewfinder** button.
 - `shouldShowLiveCameraPreview` is true only in `identifyOnly` (including full-video identify).
 - During full-video `segmentSelected`, inference stays live but `previewLayer` hides so mask alpha reveals the room underneath (`isFullVideoSelectedSegmentation`).
+- Full-video `segmentSelected` keeps live-frame image geometry while accepting pinch/pan placement transforms; only live identification boxes are forced to an identity transform.
 - Tap selection is gated to full-video identify (`shouldAllowBoundingBoxTapSelection`).
 
 See `Furnit/diagrams/rtmdet-swift-flow.svg` and `Furnit/docs/README.md` for the smoke test checklist.

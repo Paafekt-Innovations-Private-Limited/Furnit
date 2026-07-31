@@ -15,9 +15,49 @@ enum FurnitureFitSegmentationMode: Equatable {
     case identifyOnly
     /// Brain default: auto-segment the single highest-confidence detection with no tap.
     case segmentPrimary
-    /// Segment user-selected detections. In full-video mode this stays on the camera passthrough;
-    /// in placement mode it composites the cutout over the room.
+    /// Segment user-selected detections. In full-video mode inference remains live while the
+    /// camera passthrough hides and the cutout becomes an interactive overlay over the room.
     case segmentSelected
+}
+
+/// Separates camera-frame layout from overlay interaction. Full-video selected segmentation still
+/// consumes live, frame-aligned masks, but once the camera passthrough is hidden the cutout is a
+/// placement overlay and must accept the same pinch/pan gestures as the default segmentation flow.
+enum FurnitureFitOverlayInteractionMode: Equatable {
+    case standardPlacement
+    case liveIdentification
+    case liveSelectedPlacement
+
+    static func resolve(
+        showFullVideoWithIdentifications: Bool,
+        showIdentifyLivePreview: Bool,
+        segmentationMode: FurnitureFitSegmentationMode
+    ) -> FurnitureFitOverlayInteractionMode {
+        guard showFullVideoWithIdentifications, showIdentifyLivePreview else {
+            return .standardPlacement
+        }
+
+        switch segmentationMode {
+        case .identifyOnly:
+            return .liveIdentification
+        case .segmentSelected:
+            return .liveSelectedPlacement
+        case .segmentPrimary:
+            return .standardPlacement
+        }
+    }
+
+    var usesLiveFrameGeometry: Bool {
+        self == .liveIdentification || self == .liveSelectedPlacement
+    }
+
+    var allowsPlacementGestures: Bool {
+        self != .liveIdentification
+    }
+
+    var preservesIdentityTransform: Bool {
+        self == .liveIdentification
+    }
 }
 
 struct DetectionOverlayItem {
