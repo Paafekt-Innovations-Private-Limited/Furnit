@@ -28,6 +28,7 @@ import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 // Result containing mask and detections
 data class SegmentationResult(
@@ -69,6 +70,10 @@ class FurnitureFitManager(private val context: Context) {
         private const val DEFAULT_MAX_DETECTIONS = 1000
         private const val RAW_MASK_AFFINITY_THRESHOLD = 0.12f
         private const val RAW_MASK_AFFINITY_BIT_THRESHOLD = 0.50f
+        // Keep the established 0.5 contour while giving only the narrow edge band fractional alpha.
+        // This avoids a separate blur/morphology pass in the per-frame compositor.
+        private const val RAW_MASK_RENDER_THRESHOLD = 0.50f
+        private const val RAW_MASK_RENDER_ANTIALIAS_HALF_WIDTH = 0.05f
         private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
         /** When true, RTMDet only surfaces the curated furniture classes in RTMDET_ALLOWED_CLASS_IDS.
          *  When false, ALL COCO classes are scored. Mirrors iOS `controlledList`. */
@@ -493,6 +498,9 @@ class FurnitureFitManager(private val context: Context) {
         val scaleY = protoH.toFloat() / frameH.toFloat()
         val maxProtoX = protoW - 1
         val maxProtoY = protoH - 1
+        val lowerThreshold = RAW_MASK_RENDER_THRESHOLD - RAW_MASK_RENDER_ANTIALIAS_HALF_WIDTH
+        val upperThreshold = RAW_MASK_RENDER_THRESHOLD + RAW_MASK_RENDER_ANTIALIAS_HALF_WIDTH
+        val thresholdSpan = upperThreshold - lowerThreshold
 
         for (y in yStart until yEnd) {
             val sampleY = (y + 0.5f) * scaleY - 0.5f
@@ -510,8 +518,15 @@ class FurnitureFitManager(private val context: Context) {
                 val top = maskProto[topRow + leftColumn] + (maskProto[topRow + rightColumn] - maskProto[topRow + leftColumn]) * weightX
                 val bottom = maskProto[bottomRow + leftColumn] + (maskProto[bottomRow + rightColumn] - maskProto[bottomRow + leftColumn]) * weightX
                 val maskValue = top + (bottom - top) * weightY
-                if (maskValue <= 0.5f) continue
-                outPixels[frameRow + x] = (0xFF shl 24) or (framePixels[frameRow + x] and 0x00FFFFFF)
+                if (!maskValue.isFinite()) continue
+                val alpha = when {
+                    maskValue <= lowerThreshold -> 0
+                    maskValue >= upperThreshold -> 255
+                    else -> (((maskValue - lowerThreshold) / thresholdSpan) * 255f)
+                        .roundToInt()
+                }
+                if (alpha == 0) continue
+                outPixels[frameRow + x] = (alpha shl 24) or (framePixels[frameRow + x] and 0x00FFFFFF)
             }
         }
     }
