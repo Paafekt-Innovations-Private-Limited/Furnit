@@ -361,6 +361,9 @@ struct HomeTab: View {
             }
         }
         .onAppear {
+            // Room viewers may force landscape to match the captured photo. The library is
+            // portrait-only, including when it becomes visible again after popping a viewer.
+            OrientationLockManager.shared.lockToPortrait()
             if AppStateManager.shared.qualitySettings.debugMode {
                 logDebug("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
                 logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")

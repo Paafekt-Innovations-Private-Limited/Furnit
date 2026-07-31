@@ -351,7 +351,8 @@ struct MeshRoomView: View {
         dismissFullVideoFurnitureTapHint()
         brainArAssistedSizingEnabled = false
         rtmdetService.releaseResources()
-        OrientationLockManager.shared.unlock()
+        // Returning from a room viewer must restore the portrait-only room library.
+        OrientationLockManager.shared.lockToPortrait()
     }
 
     private func meshRoomHandleIsLoadingChange(loading: Bool) {

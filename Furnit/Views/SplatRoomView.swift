@@ -675,7 +675,8 @@ struct SplatRoomView: View {
         isMeasuringRoomDimensions = false
         saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
         onboardingHintDismissTask?.cancel()
-        OrientationLockManager.shared.unlock()
+        // Returning from a room viewer must restore the portrait-only room library.
+        OrientationLockManager.shared.lockToPortrait()
         splatMeasurementHost.setModalHeavyWorkPaused(false)
         rtmdetService.releaseResources()
     }

@@ -1426,7 +1426,7 @@ private struct DepthAnythingPreviewRoomView: View {
         .onDisappear {
             dismissPreviewFullVideoFurnitureTapHint()
             cancelPreviewFullVideoSelectionHelper()
-            OrientationLockManager.shared.unlock()
+            OrientationLockManager.shared.lockToPortrait()
         }
     }
 
@@ -2486,7 +2486,7 @@ struct SinglePhotoRoomView: View {
                 }
             }
             .onDisappear {
-                OrientationLockManager.shared.unlock()
+                OrientationLockManager.shared.lockToPortrait()
             }
         }
         .onAppear {
@@ -3723,7 +3723,7 @@ struct SceneKitViewer: View {
             logDebug("📐 [SceneKitViewer] Locking to \(photoOrientation == .landscape ? "landscape" : "portrait")")
         }
         .onDisappear {
-            OrientationLockManager.shared.unlock()
+            OrientationLockManager.shared.lockToPortrait()
         }
     }
 
