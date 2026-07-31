@@ -286,6 +286,13 @@ final class FurnitureFitTests: XCTestCase {
         XCTAssertEqual(thresholded, [0, 0, 255, 255])
     }
 
+    func testRTMDetMaskRenderAlphaAntialiasesOnlyTheBoundary() {
+        XCTAssertEqual(RTMDetImageInference.rawMaskRenderAlpha(for: 0.24), 0)
+        XCTAssertEqual(RTMDetImageInference.rawMaskRenderAlpha(for: 0.30), 128)
+        XCTAssertEqual(RTMDetImageInference.rawMaskRenderAlpha(for: 0.36), 255)
+        XCTAssertEqual(RTMDetImageInference.rawMaskRenderAlpha(for: .nan), 0)
+    }
+
     // MARK: - Performance Tests
 
     func testNMSPerformanceWith100Detections() {

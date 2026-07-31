@@ -58,6 +58,16 @@ enum RTMDetImageInference {
     private static let rawMaskAffinityThreshold: Float = 0.12
     private static let rawMaskAffinityBitThreshold: Float = 0.5
     private static let rawMaskRenderThreshold: Float = 0.30
+    /// A narrow probability-space transition gives the final cutout subpixel coverage without a
+    /// blur/filter pass. The midpoint remains the existing render threshold, so the visible contour
+    /// does not move.
+    private static let rawMaskRenderAntialiasHalfWidth: Float = 0.05
+
+    private struct BilinearMaskAxisSample {
+        let lowerIndex: Int
+        let upperIndex: Int
+        let upperWeight: Float
+    }
 
     private enum PixelRGBLayout {
         case bgra
@@ -89,6 +99,24 @@ enum RTMDetImageInference {
         case .argb:
             return (row[offset + 1], row[offset + 2], row[offset + 3])
         }
+    }
+
+    /// Converts the already-computed mask probability into edge coverage. Most pixels take one of
+    /// the two fast branches; only the narrow boundary band performs the interpolation.
+    @inline(__always)
+    static func rawMaskRenderAlpha(for probability: Float) -> UInt8 {
+        guard probability.isFinite else { return 0 }
+        let lower = rawMaskRenderThreshold - rawMaskRenderAntialiasHalfWidth
+        let upper = rawMaskRenderThreshold + rawMaskRenderAntialiasHalfWidth
+        if probability <= lower { return 0 }
+        if probability >= upper { return 255 }
+        let coverage = (probability - lower) / (upper - lower)
+        return UInt8((coverage * 255).rounded())
+    }
+
+    @inline(__always)
+    private static func premultiplied(_ component: UInt8, alpha: UInt8) -> UInt8 {
+        UInt8((UInt16(component) * UInt16(alpha) + 127) / 255)
     }
 
     private static func isDirectRGBPixelFormat(_ pixelFormat: OSType) -> Bool {
@@ -1342,10 +1370,21 @@ enum RTMDetImageInference {
         guard !rawMaskPlanes.isEmpty, !boxes.isEmpty else { return nil }
         let sourceWidth = mapping.sourceWidth
         let sourceHeight = mapping.sourceHeight
-        guard CVPixelBufferGetWidth(sourceBuffer) == sourceWidth,
+        guard sourceWidth > 0,
+              sourceHeight > 0,
+              CVPixelBufferGetWidth(sourceBuffer) == sourceWidth,
               CVPixelBufferGetHeight(sourceBuffer) == sourceHeight else {
             return nil
         }
+
+        // The old path recomputed source-to-model divisions for every output pixel and selected one
+        // 160x160 texel. Precompute each axis once, then sample four neighboring texels. This removes
+        // the blocky nearest-neighbor edge while keeping rasterization in the existing single pass.
+        let (xSamples, ySamples) = bilinearMaskSamplingAxes(
+            maskWidth: rawMaskSide,
+            maskHeight: rawMaskSide,
+            mapping: mapping
+        )
 
         var rgba = [UInt8](repeating: 0, count: sourceWidth * sourceHeight * 4)
 
@@ -1376,16 +1415,20 @@ enum RTMDetImageInference {
             var planeTopSourceY: Int?
             for y in yMin...yMax {
                 let sourceRow = base.advanced(by: y * rowBytes).assumingMemoryBound(to: UInt8.self)
+                let ySample = ySamples[y]
+                let upperRowOffset = ySample.lowerIndex * rawMaskSide
+                let lowerRowOffset = ySample.upperIndex * rawMaskSide
                 for x in xMin...xMax {
-                    let (sampleX, sampleY) = maskSampleCoordinate(
-                        sourceX: x,
-                        sourceY: y,
-                        maskWidth: rawMaskSide,
-                        maskHeight: rawMaskSide,
-                        mapping: mapping
-                    )
-                    let value = plane[sampleY * rawMaskSide + sampleX]
-                    guard value.isFinite, value > rawMaskRenderThreshold else { continue }
+                    let xSample = xSamples[x]
+                    let upperLeft = plane[upperRowOffset + xSample.lowerIndex]
+                    let upperRight = plane[upperRowOffset + xSample.upperIndex]
+                    let lowerLeft = plane[lowerRowOffset + xSample.lowerIndex]
+                    let lowerRight = plane[lowerRowOffset + xSample.upperIndex]
+                    let upperValue = upperLeft + (upperRight - upperLeft) * xSample.upperWeight
+                    let lowerValue = lowerLeft + (lowerRight - lowerLeft) * xSample.upperWeight
+                    let value = upperValue + (lowerValue - upperValue) * ySample.upperWeight
+                    let alpha = rawMaskRenderAlpha(for: value)
+                    guard alpha > 0 else { continue }
                     if planeTopSourceY == nil {
                         planeTopSourceY = y
                     }
@@ -1394,12 +1437,20 @@ enum RTMDetImageInference {
                     }
                     let dest = (y * sourceWidth + x) * 4
                     let source = x * 4
-                    if rgba[dest + 3] == 0 { paintedPixels += 1 }
+                    let existingAlpha = rgba[dest + 3]
+                    guard alpha > existingAlpha else { continue }
+                    if existingAlpha == 0 { paintedPixels += 1 }
                     let rgb = rgbBytes(from: sourceRow, offset: source, layout: sourceLayout)
-                    rgba[dest] = rgb.r
-                    rgba[dest + 1] = rgb.g
-                    rgba[dest + 2] = rgb.b
-                    rgba[dest + 3] = 255
+                    if alpha == 255 {
+                        rgba[dest] = rgb.r
+                        rgba[dest + 1] = rgb.g
+                        rgba[dest + 2] = rgb.b
+                    } else {
+                        rgba[dest] = premultiplied(rgb.r, alpha: alpha)
+                        rgba[dest + 1] = premultiplied(rgb.g, alpha: alpha)
+                        rgba[dest + 2] = premultiplied(rgb.b, alpha: alpha)
+                    }
+                    rgba[dest + 3] = alpha
                 }
             }
             if let debugLabel {
@@ -1416,6 +1467,77 @@ enum RTMDetImageInference {
 
         guard paintedPixels > 0 else { return nil }
         return rgbaImage(width: sourceWidth, height: sourceHeight, rgba: rgba)
+    }
+
+    private static func bilinearMaskSamplingAxes(
+        maskWidth: Int,
+        maskHeight: Int,
+        mapping: ImageMapping
+    ) -> (x: [BilinearMaskAxisSample], y: [BilinearMaskAxisSample]) {
+        let modelSide = Float(mapping.modelSide)
+        let sourceToModelX: Float
+        let sourceToModelY: Float
+        let modelPadX: Float
+        let modelPadY: Float
+
+        if mapping.usesLetterbox {
+            let gain = min(
+                modelSide / Float(mapping.sourceWidth),
+                modelSide / Float(mapping.sourceHeight)
+            )
+            sourceToModelX = gain
+            sourceToModelY = gain
+            modelPadX = (modelSide - Float(mapping.sourceWidth) * gain) * 0.5
+            modelPadY = (modelSide - Float(mapping.sourceHeight) * gain) * 0.5
+        } else {
+            sourceToModelX = modelSide / Float(mapping.sourceWidth)
+            sourceToModelY = modelSide / Float(mapping.sourceHeight)
+            modelPadX = 0
+            modelPadY = 0
+        }
+
+        return (
+            bilinearMaskAxisSamples(
+                sourceCount: mapping.sourceWidth,
+                maskCount: maskWidth,
+                modelSide: modelSide,
+                sourceToModelScale: sourceToModelX,
+                modelPadding: modelPadX
+            ),
+            bilinearMaskAxisSamples(
+                sourceCount: mapping.sourceHeight,
+                maskCount: maskHeight,
+                modelSide: modelSide,
+                sourceToModelScale: sourceToModelY,
+                modelPadding: modelPadY
+            )
+        )
+    }
+
+    private static func bilinearMaskAxisSamples(
+        sourceCount: Int,
+        maskCount: Int,
+        modelSide: Float,
+        sourceToModelScale: Float,
+        modelPadding: Float
+    ) -> [BilinearMaskAxisSample] {
+        guard sourceCount > 0, maskCount > 0, modelSide > 0 else { return [] }
+        let modelToMaskScale = Float(maskCount) / modelSide
+        let step = sourceToModelScale * modelToMaskScale
+        let firstCoordinate = (0.5 * sourceToModelScale + modelPadding) * modelToMaskScale - 0.5
+        let lastMaskIndex = maskCount - 1
+
+        return (0..<sourceCount).map { sourceIndex in
+            let coordinate = firstCoordinate + Float(sourceIndex) * step
+            let clamped = min(Float(lastMaskIndex), max(0, coordinate))
+            let lowerIndex = Int(clamped.rounded(.down))
+            let upperIndex = min(lastMaskIndex, lowerIndex + 1)
+            return BilinearMaskAxisSample(
+                lowerIndex: lowerIndex,
+                upperIndex: upperIndex,
+                upperWeight: clamped - Float(lowerIndex)
+            )
+        }
     }
 
     private static func inputProvider(for pixelBuffer: CVPixelBuffer, model: MLModel, collectStats: Bool) throws -> MLFeatureProvider {
@@ -2176,7 +2298,7 @@ enum RTMDetImageInference {
             bitmapInfo: CGBitmapInfo.byteOrder32Big.union(.init(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)),
             provider: provider,
             decode: nil,
-            shouldInterpolate: false,
+            shouldInterpolate: true,
             intent: .defaultIntent
         ) else {
             return nil
