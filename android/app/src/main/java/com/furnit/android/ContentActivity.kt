@@ -1,6 +1,7 @@
 package com.furnit.android
 
 import android.app.Dialog
+import android.content.pm.ActivityInfo
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
@@ -69,6 +70,10 @@ class ContentActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+
+        // Room viewers lock themselves to the captured photo orientation. Restore the room
+        // library's portrait presentation when returning from a landscape room.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
         // Check authentication on resume
         if (!authManager.isAuthenticated) {
