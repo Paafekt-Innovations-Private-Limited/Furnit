@@ -162,6 +162,8 @@ class GLBRoomActivity : AppCompatActivity() {
     private var lastInlineBrainColorSampleMs: Long = 0L
     private var roomPaletteLoadJob: Job? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
+    @Volatile private var inlineBrainActionStartedAtNanos: Long? = null
+    @Volatile private var inlineBrainFirstMaskLogged = false
     @Volatile private var inlineBrainFullVideoEnabled = false
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
     private var glbPath: String? = null
@@ -1061,6 +1063,9 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun startInlineBrainSegmentation() {
+        inlineBrainActionStartedAtNanos = android.os.SystemClock.elapsedRealtimeNanos()
+        inlineBrainFirstMaskLogged = false
+        LogUtil.i(TAG, "Inline brain timing: FIT_START mode=DEFAULT_SEGMENT")
         LogUtil.d(TAG, "Inline brain: start")
         val generation = brainSessionGeneration.incrementAndGet()
         inlineBrainFullVideoEnabled = false
@@ -1153,6 +1158,9 @@ class GLBRoomActivity : AppCompatActivity() {
             brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
             presentFullVideoFurnitureTapHint()
         } else if (inlineBrainSelectedPins.isNotEmpty()) {
+            inlineBrainActionStartedAtNanos = android.os.SystemClock.elapsedRealtimeNanos()
+            inlineBrainFirstMaskLogged = false
+            LogUtil.i(TAG, "Inline brain timing: SEGMENT_SELECTED_START selected=${inlineBrainSelectedPins.size}")
             inlineBrainMode = InlineBrainMode.SEGMENT_SELECTED
             brainDetectionOverlayView.setDetectionBoxVisibility(false)
             brainDetectionOverlayView.setIdentifySelectionState(false, inlineBrainSelectedPins)
@@ -1597,6 +1605,14 @@ class GLBRoomActivity : AppCompatActivity() {
         val detections = result?.detections ?: emptyList()
         val primaryDetection = result?.primaryDetection ?: detections.firstOrNull()
         if (mask != null) {
+            if (!inlineBrainFirstMaskLogged) {
+                inlineBrainFirstMaskLogged = true
+                val startedAt = inlineBrainActionStartedAtNanos
+                val elapsedMs = startedAt?.let {
+                    (android.os.SystemClock.elapsedRealtimeNanos() - it) / 1_000_000L
+                }
+                LogUtil.i(TAG, "Inline brain timing: FIRST_MASK_ARRIVAL elapsedMs=${elapsedMs ?: -1} mode=$inlineBrainMode")
+            }
             inlineBrainHasSegmentedFurniture = true
             inlineBrainFurnitureLabel = primaryDetection?.label
             sampleInlineBrainFurnitureColor(mask)
