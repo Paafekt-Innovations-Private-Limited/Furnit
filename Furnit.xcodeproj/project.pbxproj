@@ -39,10 +39,10 @@
 			membershipExceptions = (
 				CHANGELOG.md,
 				diagrams/README.md,
-				diagrams/room-generation-flow.svg,
-				diagrams/rtmdet-swift-flow.svg,
+				"diagrams/room-generation-flow.svg",
+				"diagrams/rtmdet-swift-flow.svg",
+				"docs/mask-head-accel.md",
 				docs/README.md,
-				docs/mask-head-accel.md,
 				Info.plist,
 				Models/RTMDet/README.md,
 				test_images/alchair.jpeg,
@@ -409,16 +409,16 @@
 		045F5BE52E6D302A00C5585D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				APS_ENVIRONMENT = development;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = Swift;
-				CURRENT_PROJECT_VERSION = 85;
+				CURRENT_PROJECT_VERSION = 86;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				ENABLE_ON_DEMAND_RESOURCES = YES;
 				ENABLE_PREVIEWS = YES;
@@ -446,7 +446,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -461,15 +461,15 @@
 		045F5BE62E6D302A00C5585D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				APS_ENVIRONMENT = production;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = Swift;
-				CURRENT_PROJECT_VERSION = 85;
+				CURRENT_PROJECT_VERSION = 86;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				ENABLE_ON_DEMAND_RESOURCES = YES;
 				ENABLE_PREVIEWS = YES;
@@ -496,7 +496,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

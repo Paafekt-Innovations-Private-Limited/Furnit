@@ -10,17 +10,18 @@
 set -euo pipefail
 
 PROJECT="paafektprod"
-APP_ID="1:613415224058:android:c4d35380e0a5e0f4a13f43"
+APP_ID="1:613415224058:android:8d0a97fe4990e559a13f43"
 GS_JSON="$(cd "$(dirname "$0")/.." && pwd)/app/google-services.json"
 API="https://firebase.googleapis.com/v1beta1/projects/${PROJECT}/androidApps/${APP_ID}"
 
-# --- Fingerprints (colons stripped by the script). Add the Play App Signing SHA-256 below. ---
+# --- Fingerprints (colons stripped by the script). ---
 SHAS=(
   "EB:8B:FC:A4:45:FD:F8:33:4C:EE:9C:A3:67:CA:98:E4:E6:84:B6:93"                                              # debug SHA-1
   "B7:B1:05:B3:A0:B6:92:FD:F2:D2:67:7E:75:B6:DE:2C:29:63:5F:87:7B:7A:0A:18:2E:F6:31:36:39:35:6B:D0"          # debug SHA-256
   "E5:1A:A3:F3:B8:01:15:9E:AD:5A:86:C8:CE:F8:F5:1E:21:5B:2B:7A"                                              # release upload SHA-1
   "5F:0D:73:33:18:7F:86:1A:5A:33:A6:02:0B:C2:24:78:53:1C:25:CF:13:68:23:87:ED:C2:F3:3B:C8:E0:BE:19"          # release upload SHA-256
-  # "<PLAY_APP_SIGNING_SHA256_FROM_PLAY_CONSOLE>"   # <-- paste it here (uncomment) to add it too
+  "6C:62:DC:4B:C6:53:CB:4B:0C:23:A6:F8:52:E7:FC:C8:D0:7E:70:20"                                              # Play app-signing SHA-1
+  "DE:AD:21:9D:82:71:DA:FC:34:1E:0B:30:AB:02:C6:08:86:45:01:07:50:2E:53:C6:10:76:3E:34:56:9A:59:BF"          # Play app-signing SHA-256
 )
 
 echo "==> Ensuring gcloud is authenticated on project ${PROJECT}"
