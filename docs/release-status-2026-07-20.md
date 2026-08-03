@@ -1,6 +1,23 @@
 # Paafekt Release Status - 2026-07-20
 
+> **Historical release snapshot.** Do not use the unchecked submission steps below as
+> current console state. Current verified status is in
+> [`store-submission-status.md`](store-submission-status.md); Android production auth
+> state is in
+> [`../android/docs/AUTHENTICATION.md`](../android/docs/AUTHENTICATION.md).
+
 This document records the local release state for the iOS/Swift and Android builds prepared on July 20, 2026. It is a handoff checklist for App Store Connect and Google Play Console submission.
+
+## Update - 2026-08-03 (supersedes current-status claims below)
+
+- Android is published on Google Play as `com.paafekt.android` under Paafekt
+  Innovations Private Limited (India).
+- The Play App Signing SHA-1 and SHA-256 were added to the active Firebase Android app
+  and verified live, resolving the production Phone Auth authorization error.
+- Positional Android OTP autofill hints are now in source and require a subsequent Play
+  release.
+- The iOS App Store review state was not rechecked during this update; the July status
+  remains historical evidence only.
 
 ## Update - 2026-07-25 (supersedes Android facts below)
 
@@ -200,4 +217,3 @@ The direct `/Volumes/ExtremeSSD/xcode/DerivedData/...` archive path created Appl
    - Delete account
 6. Complete store metadata, privacy/data-safety forms, screenshots, and reviewer notes.
 7. Submit both stores for review.
-

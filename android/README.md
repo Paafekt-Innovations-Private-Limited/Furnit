@@ -2,6 +2,10 @@
 
 Android app for Furnit room creation, GLB room viewing, and on-device furniture segmentation.
 
+Repository context: [`../docs/READ_FIRST.md`](../docs/READ_FIRST.md). Android doc index:
+[`docs/README.md`](docs/README.md). Phone Auth, Play signing, locale country defaults,
+and OTP autofill: [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
+
 ## Current Room Creation Flow
 
 - Entry point: `SinglePhotoRoomActivity`.
@@ -67,4 +71,4 @@ The app module builds one debug variant. Android Studio's Build Variants panel m
 adb logcat -s SinglePhotoRoom:D PhotoRoomGeneration:D RoomGenerationAssets:D GLBRoomActivity:D FurnitureFitManager:D -v time
 ```
 
-See `README_ANDROID.md` and `docs/ANDROID_ROOM_CREATION.md` for more detail.
+See [`README_ANDROID.md`](README_ANDROID.md) and [`docs/README.md`](docs/README.md) for more detail.

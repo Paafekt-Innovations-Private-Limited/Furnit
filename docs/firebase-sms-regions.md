@@ -72,7 +72,7 @@ If Firebase / Google asks for more information when enabling Phone Auth or a reg
 | Do you store SMS content? | No |
 | Backend / own SMS DB? | No Paafekt server DB; Firebase Authentication only |
 | Expected volume | Low–moderate login OTPs for launch countries above |
-| Company | Paafekt Inc. (United States) / Paafekt Innovations Private Limited (India) |
+| Company | App operator/controller: Paafekt Innovations Private Limited (India). Affiliate only: Paafekt Inc. (United States). |
 | Account deletion | User can delete account in-app (Settings → Account); Firebase Auth user is removed |
 
 They are **not** asking you to declare room photos or on-device ML as cloud-collected data.

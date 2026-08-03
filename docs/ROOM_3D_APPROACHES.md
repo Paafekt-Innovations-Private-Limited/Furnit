@@ -1,5 +1,11 @@
 # Room 3D Reconstruction — Approaches Tried
 
+> **Research chronology, not the architecture entry point.** Approaches 1–11 describe
+> experiments/retired artifacts. The explicitly labeled production section remains a
+> useful iOS summary; current cross-platform ownership is documented in
+> [`architecture.md`](architecture.md) and
+> [`architecture/CODE_MAP.md`](architecture/CODE_MAP.md).
+
 ## Project: Single-Image to 3D Room (Furnit)
 
 **Goal:** Take a single photo of a room interior and produce a 3D model (GLB/OBJ/USDZ) viewable in standard 3D viewers and AR.

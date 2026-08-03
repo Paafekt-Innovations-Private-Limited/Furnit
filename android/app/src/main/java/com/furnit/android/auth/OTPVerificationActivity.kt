@@ -389,9 +389,9 @@ class OTPVerificationActivity : AppCompatActivity() {
             filters = arrayOf(InputFilter.LengthFilter(1))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
-                if (index == 0) {
-                    setAutofillHints("smsOTPCode")
-                }
+                // Each box represents one OTP character. Positional hints let Android's
+                // autofill service distribute the retrieved SMS code across all six boxes.
+                setAutofillHints("smsOTPCode${index + 1}")
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

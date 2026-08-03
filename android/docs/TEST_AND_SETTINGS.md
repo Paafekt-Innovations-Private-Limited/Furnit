@@ -46,4 +46,10 @@ Expected today:
 
 - Depth Anything ONNX: present.
 - RTMDet ONNX: present.
-- GeoCalib Android export: missing until an ONNX or TFLite version is produced.
+- GeoCalib pinhole CNN ONNX: present and loaded by `GeoCalibCalibrationService`; focal/gravity fallbacks remain available if inference cannot run.
+
+## Authentication smoke test
+
+Use a Google Play install when validating production Phone Auth because a local APK
+uses a different signing certificate. Follow [`AUTHENTICATION.md`](AUTHENTICATION.md),
+including automatic and manual OTP entry checks.

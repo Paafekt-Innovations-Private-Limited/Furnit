@@ -1,5 +1,10 @@
 # Android dead-code cleanup
 
+> **Dated audit evidence, not a live unused-code inventory.** Re-run the relevant
+> tools and validate reflection/resource/persistence use before deletion. Open
+> follow-ups are tracked in
+> [`deferred/CONFIRMED_DEFERRED.md`](deferred/CONFIRMED_DEFERRED.md).
+
 Branch history: `cleanup/dead-code-android` (merged PR #72), then follow-up commits on `main`.
 
 Method: Lint `UnusedResources` + codebase grep (`R.string.*`, `@string/*`, `@color/*`), validated against manifest/XML/DI/reflection traps. **Deletion only** — no refactors.

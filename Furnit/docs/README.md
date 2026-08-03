@@ -2,6 +2,10 @@
 
 iOS (Swift) app documentation and architecture diagrams.
 
+Repository-wide active context: [`../../docs/READ_FIRST.md`](../../docs/READ_FIRST.md).
+Architecture/code ownership: [`../../docs/architecture.md`](../../docs/architecture.md)
+and [`../../docs/architecture/CODE_MAP.md`](../../docs/architecture/CODE_MAP.md).
+
 ## Diagrams (`Furnit/diagrams/`)
 Real SVG flow diagrams (open in any browser / Xcode preview):
 
@@ -52,7 +56,8 @@ These are cross-linked with each other (and with `Furnit/Views/FurnitureFit/READ
 - `docs/RTMDET_IOS_SWIFT_SPIKE.md`
 - `docs/ON_DEMAND_RESOURCES.md`
 - `docs/apple-review-checklist.md`
-- `CONTEXT.md` — GeoCalib + Depth Anything pipeline, metric calibration, room-viewer brain/full-video
+- `docs/READ_FIRST.md` — compact current context and settled cross-platform facts
+- `docs/architecture.md` — active architecture entry point
 
-> To consolidate everything under `Furnit/docs/`, the `docs/…` references inside those files and in
-> `Furnit/Views/FurnitureFit/README.md` must be rewritten in the same move.
+Detailed iOS docs intentionally remain beside the iOS code. Shared docs remain in the
+repository-root `docs/` directory and are indexed by `docs/README.md`.

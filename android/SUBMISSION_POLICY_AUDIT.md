@@ -4,6 +4,21 @@ Date: 2026-07-25
 
 This is a pragmatic release checklist, not legal advice.
 
+> **Historical submission-preparation audit.** Android is now released on Google
+> Play. Current authentication and signing state lives in
+> [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md); current store state lives in
+> [`../docs/store-submission-status.md`](../docs/store-submission-status.md).
+
+## Production addendum — 2026-08-03
+
+- Google Play distributes `com.paafekt.android` using the Play App Signing key.
+- The production-installed APK's Play signing SHA-1 and SHA-256 were extracted and
+  added to the matching Firebase Android app. The live certificate list was verified.
+- This resolves the Firebase error reporting that a Play Integrity token was present
+  but no matching SHA-256 was registered.
+- Split-field OTP autofill now uses Android's positional `smsOTPCode1` through
+  `smsOTPCode6` hints in source. A new Play release is required to deliver that change.
+
 ## Checked
 
 - Privacy Policy link exists in app: Settings > Legal > Privacy Policy opens `https://paafekt.com/privacy`.
@@ -16,12 +31,12 @@ This is a pragmatic release checklist, not legal advice.
 - Licenses and credits screens exist in Settings and cover shipped Android runtime libraries, model assets, datasets, and AI/tool credits.
 - SIM/network country lookup was removed from login country preselection; Android now uses locale only and lets the user choose manually.
 
-## Build and signing items before upload
+## Build and signing maintenance
 
 - Build the bundle with the `PAAFEKT_UPLOAD_*` signing properties set; an unsigned `bundleRelease` output is rejected by Play. The upload keystore and credentials already exist on this machine (`~/.gradle/paafekt/paafekt-upload-key.jks`, values in `~/.gradle/gradle.properties`). Run the signed build from a normal terminal — sandboxed agent shells override `GRADLE_USER_HOME` and produce an unsigned AAB. See "Release Build and Signing" in `README_ANDROID.md`.
 - Release builds are R8-minified. Archive `app/build/outputs/mapping/release/mapping.txt` per release and upload it to Play Console; emailed crash reports from `CrashReportActivity` need it for retracing.
-- After enrolling in Play App Signing, add the Play App Signing key's SHA-256 to the Firebase Android app, or phone-number OTP login will fail in the store build.
-- The application ID is now `com.paafekt.android` (permanent at first publish; Kotlin namespace stays `com.furnit.android`). The matching Firebase Android app (`1:613415224058:android:8d0a97fe4990e559a13f43`) is registered in `paafektprod` with the same certificate fingerprints as the old `com.furnit.android` entry (including the upload key's SHA-1/SHA-256), and `google-services.json` contains both clients. After enrolling in Play App Signing, add that key's SHA-256 to the new app entry.
+- Keep both Play App Signing fingerprints registered on the Firebase Android app; they were added and live-verified on 2026-08-03. Re-run `scripts/fix_firebase_android_auth.sh` only if the signing key or Firebase app changes.
+- The application ID is `com.paafekt.android` (permanent after first publish; Kotlin namespace stays `com.furnit.android`). The matching Firebase Android app (`1:613415224058:android:8d0a97fe4990e559a13f43`) is registered in `paafektprod`, and `google-services.json` contains both the active and legacy clients.
 
 ## Play Console / website items to verify before submission
 

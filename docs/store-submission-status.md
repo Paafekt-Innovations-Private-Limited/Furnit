@@ -1,83 +1,79 @@
 # Store submission status (Paafekt)
 
-Last updated: 25 July 2026
+Last verified: 3 August 2026
 
-## iOS — App Store Connect
+This file records only state verified from the repository, the Play-installed Android
+artifact, live Firebase configuration, or the owner's explicit account status. Console
+state that was not re-opened on this date is labeled as a prior snapshot.
 
-| Item | Status |
-|------|--------|
-| Build submitted | **1.0 (86)** |
-| Review status | **Waiting for Review** |
-| Submitted | 20 Jul 2026 ~6:49 AM (by Kishore Shivanna) |
-| Screenshots | iPhone 6.5" + iPad 13" uploaded |
-| Privacy Policy URL | `https://paafekt.com/privacy` |
-| Terms | `https://paafekt.com/terms` |
-| Support | `support@paafekt.com` |
+## Android — Google Play
 
-### App Privacy (published)
+| Item | Current state |
+|---|---|
+| Publisher/legal entity | **Paafekt Innovations Private Limited (India)** |
+| Release | **Published on Google Play** |
+| Package | `com.paafekt.android` |
+| Kotlin namespace | `com.furnit.android` (internal; intentionally different) |
+| Play signing | Play App Signing active; production-installed certificate extracted and verified |
+| Firebase Phone Auth | Play signing SHA-1/SHA-256 registered live on 2026-08-03; original production authorization error resolved |
+| OTP autofill | Positional split-field hints are in source as of 2026-08-03; requires the next Play release |
 
-Data types declared (linked to user, **not** used for tracking):
+The published-build failure shown on 2026-08-03 was not caused by the developer
+account's legal name or by the upload key. Firebase received a Play Integrity token but
+had no matching Play App Signing SHA-256. Both Play fingerprints are now registered on
+the active Firebase app. See
+[`../android/docs/AUTHENTICATION.md`](../android/docs/AUTHENTICATION.md).
 
-- Phone Number — App Functionality (Firebase OTP)
-- User ID — App Functionality (Firebase Auth UID)
-- Device ID — App Functionality (Firebase auth / install verification)
+### Next Android release
 
-Tracking / IDFA: **No**
+1. Verify the active Play version code, then bump `versionCode` in
+   `android/app/build.gradle` to a higher value.
+2. Build and upload a signed AAB; archive the R8 `mapping.txt` for that release.
+3. Install the update from Google Play and smoke-test automatic verification/autofill
+   plus manual OTP entry.
+4. Recheck country preselection under an English (India) locale and an `en-GB` locale.
 
-### App Review Information
-
-Filled under **General → App Review** (Sign-in required + demo phone/OTP + notes + contact).  
-Demo credentials: Firebase Console → Authentication → Phone → Phone numbers for testing.
-
-### Release
-
-Automatically release when approved (as selected in App Review / version settings — confirm if you change this).
-
-### Related docs
-
-- [apple-review-checklist.md](apple-review-checklist.md)
-- [firebase-sms-regions.md](firebase-sms-regions.md)
-
----
-
-## Android — Google Play Console
-
-| Item | Status |
-|------|--------|
-| Developer account | **PaafektInnovations** (org) |
-| Publish blocked by | Identity / org verification |
-| Google verifying identity | **In progress** (documents uploaded; wait for email, often a few business days) |
-| Phone number verification | **Blocked** until identity/org docs approved |
-| App upload / production submit | **Not started** — finish account setup first |
-
-When verification clears: create app → Data safety → store listing → AAB → (new personal accounts may also need closed testing rules; org path may differ) → see [android-play-review-checklist.md](android-play-review-checklist.md).
-
-Repo-side readiness (25 Jul 2026): application ID switched to `com.paafekt.android` with a matching Firebase app registered, R8 enabled for release, model assets ship as install-time asset packs, and a release build was smoke-installed on a Pixel 9a. Create the app in Play Console as `com.paafekt.android`. Details: `android/SUBMISSION_POLICY_AUDIT.md` and `docs/release-status-2026-07-20.md` (2026-07-25 update section).
-
----
+Do not recreate the upload key because its certificate organization metadata names
+Paafekt Inc. That metadata does not change the Play publisher or Firebase app identity.
 
 ## Firebase (`paafektprod`)
 
-| Item | Status |
-|------|--------|
+| Item | Current state |
+|---|---|
 | Phone Auth | Enabled |
-| Android app entries | `com.paafekt.android` (active, `1:613415224058:android:8d0a97fe4990e559a13f43`) and legacy `com.furnit.android` (delete after launch) |
-| SMS region policy | **Global** (allow by default) as of 2026-07-25 — matches worldwide Play release; use `--allowlist` on `set_firebase_sms_regions.sh` to tighten later |
-| Apply/update allowlist | `./scripts/set_firebase_sms_regions.sh` (needs `gcloud auth`) |
+| Active Android app | `com.paafekt.android` — `1:613415224058:android:8d0a97fe4990e559a13f43` |
+| Legacy Android client | `com.furnit.android` retained in `google-services.json` for compatibility |
+| Upload SHA-1/SHA-256 | Registered |
+| Play App Signing SHA-1/SHA-256 | Registered and live-verified 2026-08-03 |
+| SMS region policy | Last verified global/allow-by-default on 2026-07-25; see [`firebase-sms-regions.md`](firebase-sms-regions.md) |
 
----
+The maintenance script is
+[`../android/scripts/fix_firebase_android_auth.sh`](../android/scripts/fix_firebase_android_auth.sh).
+It performs live writes and should be used only when the Firebase app or signing keys
+change.
 
-## Website (paafekt.com)
+## iOS — App Store Connect
 
-| Item | Status |
-|------|--------|
-| Privacy / Terms / Support URLs | Live; used by the apps |
-| Support FAQ (App Store / Play copy) | Updated when deployed from the correct Netlify account |
+The last repository snapshot, dated 25 July 2026, recorded build **1.0 (86)** as
+**Waiting for Review**, submitted on 20 July 2026. App Store Connect was not re-opened
+during the 2026-08-03 update, so that review state must not be presented as current.
 
----
+The Apple developer account/publisher is Paafekt Innovations Private Limited (India).
+Recheck App Store Connect before changing release status. Historical build details are
+in [`release-status-2026-07-20.md`](release-status-2026-07-20.md); the reusable review
+procedure is [`apple-review-checklist.md`](apple-review-checklist.md).
 
-## Next actions (when you’re back)
+## Legal and public URLs
 
-1. **iOS:** Wait for Apple email (Waiting for Review → In Review → Approved / Rejected). Respond if they ask for demo access.
-2. **Android:** Wait for Play identity verification email; then complete phone verify and continue Play Console setup.
-3. Keep App Privacy / Data safety in sync if you add Crashlytics or other SDKs later.
+| Item | Value |
+|---|---|
+| App operator/controller | Paafekt Innovations Private Limited (India) |
+| Affiliate | Paafekt Inc. (United States), affiliate only |
+| Privacy | `https://paafekt.com/privacy` |
+| Terms | `https://paafekt.com/terms` |
+| Support | `https://paafekt.com/support` / `support@paafekt.com` |
+| Account deletion | `https://paafekt.com/delete-account` |
+
+The repository source for the privacy page is [`privacy.html`](privacy.html). Committing
+that file does not deploy the public website; deploy and visually verify the live page
+through the website's own release process.

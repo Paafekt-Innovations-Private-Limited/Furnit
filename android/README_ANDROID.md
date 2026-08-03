@@ -57,10 +57,11 @@ Per-release checklist:
   release in Play Console. Release builds are R8-minified, so crash reports
   (including ones users email from `CrashReportActivity`) must be retraced with
   this file (`$ANDROID_HOME/cmdline-tools/latest/bin/retrace mapping.txt trace.txt`).
-- After enrolling in Play App Signing, add the **Play App Signing key's SHA-256**
-  (Play Console > Test and release > App integrity) to the Firebase project's
-  Android app settings. Without it, Firebase phone auth fails in the store build
-  even though local builds work.
+- Keep the **Play App Signing key's SHA-1 and SHA-256** registered on the
+  `com.paafekt.android` Firebase app. Both were added and live-verified on
+  2026-08-03 after diagnosing the production Phone Auth failure. Repeat the
+  registration only if the Play signing key or Firebase app changes; see
+  [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
 - Bump `versionCode` in `app/build.gradle` for every upload.
 
 ## Room Creation
@@ -121,3 +122,9 @@ Bundled sample room assets live in `app/src/main/assets/bundled_rooms/`.
 The root repository ignores `*.onnx` by default. Android's `.gitignore` explicitly allows the three shipped model ONNX files in the asset pack modules, and `.gitattributes` stores all `*.onnx` files in Git LFS. Run `git lfs pull` after a fresh clone if the model files are missing.
 
 Do not add old native room-generation model exports or large local experiment folders back into app assets.
+
+## Documentation
+
+- Repository active context: [`../docs/READ_FIRST.md`](../docs/READ_FIRST.md)
+- Android index: [`docs/README.md`](docs/README.md)
+- Authentication and production signing: [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md)

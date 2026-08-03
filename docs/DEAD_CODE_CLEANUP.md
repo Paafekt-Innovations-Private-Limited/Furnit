@@ -1,5 +1,10 @@
 # Dead code cleanup audit (iOS / Swift)
 
+> **Dated audit evidence, not a live unused-code inventory.** Re-run/triage Periphery
+> and confirm current call sites before deleting anything. Confirmed follow-ups and
+> cleanup candidates are tracked in
+> [`deferred/CONFIRMED_DEFERRED.md`](deferred/CONFIRMED_DEFERRED.md).
+
 **Date:** 2026-07-10 (updated after removals)  
 **Periphery:** `2.21.2` — `periphery scan --format xcode` → **No unused code detected** (pre-removal)
 

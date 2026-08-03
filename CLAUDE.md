@@ -1,3 +1,4 @@
+- Read `AGENTS.md` and `docs/READ_FIRST.md` before changing the repository.
 - Always use descriptive variable names
 - Compile before concluding changes every time:
   - **Android:** from `android/`, run `./gradlew :app:assembleDebug`. The Android app builds a single flavorless `app` debug variant. **Claude Sonnet only** for running Gradle; reasoning on the model selected in Cursor (see `.cursor/rules/model-usage-preference.mdc`).

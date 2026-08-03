@@ -1,5 +1,10 @@
 # Furnit iOS — UI / look-and-feel audit (read-only)
 
+> **Historical snapshot.** This 2026-07-10 audit predates `Furnit/Theme/Theme.swift`,
+> the Paafekt design tokens/assets, and the current branded login/viewer chrome. Do not
+> treat statements such as “no centralized design system” or “generic cube login” as
+> current. See [`PAAFEKT_DESIGN_SYSTEM.md`](PAAFEKT_DESIGN_SYSTEM.md) and the live code.
+
 **Date:** 2026-07-10  
 **Scope:** Swift iOS app (`Furnit/`) — code & asset review only; **no app code modified** for this audit.  
 **Screenshots:** Runtime screenshots were **not captured** in this session (no Simulator run). Wireframe descriptions and asset references below are from source. Capture on a physical device for designer handoff.
