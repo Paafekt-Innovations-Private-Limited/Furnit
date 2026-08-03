@@ -7,10 +7,11 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.net.Uri
+import com.furnit.android.R
 import com.furnit.android.RoomDefaults
+import com.furnit.android.models.RoomStructure
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
-import com.furnit.android.models.RoomStructure
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
@@ -67,10 +68,10 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
 
         Thread {
             try {
-                callback.onProgress(0.1f, "Preparing image...")
+                callback.onProgress(0.1f, context.getString(R.string.ai_progress_getting_photo_ready))
 
                 if (flatPhotoMesh) {
-                    callback.onProgress(0.15f, "Measuring room...")
+                    callback.onProgress(0.15f, context.getString(R.string.room_viewer_measuring_room))
                     val measured = DepthAnythingRoomMeasurer.measure(context, image, sourcePhotoUri)
                     if (measured.measured) {
                         dimensions.width = measured.width
@@ -85,7 +86,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     }
                 }
 
-                callback.onProgress(0.3f, "Extracting textures...")
+                callback.onProgress(0.3f, context.getString(R.string.ai_progress_understanding_picture))
                 val frontWallTexture: Bitmap
                 val floorTexture: Bitmap
                 val ceilingTexture: Bitmap
@@ -105,10 +106,10 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     rightWallTexture = extractRightWallTexture(image, boundaries)
                 }
 
-                callback.onProgress(0.5f, "Building 3D model...")
+                callback.onProgress(0.5f, context.getString(R.string.ai_progress_building_room))
 
                 // Create GLB file
-                callback.onProgress(0.7f, "Creating room file...")
+                callback.onProgress(0.7f, context.getString(R.string.ai_progress_preparing_preview))
                 val glbFile = createRoomGLB(
                     dimensions,
                     frontWallTexture,
@@ -120,14 +121,14 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     sourcePhoto = if (flatPhotoMesh) image else null,
                 )
 
-                callback.onProgress(0.9f, "Finalizing...")
+                callback.onProgress(0.9f, context.getString(R.string.ai_progress_finishing_up))
 
-                callback.onProgress(1.0f, "Room ready!")
+                callback.onProgress(1.0f, context.getString(R.string.room_generation_ready))
                 callback.onComplete(glbFile)
 
             } catch (e: Exception) {
                 LogUtil.e(TAG, "Room reconstruction failed", e)
-                callback.onError("Failed to create room: ${e.message}")
+                callback.onError(context.getString(R.string.boundary_failed_create))
             }
         }.start()
     }
@@ -295,7 +296,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         // Save metadata for ModelManager
         val metadataFile = File(roomFolder, "metadata.txt")
         val createdAt = System.currentTimeMillis()
-        val roomName = RoomDisplayName.myRoomWithTimestamp(Date(createdAt))
+        val roomName = RoomDisplayName.myRoomWithTimestamp(context, Date(createdAt))
         metadataFile.writeText("name=$roomName\ncreated=$createdAt\nglb=room.glb")
 
         LogUtil.d(TAG, "Room created at: ${roomFolder.absolutePath}")

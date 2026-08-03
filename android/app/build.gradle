@@ -56,13 +56,6 @@ android {
         }
     }
 
-    lint {
-        // Locale files are intentionally partial; Android falls back to default strings.
-        // Keep hardcoded visible text out of code/XML, but do not block Play release on
-        // unfinished translations for every supported language.
-        disable 'MissingTranslation'
-    }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11

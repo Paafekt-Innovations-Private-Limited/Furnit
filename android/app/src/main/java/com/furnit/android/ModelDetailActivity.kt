@@ -10,7 +10,6 @@ import android.os.Handler
 import android.os.Looper
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
-import com.furnit.android.utils.RoomDisplayName
 import android.view.PixelCopy
 import android.view.View
 import android.widget.EditText
@@ -363,7 +362,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 handleViewerBack()
             }.apply {
                 alpha = 0.55f
-                contentDescription = getString(R.string.photo_room_back)
+                contentDescription = getString(R.string.common_back)
             }
             immersiveBackButton = back
             val initialTop = systemBarInsets.top.takeIf { it > 0 }
@@ -464,9 +463,13 @@ class ModelDetailActivity : AppCompatActivity() {
             height = roomHeight,
             depth = roomDepth,
             emphasizeHeight = isFlatPhotoRoomMesh,
-        ) { heightMeters ->
-            getString(R.string.approximate_room_height, heightMeters)
-        }
+            approximateHeightFormatter = { heightMeters ->
+                getString(R.string.approximate_room_height, heightMeters)
+            },
+            widthDepthFormatter = { widthMeters, depthMeters ->
+                getString(R.string.room_dimensions_width_depth, widthMeters, depthMeters)
+            },
+        )
         return text ?: getString(R.string.approximate_room_height, roomHeight)
     }
 
@@ -730,7 +733,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 LogUtil.e(TAG, "Failed to save room", e)
                 Toast.makeText(
                     this@ModelDetailActivity,
-                    getString(R.string.photo_room_error_load, e.message ?: ""),
+                    getString(R.string.model_detail_failed_load_generic),
                     Toast.LENGTH_SHORT,
                 ).show()
                 CrashReporter.report(this@ModelDetailActivity, e, "Model detail — save room")
@@ -753,7 +756,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(shareIntent, "Share Room"))
+            startActivity(Intent.createChooser(shareIntent, getString(R.string.share_room_chooser)))
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to share room", e)
             Toast.makeText(this, getString(R.string.model_detail_failed_share), Toast.LENGTH_SHORT).show()
@@ -815,7 +818,7 @@ class ModelDetailActivity : AppCompatActivity() {
                     putExtra(Intent.EXTRA_STREAM, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
+                startActivity(Intent.createChooser(shareIntent, getString(R.string.share_screenshot_chooser)))
             } else {
                 runOnUiThread {
                     Toast.makeText(this, getString(R.string.smartypants_failed_save_screenshot), Toast.LENGTH_SHORT).show()
@@ -825,7 +828,11 @@ class ModelDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to save screenshot", e)
             runOnUiThread {
-                Toast.makeText(this, getString(R.string.model_detail_failed_save_screenshot_message, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    R.string.model_detail_failed_save_screenshot_generic,
+                    Toast.LENGTH_SHORT,
+                ).show()
                 CrashReporter.report(this@ModelDetailActivity, e, "Model detail — save/share screenshot")
             }
         }
@@ -954,7 +961,7 @@ class ModelDetailActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 LogUtil.e(TAG, "Failed to load model", e)
                 loadingIndicator.visibility = View.GONE
-                modelTitle.text = getString(R.string.model_detail_failed_load, e.message ?: "")
+                modelTitle.text = getString(R.string.model_detail_failed_load_generic)
                 runOnUiThread {
                     CrashReporter.report(this@ModelDetailActivity, e, "Model detail — load 3D model")
                 }

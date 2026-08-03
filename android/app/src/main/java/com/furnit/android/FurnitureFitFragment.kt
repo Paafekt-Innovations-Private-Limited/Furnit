@@ -19,6 +19,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.FurnitureFitFrameUsability
+import com.furnit.android.utils.FurnitureClassNames
 import com.furnit.android.utils.WindowInsetsUtil
 import com.furnit.android.utils.FurnitureFitThermalCadence
 import com.furnit.android.utils.LogUtil
@@ -246,7 +247,7 @@ class FurnitureFitFragment : Fragment() {
             lp.gravity = Gravity.TOP or Gravity.START
             lp.setMargins(PaafektSpace.lg(requireContext()), PaafektSpace.sm(requireContext()), 0, 0)
             layoutParams = lp
-            contentDescription = getString(R.string.photo_room_back)
+            contentDescription = getString(R.string.common_back)
             // Edge-to-edge (targetSdk 35+) draws behind the status bar; add the real
             // status bar inset to the top margin so the button clears the notification bar.
             WindowInsetsUtil.applyTopInsetAsTopMargin(this)
@@ -287,7 +288,7 @@ class FurnitureFitFragment : Fragment() {
             setPadding(PaafektSpace.lg(requireContext()), PaafektSpace.md(requireContext()), PaafektSpace.lg(requireContext()), PaafektSpace.md(requireContext()))
         }
         calibrationPillLine1 = TextView(requireContext()).apply {
-            text = "Furn:"
+            text = getString(R.string.furniture_dimension_debug_unknown)
             setTextColor(PaafektColors.textPrimary)
             textSize = 12f
             gravity = Gravity.CENTER
@@ -368,7 +369,7 @@ class FurnitureFitFragment : Fragment() {
         }
 
         if (!segmentationCompletedOnceThisSession) {
-            setProgress(5, "Starting camera...")
+            setProgress(5, getString(R.string.smartypants_starting))
         } else {
             progressContainer.visibility = View.GONE
         }
@@ -503,7 +504,8 @@ class FurnitureFitFragment : Fragment() {
                 }
 
                 val labels = result.detections.take(3).joinToString(", ") {
-                    "${it.label} ${(it.confidence * 100).toInt()}%"
+                    val label = FurnitureClassNames.localized(requireContext(), it.classId, it.label)
+                    "$label ${getString(R.string.common_percentage, (it.confidence * 100).toInt())}"
                 }
                 statusLabel.text = if (labels.isNotEmpty()) labels else getString(R.string.smartypants_detected)
 
@@ -901,7 +903,7 @@ class FurnitureFitFragment : Fragment() {
         } catch (e: Exception) {
             LogUtil.e("FurnitureFit", "Screenshot failed", e)
             context?.let { ctx ->
-                Toast.makeText(ctx, getString(R.string.smartypants_screenshot_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, R.string.smartypants_screenshot_failed_generic, Toast.LENGTH_SHORT).show()
             }
             CrashReporter.report(this, e, "Furniture fit — screenshot capture")
         }
@@ -939,7 +941,9 @@ class FurnitureFitFragment : Fragment() {
                     putExtra(Intent.EXTRA_STREAM, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
+                startActivity(
+                    Intent.createChooser(shareIntent, getString(R.string.share_screenshot_chooser)),
+                )
             } else {
                 activity?.runOnUiThread {
                     val currentContext = context ?: return@runOnUiThread
@@ -950,7 +954,7 @@ class FurnitureFitFragment : Fragment() {
             LogUtil.e("FurnitureFit", "Save screenshot failed", e)
             activity?.runOnUiThread {
                 val currentContext = context ?: return@runOnUiThread
-                Toast.makeText(currentContext, getString(R.string.smartypants_failed_save, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                Toast.makeText(currentContext, R.string.smartypants_failed_save_generic, Toast.LENGTH_SHORT).show()
                 CrashReporter.report(this@FurnitureFitFragment, e, "Furniture fit — save screenshot to gallery")
             }
         }
@@ -1089,7 +1093,7 @@ class FurnitureFitFragment : Fragment() {
         } catch (e: Exception) {
             LogUtil.e("FurnitureFit", "bindToLifecycle failed", e)
             activity?.runOnUiThread {
-                statusLabel.text = getString(R.string.smartypants_camera_error, e.message ?: "")
+                statusLabel.text = getString(R.string.smartypants_camera_error_generic)
                 CrashReporter.report(this@FurnitureFitFragment, e, "Furniture fit — camera bind")
             }
         }
@@ -1193,9 +1197,10 @@ class FurnitureFitFragment : Fragment() {
             calibrationPillContainer?.visibility = View.VISIBLE
             calibrationPillLine1?.text = when {
                 detectedWidth != null && detected != null ->
-                    "Furn: ${String.format(Locale.US, "%.2f", detectedWidth)}×${String.format(Locale.US, "%.2f", detected)}m"
-                detected != null -> "Furn: H ${String.format(Locale.US, "%.2f", detected)}m"
-                else -> "Furn:"
+                    getString(R.string.furniture_dimension_debug_width_height, detectedWidth, detected)
+                detected != null ->
+                    getString(R.string.furniture_dimension_debug_height, detected)
+                else -> getString(R.string.furniture_dimension_debug_unknown)
             }
             calibrationPillLine1?.setTextColor(0xFFFFFFFF.toInt())
             calibrationPillContainer?.setOnClickListener(null)

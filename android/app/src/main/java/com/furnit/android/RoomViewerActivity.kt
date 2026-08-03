@@ -12,6 +12,7 @@ import com.furnit.android.utils.WindowInsetsUtil
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektHintViews
+import com.furnit.android.theme.PaafektScreenViews
 import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.MotionEvent
@@ -235,14 +236,14 @@ class RoomViewerActivity : AppCompatActivity() {
         }
 
         val textureFiles = listOf(
-            "front_wall.png" to "Front",
-            "floor.png" to "Floor",
-            "ceiling.png" to "Ceiling",
-            "left_wall.png" to "Left",
-            "right_wall.png" to "Right",
+            "front_wall.png" to R.string.room_surface_front,
+            "floor.png" to R.string.room_surface_floor,
+            "ceiling.png" to R.string.room_surface_ceiling,
+            "left_wall.png" to R.string.room_surface_left,
+            "right_wall.png" to R.string.room_surface_right,
         )
 
-        for ((fileName, label) in textureFiles) {
+        for ((fileName, labelRes) in textureFiles) {
             val file = File(roomFolder, fileName)
             if (file.exists()) {
                 val container = LinearLayout(this).apply {
@@ -260,7 +261,7 @@ class RoomViewerActivity : AppCompatActivity() {
                 container.addView(thumb)
 
                 val labelView = TextView(this).apply {
-                    text = label
+                    text = getString(labelRes)
                     textSize = 10f
                     setTextColor(PaafektColors.textSecondary)
                     gravity = Gravity.CENTER
@@ -330,7 +331,7 @@ class RoomViewerActivity : AppCompatActivity() {
         }
 
         val backBtn = TextView(this).apply {
-            text = getString(R.string.photo_room_back)
+            text = PaafektScreenViews.backChevron(this@RoomViewerActivity)
             textSize = 20f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)

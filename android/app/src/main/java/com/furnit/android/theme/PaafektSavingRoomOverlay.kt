@@ -129,7 +129,7 @@ class PaafektSavingRoomOverlay(context: Context) : FrameLayout(context) {
         val percent = (clamped * 100).toInt()
         ringProgress.setProgress(percent, true)
         linearProgress.setProgress(percent, true)
-        percentView.text = "$percent%"
+        percentView.text = context.getString(R.string.common_percentage, percent)
         if (subtitle != null) {
             subtitleView.text = subtitle
             subtitleView.visibility = View.VISIBLE

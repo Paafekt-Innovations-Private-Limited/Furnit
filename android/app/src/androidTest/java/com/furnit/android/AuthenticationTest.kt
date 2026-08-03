@@ -56,43 +56,43 @@ class AuthenticationTest {
         val us = countries.find { it.code == "US" }
         assertNotNull("US should be in country list", us)
         assertEquals("US dial code should be +1", "+1", us?.dialCode)
-        println("US country: ${us?.displayName}")
+        println("US country: ${us?.localizedDisplayName(context)}")
 
         // Verify India is in the list
         val india = countries.find { it.code == "IN" }
         assertNotNull("India should be in country list", india)
         assertEquals("India dial code should be +91", "+91", india?.dialCode)
-        println("India country: ${india?.displayName}")
+        println("India country: ${india?.localizedDisplayName(context)}")
     }
 
     @Test
     fun testCountryCodeSearch() {
         // Search by name
-        var results = CountryCode.search("United")
+        var results = CountryCode.search(context, "United")
         assertTrue("Should find countries with 'United'", results.isNotEmpty())
         println("Search 'United' found: ${results.map { it.name }}")
 
         // Search by dial code
-        results = CountryCode.search("+91")
+        results = CountryCode.search(context, "+91")
         assertTrue("Should find India with +91", results.any { it.code == "IN" })
         println("Search '+91' found: ${results.map { it.name }}")
 
         // Search by country code
-        results = CountryCode.search("GB")
+        results = CountryCode.search(context, "GB")
         assertTrue("Should find UK with GB", results.any { it.code == "GB" })
         println("Search 'GB' found: ${results.map { it.name }}")
 
         // Empty search returns all
-        results = CountryCode.search("")
+        results = CountryCode.search(context, "")
         assertEquals("Empty search should return all countries", CountryCode.countries.size, results.size)
     }
 
     @Test
     fun testDefaultCountry() {
-        val defaultCountry = CountryCode.getDefaultCountry()
+        val defaultCountry = CountryCode.getDefaultCountry(context)
         assertNotNull("Default country should not be null", defaultCountry)
         assertTrue("Default country should have dial code", defaultCountry.dialCode.startsWith("+"))
-        println("Default country: ${defaultCountry.displayName}")
+        println("Default country: ${defaultCountry.localizedDisplayName(context)}")
     }
 
     @Test
@@ -100,11 +100,12 @@ class AuthenticationTest {
         val us = CountryCode.countries.find { it.code == "US" }!!
 
         // Check display formats
-        assertTrue("Display name should contain flag", us.displayName.contains(us.flag))
-        assertTrue("Display name should contain dial code", us.displayName.contains(us.dialCode))
+        val displayName = us.localizedDisplayName(context)
+        assertTrue("Display name should contain flag", displayName.contains(us.flag))
+        assertTrue("Display name should contain dial code", displayName.contains(us.dialCode))
         assertTrue("Short display should contain flag", us.shortDisplay.contains(us.flag))
 
-        println("Display name: ${us.displayName}")
+        println("Display name: $displayName")
         println("Short display: ${us.shortDisplay}")
     }
 

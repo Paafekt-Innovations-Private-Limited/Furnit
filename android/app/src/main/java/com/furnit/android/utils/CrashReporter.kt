@@ -53,7 +53,7 @@ object CrashReporter {
     fun sendReportEmail(
         context: Context,
         body: String,
-        subject: String = "Paafekt crash report",
+        subject: String = context.getString(R.string.crash_report_email_subject),
     ): Boolean {
         val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
             data = Uri.parse("mailto:")
@@ -75,7 +75,7 @@ object CrashReporter {
 
     fun copyReportToClipboard(context: Context, body: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(
-            ClipData.newPlainText("Crash report", body)
+            ClipData.newPlainText(context.getString(R.string.crash_report_clipboard_label), body)
         )
     }
 
@@ -91,20 +91,17 @@ object CrashReporter {
     fun report(activity: AppCompatActivity, throwable: Throwable, userContext: String) {
         activity.runOnUiThread {
             val body = buildHandledReportBody(activity, userContext, throwable)
-            val msg = buildString {
-                append(activity.getString(R.string.crash_report_message))
-                append("\n\n")
-                append(userContext)
-                throwable.message?.let { append("\n").append(it) }
-            }
             AlertDialog.Builder(activity)
                 .setTitle(R.string.crash_report_title)
-                .setMessage(msg)
+                .setMessage(R.string.crash_report_message)
                 .setPositiveButton(R.string.crash_report_submit_report) { _, _ ->
                     if (!sendReportEmail(
                             activity,
                             body,
-                            subject = "Paafekt crash report: $userContext",
+                            subject = activity.getString(
+                                R.string.crash_report_email_subject_context,
+                                userContext,
+                            ),
                         )
                     ) {
                         Toast.makeText(

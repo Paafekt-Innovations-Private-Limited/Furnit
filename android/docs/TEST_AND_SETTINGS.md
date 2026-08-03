@@ -3,6 +3,7 @@
 ## Build Test
 
 ```bash
+python3 scripts/verify_i18n.py
 ./gradlew :app:assembleDebug
 ```
 
@@ -53,3 +54,10 @@ Expected today:
 Use a Google Play install when validating production Phone Auth because a local APK
 uses a different signing certificate. Follow [`AUTHENTICATION.md`](AUTHENTICATION.md),
 including automatic and manual OTP entry checks.
+
+## Localization smoke test
+
+Follow [`LOCALIZATION.md`](LOCALIZATION.md) after any catalog, visible copy, country
+preselection, or RTL change. At minimum, switch between English, Arabic, one Indic
+language, and one Chinese locale; then exercise login, OTP, room creation, sharing,
+Settings, Help, and Furniture Fit.

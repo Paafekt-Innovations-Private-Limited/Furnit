@@ -21,6 +21,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.theme.PaafektScreenViews
+import com.furnit.android.utils.FurnitureClassNames
 import com.furnit.android.utils.WindowInsetsUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,7 +75,7 @@ class SettingsImageScanActivity : AppCompatActivity() {
             setPadding(dpToPx(20), dpToPx(20), dpToPx(20), dpToPx(12))
         }
         val backButton = TextView(this).apply {
-            text = "< ${getString(R.string.common_back)}"
+            text = PaafektScreenViews.backLabel(this@SettingsImageScanActivity)
             textSize = 16f
             setTextColor(Color.parseColor("#007AFF"))
             setOnClickListener { finish() }
@@ -325,7 +327,15 @@ class SettingsImageScanActivity : AppCompatActivity() {
                     statusView.text = if (result.detections.isEmpty()) {
                         getString(R.string.single_image_scan_no_objects)
                     } else {
-                        getString(R.string.single_image_scan_overlay_ready, result.detections.first().label)
+                        val detection = result.detections.first()
+                        getString(
+                            R.string.single_image_scan_overlay_ready,
+                            FurnitureClassNames.localized(
+                                this@SettingsImageScanActivity,
+                                detection.classId,
+                                detection.label,
+                            ),
+                        )
                     }
                     statusView.postDelayed({
                         if (requestId == scanRequestId && !isDestroyed) {

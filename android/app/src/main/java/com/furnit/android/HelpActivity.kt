@@ -169,7 +169,7 @@ class HelpActivity : AppCompatActivity() {
         val layout = PaafektScreenViews.createScreenColumn(this)
 
         layout.addView(
-            PaafektScreenViews.createBackButton(this, "‹ ${getString(R.string.common_back)}") { finish() },
+            PaafektScreenViews.createBackButton(this, PaafektScreenViews.backLabel(this)) { finish() },
         )
         layout.addView(PaafektScreenViews.createScreenTitle(this, getString(R.string.help_title)))
         layout.addView(
@@ -293,11 +293,11 @@ class HelpActivity : AppCompatActivity() {
         val intent = Intent(Intent.ACTION_SENDTO).apply {
             data = Uri.parse("mailto:")
             putExtra(Intent.EXTRA_EMAIL, arrayOf("support@paafekt.com"))
-            putExtra(Intent.EXTRA_SUBJECT, "Paafekt App Support")
-            putExtra(Intent.EXTRA_TEXT, "Hi Paafekt Support Team,\n\nI need help with:\n\n")
+            putExtra(Intent.EXTRA_SUBJECT, getString(R.string.help_email_subject))
+            putExtra(Intent.EXTRA_TEXT, getString(R.string.help_email_body))
         }
         try {
-            startActivity(Intent.createChooser(intent, "Send email"))
+            startActivity(Intent.createChooser(intent, getString(R.string.help_send_email)))
         } catch (_: Exception) {
             Toast.makeText(this, getString(R.string.no_email_app), Toast.LENGTH_SHORT).show()
         }
@@ -305,7 +305,9 @@ class HelpActivity : AppCompatActivity() {
 
     private fun copyEmailToClipboard() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("email", "support@paafekt.com"))
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(getString(R.string.help_email_clipboard_label), "support@paafekt.com"),
+        )
         Toast.makeText(this, getString(R.string.email_copied_clipboard), Toast.LENGTH_SHORT).show()
     }
 }

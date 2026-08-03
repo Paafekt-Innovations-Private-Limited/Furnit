@@ -32,7 +32,6 @@ import com.furnit.android.theme.PaafektViewerToolbar
 import com.furnit.android.theme.PlacementIntelligenceCardView
 import com.furnit.android.theme.PlacementIntelligenceCardMapper
 import com.furnit.android.utils.LogUtil
-import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.GestureDetector
@@ -168,7 +167,7 @@ class GLBRoomActivity : AppCompatActivity() {
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
     private var glbPath: String? = null
     private var glbViewerCacheDir: File? = null
-    private var roomName: String = "3D Room"
+    private var roomName: String = ""
     private var roomId: String? = null
     private var isPreviewMode: Boolean = false
     private var photoOrientation: String = "portrait"
@@ -214,7 +213,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
 
         glbPath = intent.getStringExtra(EXTRA_GLB_PATH)
-        roomName = intent.getStringExtra(EXTRA_ROOM_NAME) ?: "3D Room"
+        roomName = intent.getStringExtra(EXTRA_ROOM_NAME) ?: getString(R.string.room_viewer_title)
         roomId = intent.getStringExtra(EXTRA_ROOM_ID)
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
         hasRoomWidthSignal = intent.hasExtra(EXTRA_ROOM_WIDTH)
@@ -537,7 +536,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 handleBackNavigation()
             }.apply {
                 alpha = 0.55f
-                contentDescription = getString(R.string.photo_room_back)
+                contentDescription = getString(R.string.common_back)
             }
             immersiveBackButton = back
             addView(
@@ -594,10 +593,14 @@ class GLBRoomActivity : AppCompatActivity() {
             height = roomHeight.takeIf { hasRoomHeightSignal } ?: 0f,
             depth = roomDepth.takeIf { hasRoomDepthSignal } ?: 0f,
             emphasizeHeight = isFlatPhotoRoomMesh,
-        ) { heightMeters ->
-            getString(R.string.approximate_room_height, heightMeters)
-        }
-        return text ?: roomName.takeIf { it.isNotBlank() } ?: "3D Room"
+            approximateHeightFormatter = { heightMeters ->
+                getString(R.string.approximate_room_height, heightMeters)
+            },
+            widthDepthFormatter = { widthMeters, depthMeters ->
+                getString(R.string.room_dimensions_width_depth, widthMeters, depthMeters)
+            },
+        )
+        return text ?: roomName.takeIf { it.isNotBlank() } ?: getString(R.string.room_viewer_title)
     }
 
     private fun refreshMeasurementPill() {
@@ -806,7 +809,7 @@ class GLBRoomActivity : AppCompatActivity() {
             } else if (hasRoomHeightSignal) {
                 getString(R.string.approximate_room_height, roomHeight)
             } else {
-                roomName.takeIf { it.isNotBlank() } ?: "3D Room"
+                roomName.takeIf { it.isNotBlank() } ?: getString(R.string.room_viewer_title)
             }
             hintController.showText(
                 this,
@@ -1299,7 +1302,7 @@ class GLBRoomActivity : AppCompatActivity() {
             LogUtil.e(TAG, "Inline brain ARCore camera bind failed", exception)
             Toast.makeText(
                 this,
-                getString(R.string.smartypants_camera_error, exception.message ?: ""),
+                getString(R.string.smartypants_camera_error_generic),
                 Toast.LENGTH_SHORT,
             ).show()
             bindInlineBrainCamera(generation)
@@ -1532,7 +1535,7 @@ class GLBRoomActivity : AppCompatActivity() {
             refreshMorphingPrimaryFitButton()
             updateInlineBrainCameraPreviewVisibility()
             LogUtil.e(TAG, "Inline brain camera bind failed", e)
-            Toast.makeText(this, getString(R.string.smartypants_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.smartypants_camera_error_generic, Toast.LENGTH_SHORT).show()
             CrashReporter.report(this, e, "GLB room inline brain camera bind")
         }
     }
@@ -1912,7 +1915,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun reportWebGlError(message: String) {
         loadingOverlay.visibility = View.GONE
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        Toast.makeText(this, R.string.room_viewer_preview_unavailable, Toast.LENGTH_LONG).show()
         CrashReporter.report(this, RuntimeException(message), "GLB room — WebGL viewer")
     }
 
@@ -2419,7 +2422,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 LogUtil.e(TAG, "Failed to save room", e)
                 Toast.makeText(
                     this@GLBRoomActivity,
-                    getString(R.string.glb_room_error, e.message ?: ""),
+                    getString(R.string.glb_room_save_failed_generic),
                     Toast.LENGTH_SHORT,
                 ).show()
                 CrashReporter.report(this@GLBRoomActivity, e, "GLB room — save room")
@@ -2451,7 +2454,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
+            startActivity(Intent.createChooser(shareIntent, getString(R.string.share_screenshot_chooser)))
 
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to take screenshot", e)
@@ -2477,7 +2480,11 @@ class GLBRoomActivity : AppCompatActivity() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
                 LogUtil.e(TAG, "WebGL error: $message")
-                Toast.makeText(this@GLBRoomActivity, message, Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this@GLBRoomActivity,
+                    R.string.room_viewer_preview_unavailable,
+                    Toast.LENGTH_LONG,
+                ).show()
                 CrashReporter.report(
                     this@GLBRoomActivity,
                     RuntimeException(message),

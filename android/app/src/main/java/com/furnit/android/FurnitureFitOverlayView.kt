@@ -8,8 +8,9 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewConfiguration
 import com.furnit.android.theme.PaafektColors
+import com.furnit.android.utils.FurnitureClassNames
 import com.furnit.android.utils.LogUtil
-import java.util.Locale
+import java.text.NumberFormat
 import kotlin.math.max
 import kotlin.math.min
 
@@ -386,10 +387,15 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
 
     private fun clusterLabel(group: List<Int>, representative: DetectionResult): String {
         val labels = group
-            .mapNotNull { detections.getOrNull(it)?.label }
+            .mapNotNull { detections.getOrNull(it) }
+            .map { FurnitureClassNames.localized(context, it.classId, it.label) }
             .distinct()
             .sorted()
-        return if (labels.size > 1) labels.joinToString(", ") else representative.label
+        return if (labels.size > 1) {
+            labels.joinToString(", ")
+        } else {
+            FurnitureClassNames.localized(context, representative.classId, representative.label)
+        }
     }
 
     private fun findDetectionAt(touchX: Float, touchY: Float): DetectionResult? {
@@ -669,7 +675,12 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
 
                 val activeTextBgPaint = if (isSelected) selectedTextBgPaint else textBgPaint
                 val activeTextPaint = if (isSelected) selectedTextPaint else textPaint
-                val scoreText = String.format(Locale.US, "%.2f", representative.confidence)
+                val scoreText = NumberFormat.getNumberInstance(
+                    resources.configuration.locales[0],
+                ).apply {
+                    minimumFractionDigits = 2
+                    maximumFractionDigits = 2
+                }.format(representative.confidence.toDouble())
                 val label = clusterLabel(group, representative)
                 val text = if (label.isEmpty()) "" else "$label $scoreText"
                 if (text.isEmpty()) continue

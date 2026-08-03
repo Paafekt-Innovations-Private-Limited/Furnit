@@ -509,7 +509,10 @@ class RoomBoundaryActivity : AppCompatActivity() {
                                 // Navigate to WebGL-based GLBRoomActivity for preview (matching iOS)
                                 val intent = Intent(this@RoomBoundaryActivity, GLBRoomActivity::class.java)
                                 intent.putExtra(GLBRoomActivity.EXTRA_GLB_PATH, glbFile.absolutePath)
-                                intent.putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, "Your Room")
+                                intent.putExtra(
+                                    GLBRoomActivity.EXTRA_ROOM_NAME,
+                                    getString(R.string.room_viewer_your_room),
+                                )
                                 intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, true)
                                 intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, photoOrientation.value)
                                 startActivity(intent)

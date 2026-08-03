@@ -3,12 +3,17 @@ package com.furnit.android.auth
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
+import com.furnit.android.R
 import com.furnit.android.utils.LogUtil
 import com.google.firebase.FirebaseException
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthOptions
 import com.google.firebase.auth.PhoneAuthProvider
+import kotlin.math.max
 import java.util.concurrent.TimeUnit
 
 /**
@@ -47,8 +52,9 @@ class AuthenticationManager private constructor(context: Context) {
         }
     }
 
+    private val appContext: Context = context.applicationContext
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private var verificationId: String? = null
     private var resendToken: PhoneAuthProvider.ForceResendingToken? = null
@@ -203,13 +209,19 @@ class AuthenticationManager private constructor(context: Context) {
         onError: (String) -> Unit
     ) {
         if (isLockedOut()) {
-            val remaining = getLockoutRemainingSeconds() / 60
-            onError("Too many attempts. Try again in $remaining minutes.")
+            val remaining = max(1, getLockoutRemainingSeconds() / 60)
+            onError(
+                appContext.resources.getQuantityString(
+                    R.plurals.auth_too_many_attempts_minutes,
+                    remaining,
+                    remaining,
+                ),
+            )
             return
         }
 
         if (isRateLimited()) {
-            onError("Too many OTP requests. Please try again later.")
+            onError(appContext.getString(R.string.auth_too_many_otp_requests))
             return
         }
 
@@ -235,15 +247,7 @@ class AuthenticationManager private constructor(context: Context) {
             override fun onVerificationFailed(e: FirebaseException) {
                 LogUtil.e(TAG, "Verification failed", e)
                 isLoading = false
-                errorMessage = when {
-                    e.message?.contains("blocked") == true ->
-                        "Too many requests. Please try again later."
-                    e.message?.contains("invalid") == true ->
-                        "Invalid phone number format."
-                    e.message?.contains("network") == true ->
-                        "Network error. Please check your connection."
-                    else -> e.message ?: "Verification failed"
-                }
+                errorMessage = localizedVerificationError(e)
                 onError(errorMessage!!)
             }
 
@@ -285,7 +289,7 @@ class AuthenticationManager private constructor(context: Context) {
         }
 
         if (isRateLimited()) {
-            onError("Too many OTP requests. Please try again later.")
+            onError(appContext.getString(R.string.auth_too_many_otp_requests))
             return
         }
 
@@ -299,7 +303,7 @@ class AuthenticationManager private constructor(context: Context) {
             override fun onVerificationFailed(e: FirebaseException) {
                 LogUtil.e(TAG, "Resend verification failed", e)
                 isLoading = false
-                onError(e.message ?: "Failed to resend code")
+                onError(localizedVerificationError(e, resend = true))
             }
 
             override fun onCodeSent(
@@ -336,13 +340,19 @@ class AuthenticationManager private constructor(context: Context) {
     ) {
         val verId = verificationId
         if (verId == null) {
-            onError("Verification session expired. Please request a new code.")
+            onError(appContext.getString(R.string.auth_verification_session_expired))
             return
         }
 
         if (isLockedOut()) {
-            val remaining = getLockoutRemainingSeconds() / 60
-            onError("Account locked. Try again in $remaining minutes.")
+            val remaining = max(1, getLockoutRemainingSeconds() / 60)
+            onError(
+                appContext.resources.getQuantityString(
+                    R.plurals.auth_account_locked_minutes,
+                    remaining,
+                    remaining,
+                ),
+            )
             return
         }
 
@@ -380,7 +390,7 @@ class AuthenticationManager private constructor(context: Context) {
                         notifyListeners()
                         onSuccess()
                     } else {
-                        onError("Sign in failed. Please try again.")
+                        onError(appContext.getString(R.string.auth_sign_in_failed))
                     }
                 } else {
                     // Increment failed attempt counter
@@ -390,10 +400,14 @@ class AuthenticationManager private constructor(context: Context) {
                     if (attempts >= MAX_OTP_ATTEMPTS) {
                         // Lock out user
                         prefs.edit().putLong(KEY_LOCKOUT_TIME, System.currentTimeMillis()).apply()
-                        onError("Too many failed attempts. Account locked for 30 minutes.")
+                        onError(appContext.getString(R.string.auth_too_many_failed_attempts))
                     } else {
                         val remaining = MAX_OTP_ATTEMPTS - attempts
-                        errorMessage = "Invalid code. $remaining attempts remaining."
+                        errorMessage = appContext.resources.getQuantityString(
+                            R.plurals.auth_invalid_code_attempts_remaining,
+                            remaining,
+                            remaining,
+                        )
                         onError(errorMessage!!)
                     }
                     LogUtil.e(TAG, "Sign in failed", task.exception)
@@ -414,7 +428,11 @@ class AuthenticationManager private constructor(context: Context) {
     fun deleteCurrentAccount(onComplete: (Result<Unit>) -> Unit) {
         val firebaseUser = auth.currentUser
         if (firebaseUser == null) {
-            onComplete(Result.failure(IllegalStateException("No authenticated account is available to delete.")))
+            onComplete(
+                Result.failure(
+                    IllegalStateException(appContext.getString(R.string.auth_no_account_to_delete)),
+                ),
+            )
             return
         }
         firebaseUser.delete().addOnCompleteListener { task ->
@@ -425,10 +443,34 @@ class AuthenticationManager private constructor(context: Context) {
                 notifyListeners()
                 onComplete(Result.success(Unit))
             } else {
-                val error = task.exception ?: IllegalStateException("Account deletion failed.")
-                LogUtil.e(TAG, "User account deletion failed", error)
-                onComplete(Result.failure(error))
+                val cause = task.exception
+                LogUtil.e(TAG, "User account deletion failed", cause)
+                onComplete(
+                    Result.failure(
+                        IllegalStateException(
+                            appContext.getString(R.string.auth_account_deletion_failed),
+                            cause,
+                        ),
+                    ),
+                )
             }
+        }
+    }
+
+    private fun localizedVerificationError(
+        exception: FirebaseException,
+        resend: Boolean = false,
+    ): String {
+        val message = exception.message.orEmpty()
+        return when {
+            exception is FirebaseTooManyRequestsException || message.contains("blocked", ignoreCase = true) ->
+                appContext.getString(R.string.auth_too_many_requests)
+            exception is FirebaseAuthInvalidCredentialsException || message.contains("invalid", ignoreCase = true) ->
+                appContext.getString(R.string.auth_invalid_phone_number)
+            exception is FirebaseNetworkException || message.contains("network", ignoreCase = true) ->
+                appContext.getString(R.string.auth_network_error)
+            resend -> appContext.getString(R.string.auth_resend_failed)
+            else -> appContext.getString(R.string.auth_verification_failed)
         }
     }
 

@@ -56,8 +56,9 @@ class LoginActivity : AppCompatActivity() {
 
         authManager = AuthenticationManager.getInstance(this)
 
-        // Initialize country code from locale; users can change it manually.
-        selectedCountry = CountryCode.getDefaultCountry()
+        // Prefer the current mobile network/SIM country, then fall back to the app locale.
+        // This keeps an English (UK) language choice from incorrectly defaulting an Indian SIM to +44.
+        selectedCountry = CountryCode.getDefaultCountry(this)
 
         // Check if already authenticated
         if (authManager.isAuthenticated) {
@@ -359,7 +360,7 @@ class LoginActivity : AppCompatActivity() {
 
     private fun showCountryPicker() {
         val countries = CountryCode.countries
-        val countryNames = countries.map { it.displayName }.toTypedArray()
+        val countryNames = countries.map { it.localizedDisplayName(this) }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle(R.string.country_picker_title)

@@ -12,6 +12,7 @@
     <string name="common_delete">Delete</string>
     <string name="common_save">Save</string>
     <string name="common_help">Help</string>
+    <string name="common_percentage">%1$d%%</string>
 
     <!-- Login View -->
     <string name="login_your_name">Your Name</string>
@@ -32,6 +33,31 @@
     <string name="otp_resend">Resend OTP</string>
     <string name="otp_resend_in">Resend in %ds</string>
 
+    <!-- Authentication errors and limits -->
+    <string name="auth_too_many_otp_requests">Too many verification-code requests. Please try again later.</string>
+    <string name="auth_too_many_requests">Too many requests. Please try again later.</string>
+    <string name="auth_invalid_phone_number">The phone number is invalid. Check the country code and number.</string>
+    <string name="auth_network_error">Could not connect. Check your internet connection and try again.</string>
+    <string name="auth_resend_failed">Could not resend the verification code. Please try again.</string>
+    <string name="auth_verification_failed">Phone verification failed. Please try again.</string>
+    <string name="auth_verification_session_expired">The verification session expired. Request a new code.</string>
+    <string name="auth_sign_in_failed">Sign-in failed. Please try again.</string>
+    <string name="auth_too_many_failed_attempts">Too many failed attempts. Your account is locked for 30 minutes.</string>
+    <string name="auth_no_account_to_delete">No signed-in account is available to delete.</string>
+    <string name="auth_account_deletion_failed">Could not delete the account. Please sign in again and retry.</string>
+    <plurals name="auth_too_many_attempts_minutes">
+        <item quantity="one">Too many attempts. Try again in %1$d minute.</item>
+        <item quantity="other">Too many attempts. Try again in %1$d minutes.</item>
+    </plurals>
+    <plurals name="auth_account_locked_minutes">
+        <item quantity="one">Account locked. Try again in %1$d minute.</item>
+        <item quantity="other">Account locked. Try again in %1$d minutes.</item>
+    </plurals>
+    <plurals name="auth_invalid_code_attempts_remaining">
+        <item quantity="one">Invalid code. %1$d attempt remaining.</item>
+        <item quantity="other">Invalid code. %1$d attempts remaining.</item>
+    </plurals>
+
     <!-- Home View -->
     <string name="home_create_room">Create Room</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>
@@ -44,10 +70,18 @@
     <string name="home_rename_room_failed">Couldn\'t rename room</string>
     <string name="home_room_name_duplicate">A room with this name already exists</string>
     <string name="home_room_renamed">Renamed to %s</string>
+    <string name="room_default_ai_name">AI Room %1$s</string>
+    <string name="room_default_my_name">My Room %1$s</string>
+    <string name="room_default_base_name">Room</string>
+    <string name="bundled_room_scandinavian_minimal">Scandinavian Minimal</string>
+    <string name="bundled_room_industrial_loft">Industrial Loft</string>
 
     <!-- Room Limit -->
     <string name="room_limit_title">Room Limit Reached</string>
-    <string name="room_limit_message">You\'ve reached the limit of %d rooms. Delete some rooms to create new ones.</string>
+    <plurals name="room_limit_message">
+        <item quantity="one">You\'ve reached the limit of %d room. Delete it to create a new one.</item>
+        <item quantity="other">You\'ve reached the limit of %d rooms. Delete some rooms to create new ones.</item>
+    </plurals>
 
     <!-- Delete Room -->
     <string name="delete_room_title">Delete this room?</string>
@@ -115,11 +149,11 @@
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">Optional AR camera and depth-related capability on supported Android devices. Provided by Google under ARCore SDK terms and applicable open-source notices.</string>
     <string name="licenses_firebase_title">Firebase</string>
-    <string name="licenses_firebase">Copyright (c) Google LLC. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_firebase">Copyright © Google LLC. Licensed under the Apache License 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
-    <string name="licenses_rtmdet">Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_rtmdet">Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright © OpenMMLab. Licensed under the Apache License 2.0.</string>
     <string name="licenses_three_title">Three.js</string>
-    <string name="licenses_three">Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2024 three.js authors. Licensed under the MIT License.</string>
+    <string name="licenses_three">Bundled WebGL rendering support for 3D room viewers. Copyright © 2010–2024 three.js authors. Licensed under the MIT License.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
     <string name="licenses_onnx_runtime">On-device neural-network inference. Copyright Microsoft Corporation. Licensed under the MIT License.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
@@ -177,6 +211,10 @@
     <string name="help_email_support">Email Support</string>
     <string name="help_copy_email">Copy Email Address</string>
     <string name="help_measurement_warning">Phones without AR depth support only get approximate measurements, especially for furniture.</string>
+    <string name="help_email_subject">Paafekt App Support</string>
+    <string name="help_email_body">Hi Paafekt Support Team,\n\nI need help with:\n\n</string>
+    <string name="help_send_email">Send email</string>
+    <string name="help_email_clipboard_label">Paafekt support email</string>
 
     <!-- FAQ - Room Creation -->
     <string name="faq_room_creation">Getting Started</string>
@@ -307,6 +345,7 @@
     <string name="camera_ar_save_failed">Could not save photo. Try again.</string>
     <string name="camera_capture">Capture</string>
     <string name="camera_error_opening">Error opening camera: %s</string>
+    <string name="camera_error_opening_generic">Could not open the camera. Please try again.</string>
     <string name="camera_wide_unavailable">Could not open wide-angle camera</string>
     <string name="camera_ar_photo_failed">AR photo capture failed</string>
 
@@ -331,6 +370,9 @@
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_email_not_configured_message">Email is not configured on this device. You can copy the error details and send them manually to support@paafekt.com</string>
     <string name="crash_report_copy_details">Copy Details</string>
+    <string name="crash_report_email_subject">Paafekt crash report</string>
+    <string name="crash_report_email_subject_context">Paafekt crash report: %1$s</string>
+    <string name="crash_report_clipboard_label">Paafekt crash report</string>
 
     <!-- Accessibility -->
 
@@ -402,6 +444,9 @@
     <string name="smartypants_saved_screenshots">Saved to Screenshots</string>
     <string name="smartypants_failed_save_screenshot">Failed to save screenshot</string>
     <string name="smartypants_failed_save">Failed to save: %s</string>
+    <string name="smartypants_camera_error_generic">Could not start the camera. Please try again.</string>
+    <string name="smartypants_screenshot_failed_generic">Could not capture the screenshot.</string>
+    <string name="smartypants_failed_save_generic">Could not save the image.</string>
     <string name="smartypants_detected">Detected</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="room_viewer_segmentation_done">Done</string>
@@ -458,6 +503,7 @@
     <string name="home_room_model">Room Model</string>
     <string name="home_opening">Opening %s…</string>
     <string name="home_failed_delete">Failed to delete: %s</string>
+    <string name="home_failed_delete_generic">Could not delete the room.</string>
 
     <!-- Single Photo Room -->
     <string name="photo_room_back">\u2039 Back</string>
@@ -474,7 +520,10 @@
     <string name="glb_room_error">Error: %s</string>
     <string name="glb_room_screenshot_saved">Screenshot saved: %s</string>
     <string name="glb_room_screenshot_failed">Failed to capture screenshot</string>
+    <string name="glb_room_save_failed_generic">Could not save the room.</string>
     <string name="room_generation_ready">Your room is ready!</string>
+    <string name="share_room_chooser">Share Room</string>
+    <string name="share_screenshot_chooser">Share Screenshot</string>
     <string name="detector_loading_model">Loading detection model…</string>
     <string name="detector_segmenting_selection">Segmenting selected furniture…</string>
     <string name="detector_model_ready">Ready</string>
@@ -508,6 +557,8 @@
     <string name="model_detail_failed_capture">Failed to capture screenshot</string>
     <string name="model_detail_failed_load">Failed to load: %s</string>
     <string name="model_detail_failed_save_screenshot_message">Failed to save screenshot: %s</string>
+    <string name="model_detail_failed_load_generic">Could not load the room.</string>
+    <string name="model_detail_failed_save_screenshot_generic">Could not save the screenshot.</string>
     <string name="model_detail_controls_title">3D Room Controls</string>
     <string name="model_detail_controls_message">• Drag on screen to look around\n\n• Pinch to zoom in/out\n\n• Tap the gold Fit button (bottom-right) to try furniture fit\n\n• Tap the room to summon controls, then Capture to save a screenshot</string>
     <string name="model_detail_cd_save_room">Save Room</string>
@@ -540,6 +591,29 @@
     <string name="room_viewer_display_all_helpers">Show gesture hints</string>
     <string name="room_viewer_ar_sizing_enable">Enable camera-assisted furniture sizing</string>
     <string name="room_viewer_saved_toast">Room saved!</string>
+    <string name="room_dimensions_width_depth">%1$.1f m × %2$.1f m</string>
+    <string name="room_surface_front">Front</string>
+    <string name="room_surface_floor">Floor</string>
+    <string name="room_surface_ceiling">Ceiling</string>
+    <string name="room_surface_left">Left</string>
+    <string name="room_surface_right">Right</string>
+
+    <!-- Furniture detection labels shown to users -->
+    <string name="furniture_class_chair">Chair</string>
+    <string name="furniture_class_couch">Couch</string>
+    <string name="furniture_class_potted_plant">Potted plant</string>
+    <string name="furniture_class_bed">Bed</string>
+    <string name="furniture_class_dining_table">Dining table</string>
+    <string name="furniture_class_toilet">Toilet</string>
+    <string name="furniture_class_tv">TV</string>
+    <string name="furniture_class_microwave">Microwave</string>
+    <string name="furniture_class_oven">Oven</string>
+    <string name="furniture_class_toaster">Toaster</string>
+    <string name="furniture_class_sink">Sink</string>
+    <string name="furniture_class_refrigerator">Refrigerator</string>
+    <string name="furniture_dimension_debug_width_height">Furn: %1$.2f × %2$.2f m</string>
+    <string name="furniture_dimension_debug_height">Furn: H %1$.2f m</string>
+    <string name="furniture_dimension_debug_unknown">Furn:</string>
 
     <!-- Model Viewer -->
 

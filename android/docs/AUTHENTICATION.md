@@ -44,16 +44,16 @@ changes. It writes live Firebase configuration and refreshes
 
 ## Country-code preselection
 
-[`CountryCode.getDefaultCountry()`](../app/src/main/java/com/furnit/android/auth/CountryCode.kt)
-uses `Locale.getDefault().country` only. It deliberately does not inspect the SIM,
-mobile network, IP address, or physical location. Therefore a phone whose effective
-locale is `en-GB` defaults to United Kingdom (`+44`) even while physically in India.
-The user can always choose India (`+91`) or another country in the picker.
+[`CountryCode.getDefaultCountry(context)`](../app/src/main/java/com/furnit/android/auth/CountryCode.kt)
+prefers the current mobile-network country, then the SIM country, then the app/device
+locale. It does not use IP geolocation or request phone/SMS permissions. This prevents
+an Indian phone or SIM using English (United Kingdom) from incorrectly defaulting to
+United Kingdom (`+44`) when Android exposes India through the network or SIM.
 
-To make India the locale-derived default, set the device language/region to English
-(India) in Android Settings (the exact menu name varies by device), then fully restart
-Paafekt. A future SIM/network-based enhancement is listed in
-[`../../docs/deferred/CONFIRMED_DEFERRED.md`](../../docs/deferred/CONFIRMED_DEFERRED.md).
+The user can always choose India (`+91`) or another country in the localized picker.
+If both network and SIM country are unavailable (for example, a Wi-Fi-only device),
+the fallback is the effective app/device locale. Android app-language and locale
+behavior are documented in [`LOCALIZATION.md`](LOCALIZATION.md).
 
 ## OTP autofill
 

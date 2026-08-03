@@ -1,5 +1,7 @@
 package com.furnit.android.auth
 
+import android.content.Context
+import android.telephony.TelephonyManager
 import java.util.Locale
 
 /**
@@ -12,8 +14,16 @@ data class CountryCode(
     val code: String,
     val flag: String
 ) {
-    val displayName: String get() = "$flag $name ($dialCode)"
     val shortDisplay: String get() = "$flag $dialCode"
+
+    fun localizedName(context: Context): String {
+        val displayLocale = context.resources.configuration.locales[0] ?: Locale.getDefault()
+        val countryLocale = Locale.Builder().setRegion(code).build()
+        return countryLocale.getDisplayCountry(displayLocale).takeIf { it.isNotBlank() } ?: name
+    }
+
+    fun localizedDisplayName(context: Context): String =
+        "$flag ${localizedName(context)} ($dialCode)"
 
     companion object {
         val countries = listOf(
@@ -84,24 +94,34 @@ data class CountryCode(
             CountryCode("Kuwait", "+965", "KW", "\uD83C\uDDF0\uD83C\uDDFC")
         )
 
-        /**
-         * Get country code from device locale only. Users can change the country manually.
-         */
-        fun getDefaultCountry(): CountryCode {
-            val countryCode = Locale.getDefault().country.uppercase()
+        /** Prefer mobile network, then SIM, then app locale. Users can always override it. */
+        fun getDefaultCountry(context: Context): CountryCode {
+            val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            val deviceLocale = context.resources.configuration.locales[0] ?: Locale.getDefault()
+            val candidates = buildList {
+                runCatching { telephony?.networkCountryIso }.getOrNull()?.let(::add)
+                runCatching { telephony?.simCountryIso }.getOrNull()?.let(::add)
+                add(deviceLocale.country)
+            }
+            val countryCode = candidates
+                .map { it.trim().uppercase(Locale.ROOT) }
+                .firstOrNull { candidate -> countries.any { it.code == candidate } }
             return countries.find { it.code == countryCode } ?: countries[0]
         }
 
         /**
          * Search countries by name or dial code
          */
-        fun search(query: String): List<CountryCode> {
+        fun search(context: Context, query: String): List<CountryCode> {
             if (query.isBlank()) return countries
-            val lowerQuery = query.lowercase()
+            val displayLocale = context.resources.configuration.locales[0] ?: Locale.getDefault()
+            val localizedQuery = query.lowercase(displayLocale)
+            val englishQuery = query.lowercase(Locale.ENGLISH)
             return countries.filter {
-                it.name.lowercase().contains(lowerQuery) ||
+                it.name.lowercase(Locale.ENGLISH).contains(englishQuery) ||
+                it.localizedName(context).lowercase(displayLocale).contains(localizedQuery) ||
                 it.dialCode.contains(query) ||
-                it.code.lowercase().contains(lowerQuery)
+                it.code.lowercase(Locale.ROOT).contains(englishQuery)
             }
         }
     }

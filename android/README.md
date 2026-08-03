@@ -4,7 +4,8 @@ Android app for Furnit room creation, GLB room viewing, and on-device furniture 
 
 Repository context: [`../docs/READ_FIRST.md`](../docs/READ_FIRST.md). Android doc index:
 [`docs/README.md`](docs/README.md). Phone Auth, Play signing, locale country defaults,
-and OTP autofill: [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
+and OTP autofill: [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md). Supported app
+languages, RTL behavior, and catalog verification: [`docs/LOCALIZATION.md`](docs/LOCALIZATION.md).
 
 ## Current Room Creation Flow
 

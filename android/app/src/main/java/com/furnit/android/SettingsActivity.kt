@@ -31,7 +31,7 @@ class SettingsActivity : AppCompatActivity() {
         val layout = PaafektScreenViews.createScreenColumn(this)
 
         layout.addView(
-            PaafektScreenViews.createBackButton(this, "‹ ${getString(R.string.common_back)}") { finish() },
+            PaafektScreenViews.createBackButton(this, PaafektScreenViews.backLabel(this)) { finish() },
         )
         layout.addView(PaafektScreenViews.createScreenTitle(this, getString(R.string.settings_title)))
 

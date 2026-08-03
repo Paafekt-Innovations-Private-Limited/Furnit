@@ -1,6 +1,7 @@
 package com.furnit.android.models
 
 import android.content.Context
+import com.furnit.android.R
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomFolderMetadata
 import java.io.File
@@ -48,7 +49,7 @@ class ModelManager(private val context: Context) {
         models.add(
             Model(
                 id = "scandinavian_minimal",
-                name = "Scandinavian Minimal",
+                name = context.getString(R.string.bundled_room_scandinavian_minimal),
                 assetPath = "$BUNDLED_ROOM_ASSETS_DIR/scandinavian_minimal.glb",
                 createdAt = 0L,
                 photoOrientation = "landscape",
@@ -57,7 +58,7 @@ class ModelManager(private val context: Context) {
         models.add(
             Model(
                 id = "industrial_loft",
-                name = "Industrial Loft",
+                name = context.getString(R.string.bundled_room_industrial_loft),
                 assetPath = "$BUNDLED_ROOM_ASSETS_DIR/industrial_loft.glb",
                 createdAt = 0L,
                 photoOrientation = "landscape",
@@ -92,7 +93,10 @@ class ModelManager(private val context: Context) {
 
             if (frontWall.exists() || glbFile.exists()) {
                 // Read room name and created timestamp from metadata
-                var roomName = "My Room ${folder.name.substringAfter("room_")}"
+                var roomName = context.getString(
+                    R.string.room_default_my_name,
+                    folder.name.substringAfter("room_"),
+                )
                 var createdAt = folder.lastModified() // fallback to folder modification time
 
                 // Room dimension variables
@@ -176,7 +180,9 @@ class ModelManager(private val context: Context) {
     }
 
     fun findAvailableRoomName(preferredName: String, excludeRoomId: String? = null): String {
-        val baseRoomName = preferredName.trim().replace("\\s+".toRegex(), " ").ifEmpty { "Room" }
+        val baseRoomName = preferredName.trim().replace("\\s+".toRegex(), " ").ifEmpty {
+            context.getString(R.string.room_default_base_name)
+        }
         if (isRoomNameAvailable(baseRoomName, excludeRoomId)) return baseRoomName
 
         var suffixIndex = 2

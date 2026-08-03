@@ -44,7 +44,7 @@ object PaafektViewerToolbar {
     fun createFloatingBackButton(context: Context, onClick: () -> Unit): TextView {
         return TextView(context).apply {
             val touchTargetSize = dp(context, 48)
-            text = "‹"
+            text = PaafektScreenViews.backChevron(context)
             textSize = 24f
             gravity = Gravity.CENTER
             setTextColor(PaafektColors.textPrimary)

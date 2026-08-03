@@ -21,6 +21,19 @@ import com.furnit.android.utils.WindowInsetsUtil
 /** Shared list/settings screen chrome — Paafekt gold-on-dark tokens. */
 object PaafektScreenViews {
 
+    fun backChevron(context: Context): String =
+        if (context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) "›" else "‹"
+
+    fun forwardChevron(context: Context): String =
+        if (context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) "‹" else "›"
+
+    fun backLabel(context: Context): String =
+        if (context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+            "${context.getString(R.string.common_back)} ${backChevron(context)}"
+        } else {
+            "${backChevron(context)} ${context.getString(R.string.common_back)}"
+        }
+
     fun createScreenScrollView(context: Context): ScrollView {
         return ScrollView(context).apply {
             setBackgroundColor(PaafektColors.background)
@@ -212,7 +225,7 @@ object PaafektScreenViews {
             )
             addView(
                 TextView(context).apply {
-                    text = "›"
+                    text = forwardChevron(context)
                     textSize = 20f
                     setTextColor(PaafektColors.textSecondary)
                 },

@@ -1,6 +1,5 @@
 package com.furnit.android.services
 
-import java.util.Locale
 import kotlin.math.max
 
 /**
@@ -15,12 +14,13 @@ object RoomMeasurementDisplay {
         depth: Float,
         emphasizeHeight: Boolean,
         approximateHeightFormatter: (Float) -> String,
+        widthDepthFormatter: (Float, Float) -> String,
     ): String? {
         if (emphasizeHeight && height > MIN_VALID_METERS && height.isFinite()) {
             return approximateHeightFormatter(height)
         }
         if (width > MIN_VALID_METERS && depth > MIN_VALID_METERS && width.isFinite() && depth.isFinite()) {
-            return String.format(Locale.US, "%.1f m × %.1f m", width, depth)
+            return widthDepthFormatter(width, depth)
         }
         if (height > MIN_VALID_METERS && height.isFinite()) {
             return approximateHeightFormatter(height)

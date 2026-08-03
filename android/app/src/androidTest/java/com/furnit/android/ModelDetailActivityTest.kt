@@ -130,7 +130,11 @@ class ModelDetailActivityTest {
 
                 val modelTitle = activity.findViewById<TextView>(R.id.modelTitle)
                 assertNotNull("Model title should exist", modelTitle)
-                assertEquals("Title should be '3D Room View'", "3D Room View", modelTitle.text.toString())
+                assertEquals(
+                    "Title should use the localized room viewer title",
+                    activity.getString(R.string.room_viewer_title),
+                    modelTitle.text.toString(),
+                )
 
                 val helpButton = activity.findViewById<ImageButton>(R.id.helpButton)
                 assertNotNull("Help button should exist", helpButton)
@@ -226,14 +230,14 @@ class ModelDetailActivityTest {
     }
 
     @Test
-    fun testEditTextBorderDrawableExists() {
-        val drawableId = R.drawable.edittext_border
-        assertTrue("EditText border drawable should exist", drawableId != 0)
+    fun testTopBarBackgroundDrawableExists() {
+        val drawableId = R.drawable.rounded_dark_bar
+        assertTrue("Top bar background drawable should exist", drawableId != 0)
 
         val drawable = context.getDrawable(drawableId)
-        assertNotNull("Should be able to load edittext_border drawable", drawable)
+        assertNotNull("Should be able to load the top bar background drawable", drawable)
 
-        Log.d(TAG, "EditText border drawable verified")
+        Log.d(TAG, "Top bar background drawable verified")
     }
 
     @Test

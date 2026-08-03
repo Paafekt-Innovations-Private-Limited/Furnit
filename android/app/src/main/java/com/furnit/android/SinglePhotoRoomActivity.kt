@@ -14,6 +14,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.FurnitureClassNames
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.WindowInsetsUtil
 import com.furnit.android.utils.RoomFolderMetadata
@@ -39,6 +40,7 @@ import com.furnit.android.services.PhotoRoomGenerationService
 import com.furnit.android.theme.PaafektBuildingRoomOverlay
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektScreenViews
 import android.content.res.ColorStateList
 import org.json.JSONObject
 import java.io.File
@@ -284,7 +286,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             setPadding(dpToPx(24), dpToPx(24), dpToPx(24), dpToPx(32))
 
             val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_back)
+                text = PaafektScreenViews.backLabel(this@SinglePhotoRoomActivity)
                 textSize = 16f
                 setTextColor(PaafektColors.accent)
                 setPadding(0, 0, 0, dpToPx(16))
@@ -486,7 +488,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             setPadding(dpToPx(24), dpToPx(24), dpToPx(24), dpToPx(32))
 
             val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_back)
+                text = PaafektScreenViews.backLabel(this@SinglePhotoRoomActivity)
                 textSize = 16f
                 setTextColor(PaafektColors.accent)
                 setPadding(0, 0, 0, dpToPx(16))
@@ -747,7 +749,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 setPadding(0, dpToPx(8), 0, dpToPx(8))
             }
             val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_back)
+                text = PaafektScreenViews.backLabel(this@SinglePhotoRoomActivity)
                 textSize = 16f
                 setTextColor(PaafektColors.accent)
                 setOnClickListener { showMethodPickerBackConfirmation() }
@@ -989,7 +991,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             addView(textContainer)
 
             val chevron = TextView(this@SinglePhotoRoomActivity).apply {
-                text = "\u203A"
+                text = PaafektScreenViews.forwardChevron(this@SinglePhotoRoomActivity)
                 textSize = 22f
                 setTextColor(PaafektColors.textSecondary)
             }
@@ -1058,7 +1060,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             cameraLauncher.launch(cameraPhotoUri)
         } catch (e: Exception) {
             DebugLogger.eDebugMode("SinglePhotoRoom", "Error launching camera", e)
-            Toast.makeText(this, getString(R.string.camera_error_opening, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.camera_error_opening_generic, Toast.LENGTH_SHORT).show()
             CrashReporter.report(this, e, "Single photo room — launch camera")
         }
     }
@@ -1212,9 +1214,19 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         result.detections,
                         result.inputSize,
                     )
-                    singleImageScanStatusView.text =
-                        if (result.detections.isEmpty()) "No objects detected"
-                        else "Overlay ready: ${result.detections.first().label}"
+                    singleImageScanStatusView.text = if (result.detections.isEmpty()) {
+                        getString(R.string.single_image_scan_no_objects)
+                    } else {
+                        val detection = result.detections.first()
+                        getString(
+                            R.string.single_image_scan_overlay_ready,
+                            FurnitureClassNames.localized(
+                                this@SinglePhotoRoomActivity,
+                                detection.classId,
+                                detection.label,
+                            ),
+                        )
+                    }
                     singleImageScanStatusView.postDelayed({
                         if (requestId == singleImageScanRequestId && !isDestroyed) {
                             singleImageScanStatusView.visibility = View.GONE
@@ -1323,7 +1335,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     aiGenerationResult = null
                     aiGenerationHandle = null
                     if (!isDestroyed) {
-                        updateAIOptionProgress(0f, "Failed")
+                        updateAIOptionProgress(0f, getString(R.string.boundary_failed_create))
                         hideProgressOverlay()
                         Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
                         DebugLogger.eDebugMode("SinglePhotoRoom", "AI generation failed: $message")

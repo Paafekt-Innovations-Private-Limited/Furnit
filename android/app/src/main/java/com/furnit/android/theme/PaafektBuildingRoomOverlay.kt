@@ -118,7 +118,7 @@ class PaafektBuildingRoomOverlay(context: Context) : FrameLayout(context) {
         val clamped = progress.coerceIn(0f, 1f)
         val percent = (clamped * 100).toInt()
         ringProgress.setProgress(percent, true)
-        percentView.text = "$percent%"
+        percentView.text = context.getString(R.string.common_percentage, percent)
         if (!statusMessage.isNullOrBlank()) {
             statusView.text = statusMessage
             statusView.visibility = View.VISIBLE

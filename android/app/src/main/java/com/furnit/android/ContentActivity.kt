@@ -9,6 +9,7 @@ import android.os.Bundle
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektScreenViews
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import androidx.appcompat.app.AppCompatActivity
@@ -347,7 +348,13 @@ class ContentActivity : AppCompatActivity() {
         if (modelManager.listModels().size >= MAX_SAVED_ROOMS) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.room_limit_title)
-                .setMessage(getString(R.string.room_limit_message, MAX_SAVED_ROOMS))
+                .setMessage(
+                    resources.getQuantityString(
+                        R.plurals.room_limit_message,
+                        MAX_SAVED_ROOMS,
+                        MAX_SAVED_ROOMS,
+                    ),
+                )
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
             return
@@ -541,7 +548,7 @@ class ContentActivity : AppCompatActivity() {
         card.addView(textContainer)
 
         val chevron = TextView(this)
-        chevron.text = "\u203A"
+        chevron.text = PaafektScreenViews.forwardChevron(this)
         chevron.textSize = 20f
         chevron.setTextColor(secondaryTextColor)
         chevron.setPadding(dpToPx(8), 0, 0, 0)
@@ -862,7 +869,7 @@ class ContentActivity : AppCompatActivity() {
             Toast.makeText(this, getString(R.string.deleted_room, model.name), Toast.LENGTH_SHORT).show()
             refreshRoomsList()
         } catch (e: Exception) {
-            Toast.makeText(this, getString(R.string.home_failed_delete, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.home_failed_delete_generic, Toast.LENGTH_SHORT).show()
             CrashReporter.report(this, e, "Content — delete room")
         }
     }

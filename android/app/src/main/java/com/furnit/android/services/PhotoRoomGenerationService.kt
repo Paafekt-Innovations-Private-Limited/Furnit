@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import com.furnit.android.R
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
@@ -73,7 +74,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
         val reconstructor = SinglePhotoRoomReconstructor(context)
         val boundaries = defaultBoundariesFor(bitmap)
 
-        callback.onProgress(0.05f, "Getting your photo ready...")
+        callback.onProgress(0.05f, context.getString(R.string.ai_progress_getting_photo_ready))
         reconstructor.processPhotoWithBoundaries(
             bitmap,
             boundaries,
@@ -91,7 +92,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
                     }
                     if (glbFile == null || !glbFile.exists() || !glbFile.name.endsWith(".glb", ignoreCase = true)) {
                         clearIfActive(token)
-                        callback.onError("Failed to create room")
+                        callback.onError(context.getString(R.string.boundary_failed_create))
                         return
                     }
 
@@ -103,7 +104,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
                         sourcePhotoUri = sourcePhotoUri,
                     )
                     clearIfActive(token)
-                    callback.onProgress(1f, "Your room is ready!")
+                    callback.onProgress(1f, context.getString(R.string.room_generation_ready))
                     callback.onComplete(result)
                 }
 
@@ -137,7 +138,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
         val glbFile = File(destination, result.glbFile.name)
         writeMetadata(
             folder = destination,
-            name = RoomDisplayName.myRoomWithTimestamp(),
+            name = RoomDisplayName.myRoomWithTimestamp(context),
             type = "photo",
             createdAt = System.currentTimeMillis(),
             roomWidth = result.roomWidth,
@@ -203,7 +204,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
     ): GenerationResult {
         val folder = glbFile.parentFile ?: error("Room GLB has no folder")
         val createdAt = System.currentTimeMillis()
-        val roomName = RoomDisplayName.myRoomWithTimestamp(Date(createdAt))
+        val roomName = RoomDisplayName.myRoomWithTimestamp(context, Date(createdAt))
         writeMetadata(
             folder = folder,
             name = roomName,

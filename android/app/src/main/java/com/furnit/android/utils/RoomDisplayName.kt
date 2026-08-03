@@ -1,22 +1,26 @@
 package com.furnit.android.utils
 
-import java.text.SimpleDateFormat
+import android.content.Context
+import android.text.format.DateFormat
+import com.furnit.android.R
 import java.util.Date
-import java.util.Locale
 
 /**
  * Human-readable default room titles for metadata and the save dialog.
  * Includes **year and time** so same-day / post-restart rooms stay distinguishable.
  */
 object RoomDisplayName {
-    private fun formattedSuffix(date: Date): String {
-        val df = SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.getDefault())
-        return df.format(date)
+    private fun formattedSuffix(context: Context, date: Date): String {
+        val dateText = DateFormat.getMediumDateFormat(context).format(date)
+        val timeText = DateFormat.getTimeFormat(context).format(date)
+        return "$dateText $timeText"
     }
 
     /** Default AI room label. */
-    fun aiRoomWithTimestamp(date: Date = Date()): String = "AI Room ${formattedSuffix(date)}"
+    fun aiRoomWithTimestamp(context: Context, date: Date = Date()): String =
+        context.getString(R.string.room_default_ai_name, formattedSuffix(context, date))
 
     /** Manual / photogrammetry-style room label (texture-only reconstructor, GLB save dialogs). */
-    fun myRoomWithTimestamp(date: Date = Date()): String = "My Room ${formattedSuffix(date)}"
+    fun myRoomWithTimestamp(context: Context, date: Date = Date()): String =
+        context.getString(R.string.room_default_my_name, formattedSuffix(context, date))
 }
