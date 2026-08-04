@@ -22,13 +22,15 @@ platform-native room-generation and rendering pipelines. See
 [`docs/architecture/CODE_MAP.md`](docs/architecture/CODE_MAP.md) before changing a
 cross-platform behavior.
 
-## Current production note
+## Current release note
 
 Android is released on Google Play as `com.paafekt.android`. The Play App Signing
 fingerprints required by Firebase Phone Auth were registered and live-verified on
-2026-08-03. The source now also provides positional OTP autofill hints for the six
-Android code fields; that source change requires a subsequent Play release. Details:
-[`android/docs/AUTHENTICATION.md`](android/docs/AUTHENTICATION.md).
+2026-08-03. Signed Android version 1.2 / code 5 and iOS version 1.2 / build 87 were
+prepared with offline license and attribution packaging on 2026-08-05. Store upload,
+review, and publication state is recorded conservatively in
+[`docs/store-submission-status.md`](docs/store-submission-status.md); authentication
+details remain in [`android/docs/AUTHENTICATION.md`](android/docs/AUTHENTICATION.md).
 
 ## Build checks
 

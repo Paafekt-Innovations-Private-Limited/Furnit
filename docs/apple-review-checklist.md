@@ -4,6 +4,8 @@
 - Launch the app from a fresh install.
 - Complete phone sign-in with the reviewer test account.
 - Open `Settings` and verify `Delete Account` is available under `Account`.
+- Open `Settings` → `Licenses`; open the bundled third-party notices and Apache text
+  with the device offline.
 - Confirm the room viewers load without network-fetched JavaScript assets.
 - Verify camera, photo-library, and motion permission prompts use accurate wording.
 
@@ -11,8 +13,22 @@
 - Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device: **instant preview (no ML)** then **GeoCalib + Depth Anything + RTMDet object anchor → USDZ on first save**.
 - Confirm the export compliance answer remains correct for the shipped build (`ITSAppUsesNonExemptEncryption = NO`).
 - Ensure screenshots and app description do not claim unfinished or hidden functionality, and do not imply room photos are uploaded for generation.
+- Describe generated dimensions as estimates and avoid unsupported “meter-accurate” or
+  walkaround-scanner claims; the current default is a single-photo flow.
 - Privacy Policy URL: `https://paafekt.com/privacy` — Terms: `https://paafekt.com/terms` — Support: `support@paafekt.com`.
 - Firebase Phone OTP: allowlist SMS regions (including **France / FR**) and use a test phone for review — see [firebase-sms-regions.md](firebase-sms-regions.md).
+- Copyright metadata should name the exclusive rights owner. For the current app
+  record use `2026 Paafekt Innovations Private Limited` without a copyright symbol;
+  App Store Connect adds the symbol.
+
+### Version 1.2 handoff (2026-08-05)
+
+- Application target: marketing version **1.2**, build **87**.
+- App Store Connect Build Upload status was owner-reported as **Complete** at 00:14 IST.
+- The version page was completed, but review/publication status was not separately
+  captured; Build Upload `Complete` must not be treated as App Review approval.
+- Select build 87, choose the intended release option, add the version to a submission,
+  and confirm the final submission status becomes `Waiting for Review`.
 
 ## App Privacy (declare here — copy into App Store Connect)
 
@@ -69,19 +85,32 @@ Publish the privacy nutrition labels, then set Privacy Policy URL on the app ver
 ## Reviewer Notes (paste into App Review Information)
 
 ```
-Demo access: [country code + Firebase test phone number]. OTP: [code from Firebase Console / SMS path].
+Demo access: Use the Firebase test phone number and fixed OTP entered in the Sign-In Information fields. These are non-expiring Firebase test credentials, and no SMS is required.
 
-Delete Account: Settings → Account → Delete Account.
+Sign-in is required using Firebase phone authentication.
 
-Core features run on-device after sign-in. Room preview opens instantly; metric room generation (GeoCalib + Depth Anything + RTMDet) runs on first save. Furniture detection may download RTMDet via On-Demand Resources (needs network once).
+Suggested review flow:
+1. Sign in using the supplied test credentials.
+2. From Home, choose Photo → 3D and capture or select a room photo.
+3. An immediate preview opens. Saving the room runs on-device metric reconstruction using GeoCalib, Depth Anything, and RTMDet.
+4. Open the saved room and use Furniture Fit to identify and position furniture.
+5. Open Settings → Licenses to view the bundled third-party notices and Apache license offline.
 
-Permissions: Camera (room photos + AR furniture), Photos (pick/save), Motion (AR viewing).
+Furniture detection may download the RTMDet model through Apple On-Demand Resources when first needed.
 
-No ads, no App Tracking, no in-app purchases. Support: support@paafekt.com
+Delete Account: Settings → Account → Delete Account removes the Firebase Authentication user. Locally stored rooms remain on the device and can be removed separately.
+
+Permissions: Camera (room photos and AR furniture), Photos (select/save), Motion (AR viewing).
+
+No ads, no App Tracking, no in-app purchases, and no subscriptions.
+Privacy: https://paafekt.com/privacy
+Support: support@paafekt.com
 ```
 
 ## Pre-Submission QA
 - Fresh install on device.
 - Sign in, generate a room, open each room viewer, capture/save a view to Photos, log out, sign back in, and delete the account.
 - After models have downloaded once, repeat the viewer flow offline long enough to verify graceful operation or graceful failures instead of infinite loading states.
+- With networking disabled, open both documents under Settings → Licenses and confirm
+  the model-conversion notices name Depth Anything V2 Metric Indoor Small.
 - Confirm Release archive push entitlement uses production APNs (source entitlements may show development; Xcode rewrites for App Store distribution).

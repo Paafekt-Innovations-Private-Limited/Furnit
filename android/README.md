@@ -62,6 +62,20 @@ them by the same relative paths (`room_generation/...`, `rtmdet-ins-m-raw-fp16.t
 
 Do not copy Core ML packages into Android assets.
 
+## Legal Assets And Licenses
+
+Settings → Licenses opens the following app-owned assets without network access:
+
+- `app/src/main/assets/legal/APACHE-2.0.txt` — complete Apache License 2.0 text.
+- `app/src/main/assets/legal/LITERT-LICENSE.txt` — LiteRT 1.4.2's complete combined
+  license, including its Caffe/BSD attribution.
+- `app/src/main/assets/legal/THIRD_PARTY_NOTICES.txt` — runtime/model attribution and
+  notices for Paafekt's converted Core ML, ONNX, and LiteRT/TFLite model formats.
+
+`verifyLegalAssets` is wired into `preBuild` in `app/build.gradle`; do not remove or
+bypass it. Cross-platform diligence is recorded in
+[`../docs/MODEL_LICENSE_AUDIT.md`](../docs/MODEL_LICENSE_AUDIT.md).
+
 ## Build
 
 Open the `android` folder in Android Studio, let Gradle sync, then run the `app` configuration on an arm64 device.

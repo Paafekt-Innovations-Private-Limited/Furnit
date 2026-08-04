@@ -1,5 +1,18 @@
 # Furnit iOS - Recent Changes
 
+## 1.2 — Offline Licenses and Attribution (2026-08-05)
+
+- Bumped the iOS application target to marketing version **1.2**, build **87**.
+- Added `Furnit/Licenses/THIRD_PARTY_NOTICES.txt` and made the existing full Apache
+  License 2.0 text readable offline from Settings → Licenses.
+- Recorded the exact Depth Anything V2 Metric Indoor Small variant, GeoCalib pinhole
+  weights, RTMDet/COCO attribution, and Paafekt's converted Core ML/ONNX/LiteRT model
+  formats.
+- Added the bundled-notice link label to all 14 localization catalogs.
+- Verified an unsigned generic-device build packages both legal text resources and the
+  compiled Depth Anything, GeoCalib, and RTMDet models. App Store Connect reported the
+  1.2 (87) upload as processed; review/publication is tracked separately.
+
 ## Docs & Diagrams — Android Room Creation / RTMDet Parity
 
 - Updated Android room-creation docs and diagrams for immediate AI/manual picker display, off-main sampled EXIF decode, no artificial generation wait, JPEG GLB textures, saved depth metadata, and Swift-style floating `GLBRoomActivity` controls.

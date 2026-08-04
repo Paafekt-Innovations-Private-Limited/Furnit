@@ -58,16 +58,18 @@ R8 minification.
 
 Per-release checklist:
 
-- Archive `app/build/outputs/mapping/release/mapping.txt` and upload it with the
-  release in Play Console. Release builds are R8-minified, so crash reports
-  (including ones users email from `CrashReportActivity`) must be retraced with
-  this file (`$ANDROID_HOME/cmdline-tools/latest/bin/retrace mapping.txt trace.txt`).
+- Archive `app/build/outputs/mapping/release/mapping.txt` with every release. AGP embeds
+  the same mapping as `BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`
+  in the AAB for Play ingestion; retain the external copy for emailed crash reports
+  and local retracing (`$ANDROID_HOME/cmdline-tools/latest/bin/retrace mapping.txt trace.txt`).
 - Keep the **Play App Signing key's SHA-1 and SHA-256** registered on the
   `com.paafekt.android` Firebase app. Both were added and live-verified on
   2026-08-03 after diagnosing the production Phone Auth failure. Repeat the
   registration only if the Play signing key or Firebase app changes; see
   [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
 - Bump `versionCode` in `app/build.gradle` for every upload.
+- Confirm `verifyLegalAssets` runs and inspect the bundle for the three files under
+  `base/assets/legal/` before upload.
 
 ## Room Creation
 
@@ -85,6 +87,15 @@ Android packages the Depth Anything metric depth and GeoCalib pinhole ONNX model
 LiteRT furniture-segmentation model via install-time Play Asset Delivery packs
 (`room_generation_models`, `rtmdet_models`). Install-time packs merge into the app's `AssetManager`,
 so runtime asset paths are unchanged.
+
+## Legal Assets
+
+The app module owns readable offline redistribution documents under
+`app/src/main/assets/legal/`: the full Apache 2.0 text, LiteRT 1.4.2's complete
+license/Caffe attribution, and a third-party notice covering the exact shipped model
+variants and Paafekt's model-format conversions. `verifyLegalAssets` runs before every
+`preBuild`; a missing or truncated file is a build failure. See
+[`../docs/MODEL_LICENSE_AUDIT.md`](../docs/MODEL_LICENSE_AUDIT.md).
 
 ## Furniture Segmentation
 

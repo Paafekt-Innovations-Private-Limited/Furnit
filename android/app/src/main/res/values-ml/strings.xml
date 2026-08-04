@@ -115,12 +115,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">ഫോക്കൽ ലെങ്ത്, ഗ്രാവിറ്റി സൂചനകൾ എന്നിവയ്‌ക്കായുള്ള സിംഗിൾ-ഇമേജ് ക്യാമറ കാലിബ്രേഷൻ. പകർപ്പവകാശം 2024 ETH സൂറിച്ച്. അപ്പാച്ചെ ലൈസൻസ് 2.0 പ്രകാരം ലൈസൻസ് ചെയ്ത കോഡ്. ക്രിയേറ്റീവ് കോമൺസ് ആട്രിബ്യൂഷൻ 4.0 (CC BY 4.0) പ്രകാരം ലൈസൻസ് ചെയ്‌ത പിൻഹോൾ വെയ്‌റ്റുകൾ അയച്ചു.</string>
     <string name="licenses_view_full_license">മുഴുവൻ ലൈസൻസും കാണുക</string>
+    <string name="licenses_view_notices">ബണ്ടിൽ ചെയ്ത അറിയിപ്പുകൾ കാണുക</string>
     <string name="licenses_view_apache_2_code">Apache 2.0 ലൈസൻസ് കാണുക (കോഡ്)</string>
     <string name="licenses_view_cc_by_4">CC BY 4.0 ലൈസൻസ് കാണുക</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">ആപ്പ് യുഐ, ക്യാമറ, ലൈഫ് സൈക്കിൾ, പ്ലാറ്റ്‌ഫോം സംയോജനം എന്നിവയ്‌ക്കായി ആൻഡ്രോയിഡ് പ്ലാറ്റ്‌ഫോം സപ്പോർട്ട് ലൈബ്രറികൾ, കോട്ട്‌ലിൻ റൺടൈം ഘടകങ്ങൾ, ക്യാമറ എക്‌സ്, വെബ്‌കിറ്റ്, എക്‌സിഫ് ഇൻ്റർഫേസ്, മെറ്റീരിയൽ ഘടകങ്ങൾ എന്നിവ ഉപയോഗിക്കുന്നു. അപ്പാച്ചെ ലൈസൻസ് 2.0 പ്രകാരം ലൈസൻസ്.</string>
     <string name="licenses_other_runtime_title">മറ്റ് Android റൺടൈം ലൈബ്രറികൾ</string>
-    <string name="licenses_other_runtime">കമ്പോസ് ഘടകങ്ങൾ, OkHttp/Okio, Fuel, Guava ListenableFuture, jspecify വ്യാഖ്യാനങ്ങൾ, kotlin-math എന്നിവയുൾപ്പെടെ Firebase, SceneView, Filament, AndroidX എന്നിവയാൽ കൂടുതൽ അനുവദനീയമായ റൺടൈം ഡിപൻഡൻസികൾ ട്രാൻസിറ്റീവ് ആയി വലിച്ചെടുക്കുന്നു.</string>
+    <string name="licenses_other_runtime">കമ്പോസ് ഘടകങ്ങൾ, OkHttp/Okio, Fuel, Guava ListenableFuture, jspecify വ്യാഖ്യാനങ്ങൾ, kotlin-math എന്നിവയുൾപ്പെടെ Firebase, SceneView, Filament, AndroidX എന്നിവയാൽ കൂടുതൽ അനുവദനീയമായ റൺടൈം ഡിപൻഡൻസികൾ ട്രാൻസിറ്റീവ് ആയി വലിച്ചെടുക്കുന്നു. LiteRT 1.4.2 Apache License 2.0 പ്രകാരം RTMDet TFLite മോഡൽ പ്രവർത്തിപ്പിക്കുന്നു; അതിന്റെ ബണ്ടിൽ ചെയ്ത ലൈസൻസിൽ Caffe/BSD കടപ്പാടും പുനർനിർമ്മിച്ചിരിക്കുന്നു.</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">പിന്തുണയ്‌ക്കുന്ന Android ഉപകരണങ്ങളിൽ ഓപ്‌ഷണൽ AR ക്യാമറയും ആഴവുമായി ബന്ധപ്പെട്ട ശേഷിയും. ARCore SDK നിബന്ധനകൾക്കും ബാധകമായ ഓപ്പൺ സോഴ്‌സ് അറിയിപ്പുകൾക്കും കീഴിൽ Google നൽകുന്നത്.</string>
     <string name="licenses_firebase_title">Firebase</string>

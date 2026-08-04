@@ -119,12 +119,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">Calibrage de la caméra à image unique pour les indications de distance focale et de gravité. Copyright 2024 ETH Zurich. Code sous licence Apache 2.0. Poids pour sténopé expédiés sous licence Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_view_full_license">Afficher la licence complète</string>
+    <string name="licenses_view_notices">Afficher les avis intégrés</string>
     <string name="licenses_view_apache_2_code">Afficher la licence Apache 2.0 (code)</string>
     <string name="licenses_view_cc_by_4">Afficher la licence CC BY 4.0</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">Les bibliothèques de prise en charge de la plate-forme Android, les composants d\'exécution Kotlin, CameraX, WebKit, ExifInterface et Material Components sont utilisés pour l\'intégration de l\'interface utilisateur de l\'application, de la caméra, du cycle de vie et de la plate-forme. Sous licence Apache License 2.0.</string>
     <string name="licenses_other_runtime_title">Autres bibliothèques d\'exécution Android</string>
-    <string name="licenses_other_runtime">Des dépendances d\'exécution permissives supplémentaires sont extraites de manière transitive par Firebase, SceneView, Filament et AndroidX, notamment les composants Compose, OkHttp/Okio, Fuel, Guava ListenableFuture, les annotations jspecify et kotlin-math.</string>
+    <string name="licenses_other_runtime">Des dépendances d\'exécution permissives supplémentaires sont extraites de manière transitive par Firebase, SceneView, Filament et AndroidX, notamment les composants Compose, OkHttp/Okio, Fuel, Guava ListenableFuture, les annotations jspecify et kotlin-math. LiteRT 1.4.2 exécute le modèle RTMDet TFLite sous Apache License 2.0 ; sa licence intégrée reproduit également l\'attribution Caffe/BSD.</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">Caméra AR en option et fonctionnalités liées à la profondeur sur les appareils Android pris en charge. Fourni par Google selon les conditions du SDK ARCore et les avis open source applicables.</string>
     <string name="licenses_firebase_title">Firebase</string>

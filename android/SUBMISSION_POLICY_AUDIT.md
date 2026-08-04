@@ -19,6 +19,18 @@ This is a pragmatic release checklist, not legal advice.
 - Split-field OTP autofill now uses Android's positional `smsOTPCode1` through
   `smsOTPCode6` hints in source. A new Play release is required to deliver that change.
 
+## Production addendum — 2026-08-05
+
+- Signed version **1.2 / code 5** was built and inspected; Play publication is not
+  inferred until separately confirmed.
+- Settings → Licenses now opens the full Apache License 2.0, LiteRT 1.4.2's combined
+  license/Caffe attribution, and the third-party/model-conversion notice offline.
+- `verifyLegalAssets` runs before `preBuild` and blocks missing or truncated legal
+  resources.
+- Current code chooses the default login country from mobile network, then SIM, then
+  app/device locale. This supersedes the locale-only state recorded in the historical
+  `Checked` list below; the user can always override the picker manually.
+
 ## Checked
 
 - Privacy Policy link exists in app: Settings > Legal > Privacy Policy opens `https://paafekt.com/privacy`.
@@ -28,13 +40,13 @@ This is a pragmatic release checklist, not legal advice.
 - Advertising ID permission is explicitly removed from the merged manifest if a dependency contributes it.
 - Rooms and auth/session shared preferences are excluded from Android cloud backup and device transfer.
 - Room processing, furniture detection, and model inference are disclosed as on-device in Settings, FAQ, and privacy copy.
-- Licenses and credits screens exist in Settings and cover shipped Android runtime libraries, model assets, datasets, and AI/tool credits.
+- Licenses and credits screens exist in Settings and cover shipped Android runtime libraries, model assets, datasets, AI/tool credits, full Apache text, and LiteRT/Caffe attribution.
 - SIM/network country lookup was removed from login country preselection; Android now uses locale only and lets the user choose manually.
 
 ## Build and signing maintenance
 
 - Build the bundle with the `PAAFEKT_UPLOAD_*` signing properties set; an unsigned `bundleRelease` output is rejected by Play. The upload keystore and credentials already exist on this machine (`~/.gradle/paafekt/paafekt-upload-key.jks`, values in `~/.gradle/gradle.properties`). Run the signed build from a normal terminal — sandboxed agent shells override `GRADLE_USER_HOME` and produce an unsigned AAB. See "Release Build and Signing" in `README_ANDROID.md`.
-- Release builds are R8-minified. Archive `app/build/outputs/mapping/release/mapping.txt` per release and upload it to Play Console; emailed crash reports from `CrashReportActivity` need it for retracing.
+- Release builds are R8-minified. Archive `app/build/outputs/mapping/release/mapping.txt` per release; AGP also embeds it in the AAB for Play ingestion. Emailed crash reports from `CrashReportActivity` still need the archived copy for local retracing.
 - Keep both Play App Signing fingerprints registered on the Firebase Android app; they were added and live-verified on 2026-08-03. Re-run `scripts/fix_firebase_android_auth.sh` only if the signing key or Firebase app changes.
 - The application ID is `com.paafekt.android` (permanent after first publish; Kotlin namespace stays `com.furnit.android`). The matching Firebase Android app (`1:613415224058:android:8d0a97fe4990e559a13f43`) is registered in `paafektprod`, and `google-services.json` contains both the active and legacy clients.
 
@@ -42,7 +54,7 @@ This is a pragmatic release checklist, not legal advice.
 
 - Privacy Policy URL must be live, public, non-geofenced, non-PDF, and match the Play Console Data Safety form.
 - Terms URL should be live and public.
-- Because Paafekt allows account creation, Play requires an external web resource where users can request account deletion without reinstalling the app. Add this URL in Play Console's account deletion field. A dedicated page such as `https://paafekt.com/account-delete` is safer than relying only on a mailto link buried in the privacy policy.
+- Because Paafekt allows account creation, Play requires an external web resource where users can request account deletion without reinstalling the app. Use `https://paafekt.com/delete-account` in Play Console's account deletion field rather than relying only on a mailto link buried in the privacy policy.
 - Data Safety should disclose:
   - Phone number and authentication/user ID data, collected for account management and app functionality.
   - Device or other identifiers used by Firebase/Play Integrity/reCAPTCHA for authentication and abuse prevention.

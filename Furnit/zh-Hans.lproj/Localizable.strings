@@ -153,6 +153,7 @@
 "licenses.viewCcBy4" = "查看 CC BY 4.0 许可";
 "licenses.viewApache2Code" = "查看 Apache 2.0 许可（代码）";
 "licenses.viewFullLicense" = "查看完整许可";
+"licenses.viewNotices" = "查看随附声明";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — 用于单张照片房间重建的室内公制深度。Small 权重依据 Apache License 2.0 授权（未使用 Base/Large/Giant）。";
 "licenses.hypersimTitle" = "Hypersim 数据集";

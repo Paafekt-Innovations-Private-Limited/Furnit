@@ -14,6 +14,7 @@ native implementations. The authoritative path-to-code inventory is
 | Manual room creation | Boundary editor → `SinglePhotoRoomReconstructor` → textured mesh/USDZ path | `RoomBoundaryActivity` → five-plane textured GLB → `GLBRoomActivity` |
 | Furniture Fit | RTMDet Core ML → class-aware NMS → mask affinity → transparent overlays | RTMDet FP16 LiteRT (GPU or XNNPACK CPU) → boxes-only identify or mask segmentation → transparent overlays |
 | Saved room | Private `Documents/SavedRooms` | Private `files/rooms` (excluded from backup/transfer) |
+| Legal disclosure | Bundled third-party notice + Apache text opened offline by `LicensesView` | Bundled third-party notice + Apache/LiteRT texts opened offline by `LicensesActivity` |
 
 ## Deep dives
 
@@ -38,6 +39,8 @@ native implementations. The authoritative path-to-code inventory is
   implementation detail and intentionally differs.
 - Model and viewer implementations can differ by platform; preserve observable flow,
   metadata, and disclosure parity.
+- Preserve offline license/notice access on both platforms. Android release builds
+  must continue to pass `verifyLegalAssets` before `preBuild`.
 
 ## Historical and deferred work
 

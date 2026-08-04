@@ -23,7 +23,7 @@ These documents are not moved because existing code/docs link to them.
 | [`../DEAD_CODE_CLEANUP.md`](../DEAD_CODE_CLEANUP.md) | Dated iOS removal and Periphery evidence, not a live unused-code inventory |
 | [`../DEAD_CODE_CLEANUP_ANDROID.md`](../DEAD_CODE_CLEANUP_ANDROID.md) | Dated Android deletion audit; unresolved tooling items are copied into the confirmed ledger |
 | [`../ROOM_3D_APPROACHES.md`](../ROOM_3D_APPROACHES.md) | Research chronology containing retired experiments; only the explicitly labeled production section describes a current path |
-| [`../../android/SUBMISSION_POLICY_AUDIT.md`](../../android/SUBMISSION_POLICY_AUDIT.md) | Pre-publication audit with a 2026-08-03 production addendum |
+| [`../../android/SUBMISSION_POLICY_AUDIT.md`](../../android/SUBMISSION_POLICY_AUDIT.md) | Pre-publication audit with dated 2026-08-03 authentication and 2026-08-05 release/legal addenda |
 | [`.cursor/rules/furnit-ml.mdc`](../../.cursor/rules/furnit-ml.mdc) | Explicitly archived SHARP/ExecuTorch/Vulkan guidance; not the current room or RTMDet path |
 
 ## Admission rule

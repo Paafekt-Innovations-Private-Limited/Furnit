@@ -131,12 +131,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">معايرة الكاميرا ذات الصورة الواحدة للحصول على الطول البؤري وتلميحات الجاذبية. حقوق الطبع والنشر 2024 ETH زيوريخ. الكود مرخص بموجب ترخيص Apache 2.0. الأوزان ذات الثقب المشحونة مرخصة بموجب Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_view_full_license">عرض الترخيص الكامل</string>
+    <string name="licenses_view_notices">عرض الإشعارات المضمّنة</string>
     <string name="licenses_view_apache_2_code">عرض ترخيص Apache 2.0 (الرمز)</string>
     <string name="licenses_view_cc_by_4">عرض ترخيص CC BY 4.0</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">تُستخدم مكتبات دعم نظام التشغيل Android ومكونات وقت تشغيل Kotlin وCameraX وWebKit وExifInterface وMaterial Components لواجهة مستخدم التطبيق والكاميرا ودورة الحياة وتكامل النظام الأساسي. مرخص بموجب Apache License 2.0.</string>
     <string name="licenses_other_runtime_title">مكتبات وقت تشغيل Android الأخرى</string>
-    <string name="licenses_other_runtime">يتم سحب تبعيات وقت التشغيل الإضافية المسموح بها بشكل عابر بواسطة Firebase وSceneView وFilament وAndroidX، بما في ذلك مكونات الإنشاء، OkHttp/Okio، Fuel، Guava التعليقات التوضيحية ListenableFuture وjspecify ورياضيات kotlin.</string>
+    <string name="licenses_other_runtime">يتم سحب تبعيات وقت التشغيل الإضافية المسموح بها بشكل عابر بواسطة Firebase وSceneView وFilament وAndroidX، بما في ذلك مكونات الإنشاء، OkHttp/Okio، Fuel، Guava التعليقات التوضيحية ListenableFuture وjspecify ورياضيات kotlin. يشغّل LiteRT 1.4.2 نموذج RTMDet بصيغة TFLite بموجب Apache License 2.0؛ كما يعيد الترخيص المضمّن إنتاج إسناد Caffe/BSD.</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">كاميرا AR اختيارية وإمكانات متعلقة بالعمق على أجهزة Android المدعومة. مقدمة من Google بموجب شروط ARCore SDK والإشعارات مفتوحة المصدر المعمول بها.</string>
     <string name="licenses_firebase_title">Firebase</string>

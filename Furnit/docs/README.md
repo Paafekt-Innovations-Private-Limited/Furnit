@@ -41,6 +41,20 @@ RTMDet object anchor → USDZ on first save**. Swift entry points: `SinglePhotoR
 
 Useful Xcode console filter: `FurnitureFit`, `BRAIN FLOW`, `RTMDet`.
 
+## Settings licenses and attributions
+
+`LicensesView` in `Furnit/Views/ContentView.swift` exposes two bundled UTF-8 resources
+without requiring network access:
+
+- `Furnit/Licenses/APACHE-2.0.txt` — complete Apache License 2.0 text.
+- `Furnit/Licenses/THIRD_PARTY_NOTICES.txt` — shipped model/dataset attribution and
+  notices for Paafekt's Core ML, ONNX, and LiteRT/TFLite format conversions.
+
+The notice names the exact Depth Anything V2 Metric Indoor Small variant. All 14 iOS
+localizations provide the `licenses.viewNotices` link label. The current diligence and
+remaining Hypersim lawyer question live in
+[`../../docs/MODEL_LICENSE_AUDIT.md`](../../docs/MODEL_LICENSE_AUDIT.md).
+
 ## Docs here
 - [`mask-head-accel.md`](mask-head-accel.md) — the RTMDet mask-head matmul: problem statement,
   reviewer guidance (profile first, then `cblas_sgemm`), and the per-stage timing instrumentation.
@@ -56,6 +70,7 @@ These are cross-linked with each other (and with `Furnit/Views/FurnitureFit/READ
 - `docs/RTMDET_IOS_SWIFT_SPIKE.md`
 - `docs/ON_DEMAND_RESOURCES.md`
 - `docs/apple-review-checklist.md`
+- `docs/MODEL_LICENSE_AUDIT.md`
 - `docs/READ_FIRST.md` — compact current context and settled cross-platform facts
 - `docs/architecture.md` — active architecture entry point
 

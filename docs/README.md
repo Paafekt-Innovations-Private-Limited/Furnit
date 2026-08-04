@@ -59,11 +59,11 @@ descriptions of the current app.
 | [`PAAFEKT_DESIGN_SYSTEM.md`](PAAFEKT_DESIGN_SYSTEM.md) | Active reference | Paafekt UI tokens, brand assets, components, and copy |
 | [`privacy.html`](privacy.html) | Active source | Repository privacy-policy source; website deployment is separate |
 | [`firebase-sms-regions.md`](firebase-sms-regions.md) | Active runbook | Firebase Phone Auth SMS policy and reviewer test numbers |
-| [`store-submission-status.md`](store-submission-status.md) | Active status | Last verified store/Firebase state and next-release delta |
-| [`apple-review-checklist.md`](apple-review-checklist.md) | Reusable runbook | Apple reviewer path, privacy labels, and QA |
-| [`android-play-review-checklist.md`](android-play-review-checklist.md) | Reusable runbook | Google Play reviewer path, Data Safety, and notes |
+| [`store-submission-status.md`](store-submission-status.md) | Active status | Last verified store/Firebase state, processed uploads, and publication boundary |
+| [`apple-review-checklist.md`](apple-review-checklist.md) | Reusable runbook | Apple reviewer path, privacy labels, offline legal disclosures, and QA |
+| [`android-play-review-checklist.md`](android-play-review-checklist.md) | Reusable runbook | Google Play reviewer path, Data Safety, offline legal disclosures, and notes |
 | [`CHECK_APP_MEMORY.md`](CHECK_APP_MEMORY.md) | Active runbook | iOS memory checks and comparison procedure |
-| [`MODEL_LICENSE_AUDIT.md`](MODEL_LICENSE_AUDIT.md) | Dated compliance evidence | Model/weights inventory and lawyer-review triggers; re-audit when models change |
+| [`MODEL_LICENSE_AUDIT.md`](MODEL_LICENSE_AUDIT.md) | Dated compliance evidence | Model/weights inventory, redistribution packaging, and lawyer-review triggers; re-audit when models change |
 
 ## Research and historical evidence
 

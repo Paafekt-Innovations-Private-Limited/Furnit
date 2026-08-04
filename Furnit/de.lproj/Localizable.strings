@@ -152,6 +152,7 @@
 "licenses.viewCcBy4" = "CC BY 4.0-Lizenz anzeigen";
 "licenses.viewApache2Code" = "Apache-2.0-Lizenz anzeigen (Code)";
 "licenses.viewFullLicense" = "Vollständige Lizenz anzeigen";
+"licenses.viewNotices" = "Gebündelte Hinweise anzeigen";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — metrische Tiefenschätzung für Innenräume bei der Einzelbild-Raumrekonstruktion. Small-Gewichte unter Apache-Lizenz 2.0 (Base/Large/Giant werden nicht verwendet).";
 "licenses.geoCalibTitle" = "GeoCalib";

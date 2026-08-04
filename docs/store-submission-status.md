@@ -1,22 +1,24 @@
 # Store submission status (Paafekt)
 
-Last verified: 3 August 2026
+Last verified: 5 August 2026
 
 This file records only state verified from the repository, the Play-installed Android
-artifact, live Firebase configuration, or the owner's explicit account status. Console
-state that was not re-opened on this date is labeled as a prior snapshot.
+artifact, live Firebase configuration, or the owner's explicit account status. A
+processed upload is not described as reviewed, approved, or published without a
+separate confirmation.
 
 ## Android — Google Play
 
 | Item | Current state |
 |---|---|
 | Publisher/legal entity | **Paafekt Innovations Private Limited (India)** |
-| Release | **Published on Google Play** |
+| Release | **1.1 / code 4 confirmed published**; signed 1.2 / code 5 artifact prepared, Play upload/publication not re-confirmed |
 | Package | `com.paafekt.android` |
 | Kotlin namespace | `com.furnit.android` (internal; intentionally different) |
 | Play signing | Play App Signing active; production-installed certificate extracted and verified |
 | Firebase Phone Auth | Play signing SHA-1/SHA-256 registered live on 2026-08-03; original production authorization error resolved |
-| OTP autofill | Positional split-field hints are in source as of 2026-08-03; requires the next Play release |
+| OTP autofill | Positional split-field hints are included in signed 1.2 / code 5; production delivery awaits Play publication confirmation |
+| Legal resources | 1.2 bundles offline Apache, LiteRT/Caffe, and third-party/model-conversion notices; enforced by `verifyLegalAssets` |
 
 The published-build failure shown on 2026-08-03 was not caused by the developer
 account's legal name or by the upload key. Firebase received a Play Integrity token but
@@ -24,14 +26,17 @@ had no matching Play App Signing SHA-256. Both Play fingerprints are now registe
 the active Firebase app. See
 [`../android/docs/AUTHENTICATION.md`](../android/docs/AUTHENTICATION.md).
 
-### Next Android release
+### Android 1.2 handoff
 
-1. Verify the active Play version code, then bump `versionCode` in
-   `android/app/build.gradle` to a higher value.
-2. Build and upload a signed AAB; archive the R8 `mapping.txt` for that release.
-3. Install the update from Google Play and smoke-test automatic verification/autofill
-   plus manual OTP entry.
-4. Recheck country preselection under an English (India) locale and an `en-GB` locale.
+- `android/app/build.gradle` resolves to version name **1.2**, version code **5**.
+- The signed `app/build/outputs/bundle/release/app-release.aab` was rebuilt and verified
+  on 2026-08-04. Its package is `com.paafekt.android`; its R8 mapping is embedded in
+  bundle metadata and also exists at `app/build/outputs/mapping/release/mapping.txt`.
+- Bundle inspection confirmed the three legal assets and the intended Depth Anything
+  V2 Metric Indoor Small, GeoCalib pinhole, and RTMDet FP16 model files.
+- Do not mark 1.2 published here until Play Console or a Play-installed update confirms
+  it. After publication, smoke-test Firebase automatic verification/autofill, manual
+  OTP entry, offline Settings → Licenses documents, and the room/Furniture Fit flows.
 
 Do not recreate the upload key because its certificate organization metadata names
 Paafekt Inc. That metadata does not change the Play publisher or Firebase app identity.
@@ -54,13 +59,19 @@ change.
 
 ## iOS — App Store Connect
 
-The last repository snapshot, dated 25 July 2026, recorded build **1.0 (86)** as
-**Waiting for Review**, submitted on 20 July 2026. App Store Connect was not re-opened
-during the 2026-08-03 update, so that review state must not be presented as current.
+| Item | Current state |
+|---|---|
+| Publisher/legal entity | **Paafekt Innovations Private Limited (India)** |
+| Source version | **1.2 / build 87** for the iOS application target |
+| Build upload | Owner-reported App Store Connect status **Complete**, created 2026-08-05 00:14 IST |
+| Previous upload | 1.1 / build 86 shown **Complete**, created 2026-08-01 04:26 IST |
+| Version metadata | Owner reported the 1.2 version page completed on 2026-08-05 |
+| Review/publication | Not separately confirmed; do not infer it from Build Upload status `Complete` |
+| Legal resources | 1.2 bundles offline `APACHE-2.0.txt` and `THIRD_PARTY_NOTICES.txt` in Settings → Licenses |
 
-The Apple developer account/publisher is Paafekt Innovations Private Limited (India).
-Recheck App Store Connect before changing release status. Historical build details are
-in [`release-status-2026-07-20.md`](release-status-2026-07-20.md); the reusable review
+Apple's upload status `Complete` means processing succeeded; it does not by itself mean
+the version was added to an App Review submission or released. Historical build details
+remain in [`release-status-2026-07-20.md`](release-status-2026-07-20.md); the reusable
 procedure is [`apple-review-checklist.md`](apple-review-checklist.md).
 
 ## Legal and public URLs

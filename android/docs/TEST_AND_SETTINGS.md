@@ -7,6 +7,11 @@ python3 scripts/verify_i18n.py
 ./gradlew :app:assembleDebug
 ```
 
+`preBuild` depends on `verifyLegalAssets`, so normal debug and release builds fail if
+the required Apache, LiteRT/Caffe, or model-modification notice is missing or
+truncated. A release handoff should also run `./gradlew :app:bundleRelease --no-daemon`
+and verify the signed AAB.
+
 For Android Studio device testing, set **Run > Edit Configurations > app > Deploy** to
 **APK from app bundle**. The default APK-only deployment omits the install-time
 `rtmdet_models` and `room_generation_models` asset packs.
@@ -53,6 +58,17 @@ The old backend selection and FurnitureFit tuning switches have been removed. Cu
 
 Full-video identification is controlled in `GLBRoomActivity` by the in-room **viewfinder** button, not by Settings.
 
+### Licenses smoke test
+
+1. Disable network access.
+2. Open Settings → Licenses.
+3. Open **View bundled notices** and confirm it names Depth Anything V2 Metric Indoor
+   Small, GeoCalib, RTMDet/COCO, and Paafekt's converted model formats.
+4. Open an Apache-licensed component's full license and confirm the complete Apache
+   text is readable.
+5. Under **Other Android runtime libraries**, open the LiteRT license and confirm the
+   Caffe/BSD attribution follows the Apache text.
+
 ## Asset Check
 
 At startup, `RoomGenerationAssets.logAvailability` logs packaged room-generation assets and any missing expected assets.
@@ -63,6 +79,8 @@ Expected today:
 - RTMDet FP16 LiteRT: present (GPU when supported, XNNPACK CPU otherwise).
 - RTMDet ONNX: absent; the retired fallback model must not be packaged.
 - GeoCalib pinhole CNN ONNX: present and loaded by `GeoCalibCalibrationService`; focal/gravity fallbacks remain available if inference cannot run.
+- Legal assets: `APACHE-2.0.txt`, `LITERT-LICENSE.txt`, and
+  `THIRD_PARTY_NOTICES.txt` present under `app/src/main/assets/legal/`.
 
 ## Authentication smoke test
 

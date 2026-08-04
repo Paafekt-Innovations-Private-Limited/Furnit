@@ -152,6 +152,7 @@
 "licenses.viewCcBy4" = "CC BY 4.0 লাইসেন্স দেখুন";
 "licenses.viewApache2Code" = "Apache 2.0 লাইসেন্স দেখুন (কোড)";
 "licenses.viewFullLicense" = "সম্পূর্ণ লাইসেন্স দেখুন";
+"licenses.viewNotices" = "অন্তর্ভুক্ত নোটিশ দেখুন";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — একক-ছবির রুম পুনর্গঠনের জন্য মেট্রিক ইনডোর গভীরতা। Small ওয়েট Apache License 2.0-এর অধীনে (Base/Large/Giant ব্যবহার হয় না)।";
 "licenses.geoCalibTitle" = "GeoCalib";

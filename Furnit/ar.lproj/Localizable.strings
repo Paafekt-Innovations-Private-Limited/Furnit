@@ -152,6 +152,7 @@
 "licenses.viewCcBy4" = "عرض رخصة CC BY 4.0";
 "licenses.viewApache2Code" = "عرض رخصة Apache 2.0 (الكود)";
 "licenses.viewFullLicense" = "عرض الترخيص الكامل";
+"licenses.viewNotices" = "عرض الإشعارات المضمّنة";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — تقدير عمق متري داخلي لإعادة بناء غرفة من صورة واحدة. أوزان Small مرخّصة بموجب Apache License 2.0 (لا يُستخدم Base/Large/Giant).";
 "licenses.geoCalibTitle" = "GeoCalib";

@@ -135,6 +135,7 @@
 "licenses.viewCcBy4" = "CC BY 4.0 ലൈസൻസ് കാണുക";
 "licenses.viewApache2Code" = "Apache 2.0 ലൈസൻസ് (കോഡ്)";
 "licenses.viewFullLicense" = "പൂർണ്ണ ലൈസൻസ് കാണുക";
+"licenses.viewNotices" = "ബണ്ടിൽ ചെയ്ത അറിയിപ്പുകൾ കാണുക";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — ഒറ്റ ഫോട്ടോ മുറി പുനർനിർമ്മാണത്തിനുള്ള മെട്രിക് ഇൻഡോർ ഡെപ്ത്. Small വെയ്റ്റുകൾ Apache License 2.0 (Base/Large/Giant ഉപയോഗിക്കുന്നില്ല).";
 "licenses.geoCalibTitle" = "GeoCalib";

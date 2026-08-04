@@ -67,7 +67,8 @@ smsOTPCode1, smsOTPCode2, smsOTPCode3, smsOTPCode4, smsOTPCode5, smsOTPCode6
 This lets a compatible Android autofill service or keyboard distribute a received
 six-digit code across the split fields. Firebase may also complete verification
 directly through `onVerificationCompleted`. The source change was added on 2026-08-03
-and needs a new Play release before production users receive it.
+and is included in the signed version 1.2 / code 5 artifact. Production delivery must
+still be confirmed from Play Console or a Play-installed update.
 
 Manual entry remains supported and is the required fallback. The app does not start
 the SMS User Consent API in parallel with Firebase Auth because Firebase already owns

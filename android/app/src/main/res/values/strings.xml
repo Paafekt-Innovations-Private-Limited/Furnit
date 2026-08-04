@@ -140,12 +140,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Code licensed under Apache License 2.0. Shipped pinhole weights licensed under Creative Commons Attribution 4.0 (CC BY 4.0).</string>
     <string name="licenses_view_full_license">View full license</string>
+    <string name="licenses_view_notices">View bundled notices</string>
     <string name="licenses_view_apache_2_code">View Apache 2.0 license (code)</string>
     <string name="licenses_view_cc_by_4">View CC BY 4.0 license</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">Android platform support libraries, Kotlin runtime components, CameraX, WebKit, ExifInterface, and Material Components are used for app UI, camera, lifecycle, and platform integration. Licensed under Apache License 2.0.</string>
     <string name="licenses_other_runtime_title">Other Android runtime libraries</string>
-    <string name="licenses_other_runtime">Additional permissive runtime dependencies are pulled transitively by Firebase, SceneView, Filament, and AndroidX, including Compose components, OkHttp/Okio, Fuel, Guava ListenableFuture, jspecify annotations, and kotlin-math.</string>
+    <string name="licenses_other_runtime">Additional permissive runtime dependencies are pulled transitively by Firebase, SceneView, Filament, and AndroidX, including Compose components, OkHttp/Okio, Fuel, Guava ListenableFuture, jspecify annotations, and kotlin-math. LiteRT 1.4.2 runs the RTMDet TFLite model under Apache License 2.0; its bundled license also reproduces the Caffe/BSD attribution.</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">Optional AR camera and depth-related capability on supported Android devices. Provided by Google under ARCore SDK terms and applicable open-source notices.</string>
     <string name="licenses_firebase_title">Firebase</string>

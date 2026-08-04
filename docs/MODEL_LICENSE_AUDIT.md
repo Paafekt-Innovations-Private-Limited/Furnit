@@ -1,6 +1,6 @@
 # Model & Weights License Audit — Paafekt
 
-> **Not legal advice.** Primary-source research completed **2026-07-11** (GeoCalib weights update **2026-07-19**; Android RTMDet artifact inventory updated **2026-08-04**). Checked by: _[fill name]_. Lawyer review: _[date / firm / outcome]_.
+> **Not legal advice.** Primary-source research completed **2026-07-11** (GeoCalib weights update **2026-07-19**; Android RTMDet artifact inventory updated **2026-08-04**; redistribution packaging verified **2026-08-05**). Checked by: _[fill name]_. Lawyer review: _[date / firm / outcome]_.
 
 ---
 
@@ -16,7 +16,7 @@ Path in repo: [`docs/MODEL_LICENSE_AUDIT.md`](MODEL_LICENSE_AUDIT.md).
 2. **GeoCalib** — Upstream README now states trained weights are **CC BY 4.0** (commercial OK with attribution); code **Apache-2.0**. Confirm that still matches the live [GeoCalib README](https://github.com/cvg/GeoCalib/blob/main/README.md) License section.
 3. **RTMDet + COCO** — Code Apache-2.0; COCO **annotations** CC-BY-4.0 (we attribute in-app); images are Flickr ToU / not owned by COCO Consortium. Any leftover concern for shipping pretrained detection weights?
 4. **Ship inventory** — Confirm we only ship Small / GeoCalib pinhole / RTMDet-ins-m paths listed below (not Base/Large/Giant, not Inria training code).
-5. **In-app Licenses** — Attribution present on iOS + Android Settings → Licenses for the above.
+5. **In-app Licenses** — Attribution, conversion notices, and offline Apache license access are present on iOS + Android under Settings → Licenses. Android also bundles LiteRT's complete combined license and Caffe/BSD attribution text.
 
 **Not asking you to rewrite the whole BOM** — challenge the 🔴 / lawyer-priority items and flag anything we got wrong vs primary sources.
 
@@ -61,6 +61,28 @@ Each model has **three separate licenses that can differ** — check all three; 
 
 Splat rooms: user/imported PLY (`_3dgs.ply`). Renderer = **MetalSplatter (MIT)**. There is **no** Inria training code in the repository (verified 2026-07-18).
 
+## Redistribution packaging (verified 2026-08-05)
+
+The version 1.2 source and verified build artifacts provide readable offline notices rather than
+depending only on web links:
+
+- iOS bundles `Furnit/Licenses/APACHE-2.0.txt` and
+  `Furnit/Licenses/THIRD_PARTY_NOTICES.txt`. Settings → Licenses opens both from the app bundle.
+- Android bundles `app/src/main/assets/legal/APACHE-2.0.txt`,
+  `LITERT-LICENSE.txt`, and `THIRD_PARTY_NOTICES.txt`. `LicensesActivity` opens them from the APK
+  assets without a network connection.
+- Android's `verifyLegalAssets` task runs before `preBuild` and fails the build if the Apache text,
+  LiteRT/Caffe attribution, or model-modification notice is absent or truncated.
+- The notices identify Paafekt's Core ML, ONNX, and LiteRT/TFLite conversions of Depth Anything V2
+  Metric Indoor Small, GeoCalib pinhole CNN, and RTMDet-Ins-m as modified formats rather than
+  upstream distribution files.
+
+The signed Android bundle was inspected at version 1.2 / code 5 and contained all three legal
+assets plus only the intended Small indoor, GeoCalib pinhole, and RTMDet FP16 model files. The iOS
+device build was inspected and contained both legal documents and the three compiled model
+packages. These checks establish repository/build packaging; store approval or publication state
+is tracked separately in `store-submission-status.md`.
+
 ---
 
 ## Model Bill of Materials (verified)
@@ -96,7 +118,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | ↳ Poly Haven panos | CC0 | YES | Not required | https://polyhaven.com/license | 2026-07-11 |
 | **Stanford2D3D** | Terms-of-use form | **Eval only** | — | Benchmark eval; not the published weight license | 2026-07-11 |
 
-**App claim cross-check (2026-07-19):** In-app licenses state **code Apache-2.0** + **shipped pinhole weights CC BY 4.0**, ETH Zurich copyright; UI links both license texts. Matches upstream README.
+**App claim cross-check (2026-08-05):** In-app licenses state **code Apache-2.0** + **shipped pinhole weights CC BY 4.0**, ETH Zurich copyright. The Apache text is bundled offline; the UI retains the CC BY 4.0 legal-code link. Matches upstream README.
 
 **Action:** Keep dual attribution links. No NC. Optional: credit OpenPano sources in docs if desired; not required by CC BY weight grant.
 
@@ -111,7 +133,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | **COCO annotations** | CC-BY-4.0 | YES | Attribution | https://github.com/cocodataset/cocodataset.github.io/blob/master/dataset/termsofuse.htm — *“annotations … licensed under a Creative Commons Attribution 4.0 License”* | 2026-07-11 |
 | **COCO images** | Flickr ToU | **User responsibility** | — | Same page — *“COCO Consortium does not own the copyright of the images. Use … must abide by the Flickr Terms of Use.”* | 2026-07-11 |
 
-**App claim cross-check:** `licenses.rtmdet` = Apache-2.0, OpenMMLab — **Matches code license**. COCO CC-BY attribution not explicit in app strings.
+**App claim cross-check (2026-08-05):** `licenses.rtmdet` = Apache-2.0, OpenMMLab — **Matches code license**. The bundled third-party notice on both platforms explicitly records the COCO annotation license and image-ownership caveat.
 
 **Action:** COCO CC-BY-4.0 acknowledgment added to both in-app license screens on 2026-07-18. Lawyer optional on pretrained-weight + Flickr-trained model in commercial app.
 
@@ -167,7 +189,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 |-----------|---------|---------|------------|-------------|----------------|------------------|------|
 | Core ML / RealityKit | System | Apple SDK terms | Per Apple agreement | — | Apple developer terms | — | — |
 | ONNX Runtime | 1.24.2 | MIT | YES | Copyright notice | https://github.com/microsoft/onnxruntime/blob/v1.24.2/LICENSE | **Yes** (Android) | 2026-07-18 |
-| LiteRT | 1.4.2 | Apache-2.0 | YES | NOTICE + license copy | Published Maven POM for `com.google.ai.edge.litert:litert:1.4.2` | **No** | 2026-08-04 |
+| LiteRT | 1.4.2 | Apache-2.0 | YES | NOTICE + license copy | Published Maven POM for `com.google.ai.edge.litert:litert:1.4.2` | **Yes — Android combined license + Caffe/BSD attribution** | 2026-08-05 |
 | Three.js | r170 | MIT | YES | Copyright notice | Bundled header: `SPDX-License-Identifier: MIT`; https://github.com/mrdoob/three.js/blob/r170/LICENSE | **Yes** | 2026-07-11 |
 | Filament (via SceneView) | 2.0.3 | Apache-2.0 | YES | NOTICE | https://github.com/google/filament/blob/main/LICENSE | **Yes** (Android) | 2026-07-18 |
 | MetalSplatter | 1.0.1 | MIT | YES | Copyright notice | https://github.com/scier/MetalSplatter/blob/main/LICENSE | **Yes** (iOS) | 2026-07-11 |
@@ -175,7 +197,10 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | Draco | — | Apache-2.0 (typical) | YES | NOTICE | Google Draco (loader support only; Android GLB avoids Draco compression) | **No** | — |
 | Firebase | 12.11.0 (iOS SPM) | Apache-2.0 | Per Google ToS | Yes | Firebase SDK | **Yes** | 2026-07-11 |
 
-**Attribution gaps closed in app UI (2026-07-18):** ONNX Runtime, Filament/SceneView, spz-swift, and COCO annotations.
+**Attribution packaging current as of 2026-08-05:** ONNX Runtime, Filament/SceneView,
+spz-swift, COCO annotations, the full Apache text, LiteRT's combined license/Caffe attribution,
+and readable notices for converted model formats are represented in the app UI or bundled legal
+documents.
 
 ---
 
@@ -188,6 +213,9 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | `e2aac05` / later | 2026-07 | Notice wording updated toward commercial release, then removed entirely from license UI. |
 
 **Displayed today:** No. Removed from both in-app license screens on 2026-07-18. Paafekt is a **commercial** product; release/policy wording belongs in product terms, not third-party attribution lists.
+
+This retired product-policy notice is unrelated to the readable
+`THIRD_PARTY_NOTICES.txt` files added for version 1.2 redistribution compliance.
 
 **Conclusion:** Phase-1 notice was **product policy**, not required by Depth Anything, GeoCalib, or RTMDet licenses. Current posture: commercial App Store / Play launch. Lawyer should still align full terms with the model audit above.
 
@@ -204,7 +232,7 @@ Licenses that **prohibit commercial distribution**, or research-only / GPL-AGPL 
 ## Process (unchanged)
 
 1. Resolve 🔴 blockers with counsel.
-2. Close attribution gaps in Settings → Licenses (both platforms).
+2. Preserve the version 1.2 attribution/license packaging in Settings → Licenses on both platforms.
 3. Re-audit on **any checkpoint version bump**.
 4. Keep this doc dated as diligence evidence.
 
@@ -223,5 +251,7 @@ Licenses that **prohibit commercial distribution**, or research-only / GPL-AGPL 
 - [ ] New `.mlpackage` / `.onnx` / checkpoint ID change
 - [ ] New SPM / Gradle ML dependency
 - [ ] M-LSD, Whisper, SHARP, or ExecuTorch promoted on-device
+- [x] Full Apache license and model-format modification notices bundled on iOS + Android (2026-08-05)
+- [x] LiteRT 1.4.2 combined license and Caffe/BSD attribution bundled on Android (2026-08-05)
 - [x] `phase1Notice` removed from license UI; commercial-release wording belongs in product terms (2026-07-18)
 - [x] SparkJS bundle removed — iOS + Android (2026-07-11)

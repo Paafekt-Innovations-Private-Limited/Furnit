@@ -210,6 +210,7 @@ enum L10n {
         static let openSourceSection = "licenses.openSourceSection".localized
         static let openSourceIntro = "licenses.openSourceIntro".localized
         static let viewFullLicense = "licenses.viewFullLicense".localized
+        static let viewNotices = "licenses.viewNotices".localized
         static let viewCcBy4 = "licenses.viewCcBy4".localized
         static let viewApache2Code = "licenses.viewApache2Code".localized
         static let depthAnythingTitle = "licenses.depthAnythingTitle".localized

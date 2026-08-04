@@ -156,6 +156,7 @@
 "licenses.viewCcBy4" = "Ver licencia CC BY 4.0";
 "licenses.viewApache2Code" = "Ver licencia Apache 2.0 (código)";
 "licenses.viewFullLicense" = "Ver licencia completa";
+"licenses.viewNotices" = "Ver avisos incluidos";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — profundidad métrica en interiores para reconstruir cuartos a partir de una sola foto. Pesos Small bajo Apache License 2.0 (Base/Large/Giant no se usan).";
 "licenses.hypersimTitle" = "Conjunto de datos Hypersim";

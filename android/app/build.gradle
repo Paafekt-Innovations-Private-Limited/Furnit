@@ -28,8 +28,8 @@ android {
         applicationId "com.paafekt.android"
         minSdk 24
         targetSdk 36
-        versionCode 4
-        versionName "1.1"
+        versionCode 5
+        versionName "1.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -82,6 +82,32 @@ android {
             universalApk false
         }
     }
+}
+
+def apacheLicenseAsset = file("src/main/assets/legal/APACHE-2.0.txt")
+def liteRtLicenseAsset = file("src/main/assets/legal/LITERT-LICENSE.txt")
+def thirdPartyNoticesAsset = file("src/main/assets/legal/THIRD_PARTY_NOTICES.txt")
+
+tasks.register("verifyLegalAssets") {
+    inputs.files(apacheLicenseAsset, liteRtLicenseAsset, thirdPartyNoticesAsset)
+    doLast {
+        if (!apacheLicenseAsset.isFile() ||
+                !apacheLicenseAsset.getText("UTF-8").contains("END OF TERMS AND CONDITIONS")) {
+            throw new GradleException("The complete Apache-2.0 license asset is missing or truncated.")
+        }
+        if (!liteRtLicenseAsset.isFile() ||
+                !liteRtLicenseAsset.getText("UTF-8").contains("Some of TensorFlow's code is derived from Caffe")) {
+            throw new GradleException("The complete LiteRT license and Caffe attribution asset is missing or truncated.")
+        }
+        if (!thirdPartyNoticesAsset.isFile() ||
+                !thirdPartyNoticesAsset.getText("UTF-8").contains("Model format modifications")) {
+            throw new GradleException("The model modification notices are missing or truncated.")
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(tasks.named("verifyLegalAssets"))
 }
 
 dependencies {

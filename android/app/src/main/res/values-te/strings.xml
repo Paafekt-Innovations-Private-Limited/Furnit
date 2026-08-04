@@ -115,12 +115,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">ఫోకల్ పొడవు మరియు గురుత్వాకర్షణ సూచనల కోసం సింగిల్-ఇమేజ్ కెమెరా క్రమాంకనం. కాపీరైట్ 2024 ETH జూరిచ్. అపాచీ లైసెన్స్ 2.0 కింద కోడ్ లైసెన్స్ చేయబడింది. క్రియేటివ్ కామన్స్ అట్రిబ్యూషన్ 4.0 (CC BY 4.0) కింద లైసెన్స్ పొందిన పిన్‌హోల్ బరువులు రవాణా చేయబడ్డాయి.</string>
     <string name="licenses_view_full_license">పూర్తి లైసెన్స్‌ని వీక్షించండి</string>
+    <string name="licenses_view_notices">బండిల్ చేసిన నోటీసులను వీక్షించండి</string>
     <string name="licenses_view_apache_2_code">Apache 2.0 లైసెన్స్ (కోడ్)ని వీక్షించండి</string>
     <string name="licenses_view_cc_by_4">CC BY 4.0 లైసెన్స్‌ని వీక్షించండి</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">ఆండ్రాయిడ్ ప్లాట్‌ఫారమ్ సపోర్ట్ లైబ్రరీలు, కోట్లిన్ రన్‌టైమ్ భాగాలు, కెమెరాఎక్స్, వెబ్‌కిట్, ఎక్సిఫ్ఇంటర్‌ఫేస్ మరియు మెటీరియల్ కాంపోనెంట్‌లు యాప్ UI, కెమెరా, లైఫ్‌సైకిల్ మరియు ప్లాట్‌ఫారమ్ ఇంటిగ్రేషన్ కోసం ఉపయోగించబడతాయి. అపాచీ లైసెన్స్ 2.0 కింద లైసెన్స్ పొందింది.</string>
     <string name="licenses_other_runtime_title">ఇతర Android రన్‌టైమ్ లైబ్రరీలు</string>
-    <string name="licenses_other_runtime">కంపోజ్ కాంపోనెంట్‌లు, OkHttp/Okio, Fuel, Guava ListenableFuture, jspecify ఉల్లేఖనాలు మరియు kotlin-mathతో సహా Firebase, SceneView, Filament మరియు AndroidX ద్వారా అదనపు పర్మిసివ్ రన్‌టైమ్ డిపెండెన్సీలు ట్రాన్సిటివ్‌గా లాగబడతాయి.</string>
+    <string name="licenses_other_runtime">కంపోజ్ కాంపోనెంట్‌లు, OkHttp/Okio, Fuel, Guava ListenableFuture, jspecify ఉల్లేఖనాలు మరియు kotlin-mathతో సహా Firebase, SceneView, Filament మరియు AndroidX ద్వారా అదనపు పర్మిసివ్ రన్‌టైమ్ డిపెండెన్సీలు ట్రాన్సిటివ్‌గా లాగబడతాయి. LiteRT 1.4.2 Apache License 2.0 కింద RTMDet TFLite మోడల్‌ను అమలు చేస్తుంది; దాని బండిల్ చేసిన లైసెన్స్ Caffe/BSD ఆపాదింపును కూడా పునరుత్పత్తి చేస్తుంది.</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">మద్దతు ఉన్న Android పరికరాలలో ఐచ్ఛిక AR కెమెరా మరియు డెప్త్-సంబంధిత సామర్థ్యం. ARCore SDK నిబంధనలు మరియు వర్తించే ఓపెన్ సోర్స్ నోటీసుల కింద Google అందించింది.</string>
     <string name="licenses_firebase_title">Firebase</string>

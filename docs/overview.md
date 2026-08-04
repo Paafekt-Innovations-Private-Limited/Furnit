@@ -15,8 +15,9 @@ camera calibration, and furniture inference are designed to run on device.
 | Phone sign-in | Firebase phone-number authentication, country picker, OTP verification | iOS `Furnit/Authentication/`; Android `android/app/src/main/java/com/furnit/android/auth/` |
 | Photo → 3D | Creates a preview, measures the room, and saves a local 3D asset | iOS `Furnit/Services/RoomReconstruction/`; Android `android/app/src/main/java/com/furnit/android/services/` and `roomreconstruction/` |
 | Room viewer | Opens saved USDZ/GLB/mesh/splat content with measurement and camera controls | iOS `Furnit/Views/`; Android `GLBRoomActivity` and viewer assets |
-| Furniture Fit | Detects/segments furniture and composites movable cutouts over the room | iOS RTMDet Core ML; Android RTMDet ONNX Runtime |
+| Furniture Fit | Detects/segments furniture and composites movable cutouts over the room | iOS RTMDet Core ML; Android RTMDet FP16 LiteRT (GPU or XNNPACK CPU) |
 | Local library | Stores and reopens saved rooms on the device | iOS `Documents/SavedRooms`; Android `files/rooms` |
+| Licenses and attributions | Shows bundled notices and Apache text without requiring a network connection | iOS `Furnit/Licenses/` + `LicensesView`; Android `app/src/main/assets/legal/` + `LicensesActivity` |
 
 ## Platform outputs
 

@@ -115,12 +115,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">फोकल लंबाई और गुरुत्वाकर्षण संकेत के लिए एकल-छवि कैमरा अंशांकन। कॉपीराइट 2024 ईटीएच ज्यूरिख। अपाचे लाइसेंस 2.0 के तहत लाइसेंस प्राप्त कोड। क्रिएटिव कॉमन्स एट्रिब्यूशन 4.0 (सीसी बाय 4.0) के तहत लाइसेंस प्राप्त शिप किए गए पिनहोल वेट।</string>
     <string name="licenses_view_full_license">पूर्ण लाइसेंस देखें</string>
+    <string name="licenses_view_notices">बंडल किए गए नोटिस देखें</string>
     <string name="licenses_view_apache_2_code">अपाचे 2.0 लाइसेंस देखें (कोड)</string>
     <string name="licenses_view_cc_by_4">CC BY 4.0 लाइसेंस देखें</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">एंड्रॉइड प्लेटफ़ॉर्म सपोर्ट लाइब्रेरीज़, कोटलिन रनटाइम घटक, कैमराएक्स, वेबकिट, एक्सिफ़इंटरफेस और मटेरियल कंपोनेंट्स का उपयोग ऐप यूआई, कैमरा, जीवनचक्र और प्लेटफ़ॉर्म एकीकरण के लिए किया जाता है। अपाचे लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।</string>
     <string name="licenses_other_runtime_title">अन्य एंड्रॉइड रनटाइम लाइब्रेरीज़</string>
-    <string name="licenses_other_runtime">अतिरिक्त अनुमेय रनटाइम निर्भरता को फायरबेस, सीनव्यू, फिलामेंट और एंड्रॉइडएक्स द्वारा सकर्मक रूप से खींचा जाता है, जिसमें कंपोज़ घटक, ओकेएचटीपी/ओकियो, फ्यूल, अमरूद लिसनएबलफ्यूचर, जेस्पेसिफाई एनोटेशन और कोटलिन-मैथ शामिल हैं।</string>
+    <string name="licenses_other_runtime">अतिरिक्त अनुमेय रनटाइम निर्भरता को फायरबेस, सीनव्यू, फिलामेंट और एंड्रॉइडएक्स द्वारा सकर्मक रूप से खींचा जाता है, जिसमें कंपोज़ घटक, ओकेएचटीपी/ओकियो, फ्यूल, अमरूद लिसनएबलफ्यूचर, जेस्पेसिफाई एनोटेशन और कोटलिन-मैथ शामिल हैं। LiteRT 1.4.2 Apache License 2.0 के अंतर्गत RTMDet TFLite मॉडल चलाता है; इसके बंडल किए गए लाइसेंस में Caffe/BSD श्रेय भी शामिल है।</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">समर्थित एंड्रॉइड डिवाइस पर वैकल्पिक एआर कैमरा और गहराई से संबंधित क्षमता। Google द्वारा ARCore SDK शर्तों और लागू ओपन-सोर्स नोटिस के तहत प्रदान किया गया।</string>
     <string name="licenses_firebase_title">Firebase</string>

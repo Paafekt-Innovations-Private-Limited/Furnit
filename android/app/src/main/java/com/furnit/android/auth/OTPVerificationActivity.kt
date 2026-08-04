@@ -190,7 +190,9 @@ class OTPVerificationActivity : AppCompatActivity() {
         val otpRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+            }
         }
 
         otpDigitInputs = Array(OTP_LENGTH) { index ->

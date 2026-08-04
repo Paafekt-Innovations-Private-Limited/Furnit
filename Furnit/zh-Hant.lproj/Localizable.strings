@@ -153,6 +153,7 @@
 "licenses.viewCcBy4" = "檢視 CC BY 4.0 授權";
 "licenses.viewApache2Code" = "檢視 Apache 2.0 授權（程式碼）";
 "licenses.viewFullLicense" = "檢視完整授權";
+"licenses.viewNotices" = "檢視隨附聲明";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — 用於單張照片房間重建的室內公制深度。Small 權重依 Apache License 2.0 授權（未使用 Base/Large/Giant）。";
 "licenses.hypersimTitle" = "Hypersim 資料集";

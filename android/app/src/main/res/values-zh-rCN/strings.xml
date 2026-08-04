@@ -111,12 +111,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">用于焦距和重力提示的单图像相机校准。版权所有 2024 苏黎世联邦理工学院。代码根据 Apache License 2.0 获得许可。已发布的针孔砝码已获得知识共享署名 4.0 (CC BY 4.0) 许可。</string>
     <string name="licenses_view_full_license">查看完整许可证</string>
+    <string name="licenses_view_notices">查看随附声明</string>
     <string name="licenses_view_apache_2_code">查看 Apache 2.0 许可证（代码）</string>
     <string name="licenses_view_cc_by_4">查看 CC BY 4.0 许可证</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">Android 平台支持库、Kotlin 运行时组件、CameraX、WebKit、ExifInterface 和 Material 组件用于应用程序 UI、相机、生命周期和平台集成。根据 Apache License 2.0 获得许可。</string>
     <string name="licenses_other_runtime_title">其他 Android 运行时库</string>
-    <string name="licenses_other_runtime">其他许可运行时依赖项由 Firebase、SceneView、Filament 和 AndroidX 传递，包括 Compose 组件、OkHttp/Okio、Fuel、Guava ListenableFuture、jspecify 注释和 kotlin-math。</string>
+    <string name="licenses_other_runtime">其他许可运行时依赖项由 Firebase、SceneView、Filament 和 AndroidX 传递，包括 Compose 组件、OkHttp/Okio、Fuel、Guava ListenableFuture、jspecify 注释和 kotlin-math。LiteRT 1.4.2 根据 Apache License 2.0 运行 RTMDet TFLite 模型；其随附许可证还完整保留了 Caffe/BSD 署名。</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">支持的 Android 设备上可选的 AR 摄像头和深度相关功能。由 Google 根据 ARCore SDK 条款和适用的开源声明提供。</string>
     <string name="licenses_firebase_title">Firebase</string>

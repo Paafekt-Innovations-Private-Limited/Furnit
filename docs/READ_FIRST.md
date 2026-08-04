@@ -2,7 +2,7 @@
 
 This is the compact active context for contributors and coding agents. It records
 settled facts that should not be reconstructed from chat history or stale audits.
-Last verified: 2026-08-03.
+Last verified: 2026-08-05.
 
 ## Settled product and ownership facts
 
@@ -39,13 +39,13 @@ the resolved cause.
 
 ## Android login behavior
 
-- Country preselection is locale-only:
-  `CountryCode.getDefaultCountry()` reads `Locale.getDefault().country`.
-- A phone in India can therefore default to UK (`+44`) when its effective locale is
-  `en-GB`. The picker remains the manual override. SIM/network/IP lookup is not active.
-- The six OTP fields retain manual entry and now declare Android positional autofill
-  hints `smsOTPCode1` through `smsOTPCode6` on Android 8+. That code change requires a
-  subsequent Play release before users of the already-published build receive it.
+- Country preselection prefers the mobile-network country, then the SIM country, then
+  the effective app/device locale. The picker remains the manual override; IP lookup
+  and phone/SMS runtime permissions are not used for this choice.
+- The six OTP fields retain manual entry and declare Android positional autofill hints
+  `smsOTPCode1` through `smsOTPCode6` on Android 8+. The change is included in the
+  signed version 1.2 / code 5 artifact; Play publication of that artifact has not been
+  re-confirmed in this repository.
 - Do not start SMS User Consent in parallel with Firebase's SMS Retriever path without
   revalidating the Firebase Auth interaction. Manual entry must always remain usable.
 
@@ -76,6 +76,18 @@ the resolved cause.
 Use [`architecture.md`](architecture.md) and
 [`architecture/CODE_MAP.md`](architecture/CODE_MAP.md) for owning files and deeper
 links.
+
+## License and attribution packaging
+
+- Version 1.2 source on both platforms exposes a readable third-party notice and the
+  complete Apache License 2.0 text offline under Settings → Licenses.
+- Android additionally bundles LiteRT 1.4.2's complete combined license and required
+  Caffe/BSD attribution. `verifyLegalAssets` is a `preBuild` dependency.
+- Notices identify the exact **Depth Anything V2 Metric Indoor Small** checkpoint and
+  Paafekt's Core ML, ONNX, and LiteRT/TFLite model-format conversions.
+- The unresolved Hypersim CC-BY-SA training-data question remains a lawyer-priority
+  tail risk; packaging attribution does not decide that interpretation. See
+  [`MODEL_LICENSE_AUDIT.md`](MODEL_LICENSE_AUDIT.md).
 
 ## Documentation lifecycle
 

@@ -135,6 +135,7 @@
 "licenses.viewCcBy4" = "CC BY 4.0 ಪರವಾನಗಿ ನೋಡಿ";
 "licenses.viewApache2Code" = "Apache 2.0 ಪರವಾನಗಿ (ಕೋಡ್)";
 "licenses.viewFullLicense" = "ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ";
+"licenses.viewNotices" = "ಬಂಡಲ್ ಮಾಡಿದ ಸೂಚನೆಗಳನ್ನು ವೀಕ್ಷಿಸಿ";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — ಏಕ-ಫೋಟೋ ಕೊಠಡಿ ಪುನರ್‌ನಿರ್ಮಾಣಕ್ಕೆ ಮೆಟ್ರಿಕ್ ಒಳಾಂಗಣ ಆಳ. Small ತೂಕಗಳು Apache License 2.0 (Base/Large/Giant ಬಳಸಲಾಗುವುದಿಲ್ಲ).";
 "licenses.geoCalibTitle" = "GeoCalib";

@@ -654,15 +654,53 @@ struct HomeViewModelRow: View {
     }
 }
 
+private struct BundledLegalDocumentView: View {
+    let title: String
+    let resourceName: String
+
+    private var documentText: String {
+        guard let url = Bundle.main.url(forResource: resourceName, withExtension: "txt"),
+              let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            assertionFailure("Missing bundled legal document: \(resourceName).txt")
+            return ""
+        }
+        return contents
+    }
+
+    var body: some View {
+        ScrollView {
+            Text(documentText)
+                .font(.system(size: 12, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// Licenses & Attributions (Settings → Open Source Licenses). Depth Anything Small (Apache-2.0), GeoCalib (code Apache-2.0 / weights CC BY 4.0), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0), Three.js (MIT).
 struct LicensesView: View {
     private enum LicenseURL {
         static let mit = URL(string: "https://opensource.org/licenses/MIT")!
-        static let apache2 = URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!
         static let ccBy4 = URL(string: "https://creativecommons.org/licenses/by/4.0/legalcode")!
         static let hypersim = URL(string: "https://github.com/apple/ml-hypersim")!
         static let spzSwift = URL(string: "https://github.com/scier/spz-swift")!
         static let coco = URL(string: "https://cocodataset.org/#termsofuse")!
+    }
+
+    private func bundledDocumentLink(
+        _ label: String,
+        title: String,
+        resourceName: String
+    ) -> some View {
+        NavigationLink {
+            BundledLegalDocumentView(title: title, resourceName: resourceName)
+        } label: {
+            Text(label)
+        }
+        .font(.caption)
     }
 
     var body: some View {
@@ -671,6 +709,11 @@ struct LicensesView: View {
                 Text(L10n.Licenses.openSourceIntro)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                bundledDocumentLink(
+                    L10n.Licenses.viewNotices,
+                    title: L10n.Licenses.openSourceSection,
+                    resourceName: "THIRD_PARTY_NOTICES"
+                )
             } header: {
                 Text(L10n.Licenses.openSourceSection)
             }
@@ -683,8 +726,11 @@ struct LicensesView: View {
                     Text(L10n.Licenses.depthAnything)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
-                        .font(.caption)
+                    bundledDocumentLink(
+                        L10n.Licenses.viewFullLicense,
+                        title: L10n.Licenses.depthAnythingTitle,
+                        resourceName: "APACHE-2.0"
+                    )
                 }
                 .padding(.vertical, 4)
             }
@@ -713,8 +759,11 @@ struct LicensesView: View {
                         .foregroundColor(.secondary)
                     Link(L10n.Licenses.viewCcBy4, destination: LicenseURL.ccBy4)
                         .font(.caption)
-                    Link(L10n.Licenses.viewApache2Code, destination: LicenseURL.apache2)
-                        .font(.caption)
+                    bundledDocumentLink(
+                        L10n.Licenses.viewApache2Code,
+                        title: L10n.Licenses.geoCalibTitle,
+                        resourceName: "APACHE-2.0"
+                    )
                 }
                 .padding(.vertical, 4)
             }
@@ -755,8 +804,11 @@ struct LicensesView: View {
                     Text(L10n.Licenses.firebase)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
-                        .font(.caption)
+                    bundledDocumentLink(
+                        L10n.Licenses.viewFullLicense,
+                        title: L10n.Licenses.firebaseTitle,
+                        resourceName: "APACHE-2.0"
+                    )
                 }
                 .padding(.vertical, 4)
             }
@@ -769,8 +821,11 @@ struct LicensesView: View {
                     Text(L10n.Licenses.rtmdet)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
-                        .font(.caption)
+                    bundledDocumentLink(
+                        L10n.Licenses.viewFullLicense,
+                        title: L10n.Licenses.rtmdetTitle,
+                        resourceName: "APACHE-2.0"
+                    )
                 }
                 .padding(.vertical, 4)
             }

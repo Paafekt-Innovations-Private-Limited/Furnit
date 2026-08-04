@@ -115,12 +115,13 @@
     <string name="licenses_geo_calib_title">GeoCalib</string>
     <string name="licenses_geo_calib">ফোকাল দৈর্ঘ্য এবং মাধ্যাকর্ষণ ইঙ্গিতগুলির জন্য একক-চিত্র ক্যামেরা ক্রমাঙ্কন। কপিরাইট 2024 ETH জুরিখ। Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সকৃত কোড। ক্রিয়েটিভ কমন্স অ্যাট্রিবিউশন 4.0 (CC BY 4.0) এর অধীনে লাইসেন্সকৃত পিনহোল ওজন পাঠানো হয়েছে।</string>
     <string name="licenses_view_full_license">সম্পূর্ণ লাইসেন্স দেখুন</string>
+    <string name="licenses_view_notices">অন্তর্ভুক্ত নোটিশ দেখুন</string>
     <string name="licenses_view_apache_2_code">Apache 2.0 লাইসেন্স দেখুন (কোড)</string>
     <string name="licenses_view_cc_by_4">CC BY 4.0 লাইসেন্স দেখুন</string>
     <string name="licenses_android_platform_title">AndroidX, Kotlin, CameraX &amp; Material Components</string>
     <string name="licenses_android_platform">অ্যান্ড্রয়েড প্ল্যাটফর্ম সমর্থন লাইব্রেরি, কোটলিন রানটাইম উপাদান, CameraX, WebKit, ExifInterface, এবং Material Components অ্যাপ UI, ক্যামেরা, জীবনচক্র এবং প্ল্যাটফর্ম একীকরণের জন্য ব্যবহৃত হয়। Apache License 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_other_runtime_title">অন্যান্য অ্যান্ড্রয়েড রানটাইম লাইব্রেরি</string>
-    <string name="licenses_other_runtime">অতিরিক্ত অনুমতিমূলক রানটাইম নির্ভরতাগুলি ফায়ারবেস, সিনভিউ, ফিলামেন্ট এবং অ্যান্ড্রয়েডএক্স দ্বারা ট্রানজিটিভভাবে টানা হয়, যার মধ্যে কম্পোজ কম্পোনেন্ট, OkHttp/ওকিও, ফুয়েল, গুয়াভা লিসেনেবল ফিউচার, jspecify টীকা এবং kotlin-math অন্তর্ভুক্ত রয়েছে।</string>
+    <string name="licenses_other_runtime">অতিরিক্ত অনুমতিমূলক রানটাইম নির্ভরতাগুলি ফায়ারবেস, সিনভিউ, ফিলামেন্ট এবং অ্যান্ড্রয়েডএক্স দ্বারা ট্রানজিটিভভাবে টানা হয়, যার মধ্যে কম্পোজ কম্পোনেন্ট, OkHttp/ওকিও, ফুয়েল, গুয়াভা লিসেনেবল ফিউচার, jspecify টীকা এবং kotlin-math অন্তর্ভুক্ত রয়েছে। LiteRT 1.4.2 Apache License 2.0-এর অধীনে RTMDet TFLite মডেল চালায়; এর অন্তর্ভুক্ত লাইসেন্সে Caffe/BSD স্বীকৃতিও পুনরুৎপাদিত হয়েছে।</string>
     <string name="licenses_arcore_title">ARCore</string>
     <string name="licenses_arcore">সমর্থিত অ্যান্ড্রয়েড ডিভাইসে ঐচ্ছিক AR ক্যামেরা এবং গভীরতা-সম্পর্কিত ক্ষমতা। ARCore SDK শর্তাবলী এবং প্রযোজ্য ওপেন সোর্স বিজ্ঞপ্তির অধীনে Google দ্বারা সরবরাহ করা হয়েছে।</string>
     <string name="licenses_firebase_title">Firebase</string>

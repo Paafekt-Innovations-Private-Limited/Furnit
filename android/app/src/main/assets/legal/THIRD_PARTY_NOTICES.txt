@@ -1,8 +1,8 @@
 Paafekt for Android - Third-Party Notices
 
-This file summarizes key third-party software, model assets, datasets, and platform SDKs
-distributed with or used by the Android app. It is a diligence aid and does not replace
-the full license texts at the linked upstream sources.
+Paafekt Innovations Private Limited distributes this readable notice with the Android
+app. The complete Apache License 2.0 is bundled at legal/APACHE-2.0.txt. LiteRT's
+complete combined license and attribution text is bundled at legal/LITERT-LICENSE.txt.
 
 Android / Google platform components
 - AndroidX Core, AppCompat, Activity, Fragment, Lifecycle, WebKit, ExifInterface, CameraX,
@@ -17,6 +17,9 @@ Android / Google platform components
 
 Rendering and inference
 - SceneView and Google Filament: Apache License 2.0.
+- LiteRT 1.4.2 and its GPU delegate: Apache License 2.0. LiteRT's distributed license
+  also contains the required Caffe/BSD copyright and attribution text; Paafekt
+  reproduces that complete text in legal/LITERT-LICENSE.txt.
 - ONNX Runtime for Android: MIT License, Microsoft Corporation.
 - Three.js r170: MIT License, three.js authors.
 
@@ -30,4 +33,18 @@ Model assets and datasets
 - GeoCalib: code Apache License 2.0, ETH Zurich; shipped pinhole weights Creative Commons
   Attribution 4.0.
 
-In-app Settings > Licenses and Settings > Credits provide user-facing attribution and links.
+Model format modifications
+- Depth Anything V2 Metric Indoor Small: Paafekt converted the upstream Small metric
+  indoor checkpoint to ONNX for Android and Core ML for iOS on-device inference.
+- GeoCalib: Paafekt converted the upstream pinhole CNN weights to ONNX for Android and
+  Core ML for iOS; the applications implement the remaining calibration optimization.
+- RTMDet-Ins-m: Paafekt converted the OpenMMLab checkpoint/export to Core ML for iOS
+  and an FP16 LiteRT/TFLite graph for Android. The Android export includes graph
+  adaptations for mobile conversion and the app's documented input/output contract.
+
+These converted files and export-graph adaptations were changed by Paafekt and are not
+the upstream projects' original distribution files. Upstream authors are not responsible
+for Paafekt's conversions or application integration.
+
+In-app Settings > Licenses displays this notice and bundled license texts offline.
+Settings > Credits provides additional project and dataset attribution links.

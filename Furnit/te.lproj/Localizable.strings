@@ -135,6 +135,7 @@
 "licenses.viewCcBy4" = "CC BY 4.0 లైసెన్స్ చూడండి";
 "licenses.viewApache2Code" = "Apache 2.0 లైసెన్స్ (కోడ్)";
 "licenses.viewFullLicense" = "పూర్తి లైసెన్స్ చూడండి";
+"licenses.viewNotices" = "బండిల్ చేసిన నోటీసులను వీక్షించండి";
 "licenses.depthAnythingTitle" = "Depth Anything V2 Metric Indoor Small";
 "licenses.depthAnything" = "Depth Anything V2 Metric Indoor Small — ఒకే ఫోటో గది పునర్నిర్మాణానికి మెట్రిక్ ఇండోర్ లోతు. Small వెయిట్లు Apache License 2.0 (Base/Large/Giant ఉపయోగించబడవు).";
 "licenses.geoCalibTitle" = "GeoCalib";
