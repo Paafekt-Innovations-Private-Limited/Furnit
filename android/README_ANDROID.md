@@ -51,6 +51,11 @@ bundle (verify with `jarsigner -verify` on the AAB).
 
 Output: `app/build/outputs/bundle/release/app-release.aab`.
 
+The release toolchain is Kotlin 2.2.21, Android Gradle Plugin 8.10.1, and Gradle
+8.11.1. Keep these versions compatible when updating build tooling: the previous
+AGP 8.6.1 shrinker completed but could not parse Kotlin 2.2 metadata cleanly during
+R8 minification.
+
 Per-release checklist:
 
 - Archive `app/build/outputs/mapping/release/mapping.txt` and upload it with the
