@@ -1,7 +1,8 @@
 # Furniture Fit frame performance
 
 Android follows the same live-frame ownership rules as Swift even though the model runtimes differ
-(FP16 LiteRT GPU with ONNX Runtime fallback on Android, Core ML on iOS).
+(FP16 LiteRT on Android, Core ML on iOS). Android packages one RTMDet model; LiteRT uses the GPU
+delegate when supported and otherwise executes that same model with XNNPACK CPU.
 
 RTMDet lifecycle also follows Swift: app launch does not load or warm the detector; AI photo-room
 generation requests it for the upcoming preview; room-viewer appearance ensures it asynchronously;
@@ -33,7 +34,7 @@ While a room viewer owns RTMDet, the serial inference executor owns reusable sto
 - the scaled model-input bitmap;
 - model-input ARGB pixels;
 - full-frame source and cutout pixel arrays;
-- LiteRT NHWC BGR input and named NHWC/NCHW output arrays, or ONNX fallback input storage/tensor;
+- LiteRT NHWC BGR input and named NHWC/NCHW output arrays;
 - copied ARCore Y/U/V planes and direct ARGB output;
 - CameraX RGBA packing and periodic color sampling.
 
@@ -59,7 +60,7 @@ adb logcat -s RTMDetLiteRt:I FurnitureFitManager:I tflite:I FurnitureFitAR:I \
   FurnitureFitThermal:D GLBRoomInlineBrainThermal:D -v time
 ```
 
-Use `stageMillis` to separate preprocessing, LiteRT/ONNX inference, parsing, and mask composition. Measure
+Use `stageMillis` to separate preprocessing, LiteRT inference, parsing, and mask composition. Measure
 UI rendering separately with `adb shell dumpsys gfxinfo com.paafekt.android framestats`; a release
 Play build intentionally does not emit application diagnostic logs.
 

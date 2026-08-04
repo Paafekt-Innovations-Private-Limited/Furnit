@@ -38,10 +38,10 @@ Toggle full-video mode with the in-room **viewfinder** button (`ic_text_viewfind
 RTMDet ownership matches Swift: application launch does not load the model; starting AI photo-room
 generation requests it for the upcoming preview; opening a room viewer also ensures its shared
 backend asynchronously; activating Fit ensures it again; and leaving a saved-room viewer releases
-the backend after accepted inference drains. The primary path is the FP16 LiteRT GPU model, with
-ONNX Runtime retained as a hardware-first NNAPI then XNNPACK fallback. Identify mode consumes only
-cls/bbox results and skips mask-plane/affinity work; segmentation modes use kernels plus `mask_feat`
-to build cutouts.
+the backend after accepted inference drains. RTMDet ships as one FP16 LiteRT model: it uses the GPU
+delegate on supported devices and otherwise runs the same model through XNNPACK CPU. Identify mode
+consumes only cls/bbox results and skips mask-plane/affinity work; segmentation modes use kernels
+plus `mask_feat` to build cutouts.
 
 Live frame ownership matches Swift: busy AR frames are dropped before CPU-image/depth work, accepted
 AR frames leave the GL thread after a quick plane copy, and CameraX supplies native rotated RGBA with
@@ -55,10 +55,10 @@ Model assets ship via install-time Play Asset Delivery packs (see `settings.grad
 
 - `room_generation_models/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx`
 - `room_generation_models/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx`
-- `rtmdet_models/src/main/assets/rtmdet-ins-m-raw.onnx`
+- `rtmdet_models/src/main/assets/rtmdet-ins-m-raw-fp16.tflite`
 
 Install-time packs are merged into the app's `AssetManager` at runtime, so code still loads
-them by the same relative paths (`room_generation/...`, `rtmdet-ins-m-raw.onnx`).
+them by the same relative paths (`room_generation/...`, `rtmdet-ins-m-raw-fp16.tflite`).
 
 Do not copy Core ML packages into Android assets.
 

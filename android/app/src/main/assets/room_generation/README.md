@@ -11,7 +11,7 @@ folder in the app module is kept only for the asset contract documentation):
 
 - `room_generation_models/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx`
 - `room_generation_models/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx`
-- `rtmdet_models/src/main/assets/rtmdet-ins-m-raw.onnx`
+- `rtmdet_models/src/main/assets/rtmdet-ins-m-raw-fp16.tflite`
 
 The Android GeoCalib ONNX and iOS GeoCalib ML package are exported from the same
 pretrained pinhole checkpoint. Their platform-native inference wrappers feed the same

@@ -1,6 +1,6 @@
 # Model & Weights License Audit — Paafekt
 
-> **Not legal advice.** Primary-source research completed **2026-07-11** (GeoCalib weights update **2026-07-19**). Checked by: _[fill name]_. Lawyer review: _[date / firm / outcome]_.
+> **Not legal advice.** Primary-source research completed **2026-07-11** (GeoCalib weights update **2026-07-19**; Android RTMDet artifact inventory updated **2026-08-04**). Checked by: _[fill name]_. Lawyer review: _[date / firm / outcome]_.
 
 ---
 
@@ -50,7 +50,7 @@ Each model has **three separate licenses that can differ** — check all three; 
 |---------|----------|-----|---------|
 | Yes | Depth Anything V2 Metric Indoor Small | `DepthAnythingV2MetricIndoorSmall.mlpackage` | `depth_anything_v2_metric_indoor_small.onnx` |
 | Yes | GeoCalib Pinhole CNN | `GeoCalibPinholeCNN.mlpackage` | `geocalib_pinhole_cnn.onnx` |
-| Yes | RTMDet-Ins-m | `rtmdet-ins-m.mlpackage` (ODR) | `rtmdet-ins-m-raw.onnx` |
+| Yes | RTMDet-Ins-m | `rtmdet-ins-m.mlpackage` (ODR) | `rtmdet-ins-m-raw-fp16.tflite` |
 | Yes | MetalSplatter 1.0.1 | SPM | — |
 | Yes | spz-swift 2.1.0 | SPM (transitive) | — |
 | Yes | Three.js r170 | WebView GLB/Mesh | WebView GLB |
@@ -157,7 +157,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | M-LSD | Development scripts only (`scripts/mlsd_draw_room_lines.py`, `scripts/structure_box_measure_room.py`); no app runtime integration | Repo grep |
 | Whisper | Zero references | Repo grep |
 | Apple SHARP | Doc mention only (historical) | was `docs/UI_AUDIT.md`; splats now MetalSplatter |
-| ExecuTorch / NCNN / LiteRT | No active runtime integration | Repo grep |
+| ExecuTorch / NCNN | No active runtime integration | Repo grep |
 
 ---
 
@@ -167,6 +167,7 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 |-----------|---------|---------|------------|-------------|----------------|------------------|------|
 | Core ML / RealityKit | System | Apple SDK terms | Per Apple agreement | — | Apple developer terms | — | — |
 | ONNX Runtime | 1.24.2 | MIT | YES | Copyright notice | https://github.com/microsoft/onnxruntime/blob/v1.24.2/LICENSE | **Yes** (Android) | 2026-07-18 |
+| LiteRT | 1.4.2 | Apache-2.0 | YES | NOTICE + license copy | Published Maven POM for `com.google.ai.edge.litert:litert:1.4.2` | **No** | 2026-08-04 |
 | Three.js | r170 | MIT | YES | Copyright notice | Bundled header: `SPDX-License-Identifier: MIT`; https://github.com/mrdoob/three.js/blob/r170/LICENSE | **Yes** | 2026-07-11 |
 | Filament (via SceneView) | 2.0.3 | Apache-2.0 | YES | NOTICE | https://github.com/google/filament/blob/main/LICENSE | **Yes** (Android) | 2026-07-18 |
 | MetalSplatter | 1.0.1 | MIT | YES | Copyright notice | https://github.com/scier/MetalSplatter/blob/main/LICENSE | **Yes** (iOS) | 2026-07-11 |

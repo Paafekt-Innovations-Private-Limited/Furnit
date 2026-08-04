@@ -20,8 +20,8 @@
     </style>
   </defs>
 
-  <text x="32" y="40" class="title">RTMDet segmentation — GLBRoomActivity (Android / ONNX Runtime)</text>
-  <text x="32" y="60" class="sub">Inline brain overlay on WebView room. Swift-style floating controls · shared ONNX backend · fast identify. ★ = ONNX Runtime, ☆ = Kotlin CPU.</text>
+  <text x="32" y="40" class="title">RTMDet segmentation — GLBRoomActivity (Android / LiteRT)</text>
+  <text x="32" y="60" class="sub">Inline brain overlay on WebView room. Swift-style floating controls · shared LiteRT backend · fast identify. ★ = LiteRT, ☆ = Kotlin CPU.</text>
 
   <rect x="560" y="74" width="14" height="14" rx="3" class="acc"/><text x="580" y="86" class="legtxt">ONNX RT (CPU/XNNPACK)</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Kotlin CPU</text>
@@ -51,7 +51,7 @@
 
   <g><rect x="250" y="496" width="420" height="52" rx="12" class="acc"/>
     <text x="460" y="518" text-anchor="middle" class="bt">★ OrtSession.run — RTMDet-Ins</text>
-    <text x="460" y="536" text-anchor="middle" class="bs">rtmdet-ins-m-raw.onnx · shared OrtEnvironment / OrtSession / executor</text></g>
+    <text x="460" y="536" text-anchor="middle" class="bs">rtmdet-ins-m-raw-fp16.tflite · shared interpreter / delegate / executor</text></g>
   <path class="edge" d="M460,548 L460,582" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="582" width="420" height="52" rx="12" class="data"/>

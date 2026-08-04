@@ -60,8 +60,8 @@ At startup, `RoomGenerationAssets.logAvailability` logs packaged room-generation
 Expected today:
 
 - Depth Anything ONNX: present.
-- RTMDet FP16 LiteRT: present (primary GPU path).
-- RTMDet ONNX: present.
+- RTMDet FP16 LiteRT: present (GPU when supported, XNNPACK CPU otherwise).
+- RTMDet ONNX: absent; the retired fallback model must not be packaged.
 - GeoCalib pinhole CNN ONNX: present and loaded by `GeoCalibCalibrationService`; focal/gravity fallbacks remain available if inference cannot run.
 
 ## Authentication smoke test

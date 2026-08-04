@@ -45,7 +45,7 @@ Model assets live in install-time Play Asset Delivery packs (merged into the app
 ```text
 room_generation_models/src/main/assets/room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx
 room_generation_models/src/main/assets/room_generation/geocalib/geocalib_pinhole_cnn.onnx
-rtmdet_models/src/main/assets/rtmdet-ins-m-raw.onnx
+rtmdet_models/src/main/assets/rtmdet-ins-m-raw-fp16.tflite
 ```
 
 The metric measurement pipeline is wired and runs Depth Anything plus RTMDet today. If the GeoCalib ONNX is absent, it uses fallback focal/gravity calibration.

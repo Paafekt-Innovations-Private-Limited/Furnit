@@ -29,8 +29,6 @@ import onnx
 from onnx import TensorProto, checker, helper, numpy_helper
 
 
-REPO_ANDROID = Path(__file__).resolve().parent.parent
-DEFAULT_MODEL = REPO_ANDROID / "rtmdet_models/src/main/assets/rtmdet-ins-m-raw.onnx"
 CONTRACT_KEY = "furnit.rtmdet.contract"
 CONTRACT_VALUE = "swift_raw_v2"
 PREPROCESS_KEY = "furnit.rtmdet.preprocess"
@@ -272,7 +270,7 @@ def _verify(original_session, rewritten_path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()

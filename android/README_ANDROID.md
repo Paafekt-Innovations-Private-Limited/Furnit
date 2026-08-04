@@ -81,21 +81,20 @@ Per-release checklist:
 - `RoomGenerationAssets` records the packaged Swift-parity asset contract.
 - Generated preview folders are promoted into `files/rooms/` only when the user saves the room.
 
-Android packages the Depth Anything metric depth and GeoCalib pinhole ONNX models plus RTMDet
-LiteRT/ONNX furniture-segmentation models via install-time Play Asset Delivery packs
+Android packages the Depth Anything metric depth and GeoCalib pinhole ONNX models plus one RTMDet
+LiteRT furniture-segmentation model via install-time Play Asset Delivery packs
 (`room_generation_models`, `rtmdet_models`). Install-time packs merge into the app's `AssetManager`,
 so runtime asset paths are unchanged.
 
 ## Furniture Segmentation
 
 - Primary model: `rtmdet-ins-m-raw-fp16.tflite` in the `rtmdet_models` install-time asset pack.
-- Fallback model: `rtmdet-ins-m-raw.onnx` in the same asset pack.
-- Runtime: persistent LiteRT 1.4.2 FP16 GPU delegate first; ONNX Runtime tries accelerator-only
-  NNAPI FP16 and then XNNPACK/CPU if LiteRT cannot initialize.
+- Runtime: persistent LiteRT 1.4.2; the single packaged model uses the GPU delegate when supported
+  and otherwise runs through XNNPACK CPU. No RTMDet ONNX fallback is shipped.
 - Manager: `app/src/main/java/com/furnit/android/services/FurnitureFitManager.kt`.
 - Backend lifetime: Swift-parity ownership—do not load at application launch; request RTMDet when
   AI photo-room generation begins and when a room appears; ensure again when Fit activates; release
-  the LiteRT interpreter/delegate or ONNX session and reusable scratch storage when the saved-room
+  the LiteRT interpreter/delegate and reusable scratch storage when the saved-room
   viewer disappears. The serial inference executor remains process infrastructure rather than
   loaded model state.
 - Fast identify: live identify copies/decodes cls and bbox outputs only; kernel/mask layout copies,

@@ -8,7 +8,7 @@ then use this index for implementation and operations.
 |---|---|
 | [`AUTHENTICATION.md`](AUTHENTICATION.md) | Firebase Phone Auth identity, Play signing certificates, country preselection, OTP autofill, and production verification. |
 | [`LOCALIZATION.md`](LOCALIZATION.md) | Supported locales, resource/runtime rules, Android app-language behavior, RTL, and verification. |
-| [`FURNITURE_FIT_PERFORMANCE.md`](FURNITURE_FIT_PERFORMANCE.md) | FP16 LiteRT GPU/ONNX fallback, Swift-parity frame scheduling, reusable buffers, thermal cadence, and performance verification. |
+| [`FURNITURE_FIT_PERFORMANCE.md`](FURNITURE_FIT_PERFORMANCE.md) | FP16 LiteRT GPU/XNNPACK execution, Swift-parity frame scheduling, reusable buffers, thermal cadence, and performance verification. |
 | [`ANDROID_ROOM_CREATION.md`](ANDROID_ROOM_CREATION.md) | Photo/manual room-generation flow, GLB output, packaged models, and viewer behavior. |
 | [`ANDROID_STUDIO_RUN.md`](ANDROID_STUDIO_RUN.md) | Open, build, run, device requirements, and log filters. |
 | [`TEST_AND_SETTINGS.md`](TEST_AND_SETTINGS.md) | Build and on-device smoke tests for room creation and Furniture Fit. |

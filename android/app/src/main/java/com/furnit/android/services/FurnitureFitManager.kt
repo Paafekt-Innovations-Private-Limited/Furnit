@@ -53,9 +53,9 @@ data class SegmentationResult(
 /**
  * FurnitureFitManager handles furniture detection and selected-object cutout generation.
  *
- * Inference backend: FP16 LiteRT GPU with ONNX Runtime fallback. The renderer outputs real camera
- * pixels only inside the selected mask and leaves every other pixel transparent so the room
- * remains visible behind it.
+ * Inference backend: FP16 LiteRT, using the GPU when supported and XNNPACK CPU otherwise. The
+ * renderer outputs real camera pixels only inside the selected mask and leaves every other pixel
+ * transparent so the room remains visible behind it.
  */
 class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -79,9 +79,7 @@ class FurnitureFitManager(private val context: Context) {
 
     companion object {
         private const val TAG = "FurnitureFitManager"
-        private const val RTMDET_ONNX_MODEL_ASSET = RoomGenerationAssets.RTMDET_INS_M_RAW_ONNX
         private const val RTMDET_TFLITE_MODEL_ASSET = RoomGenerationAssets.RTMDET_INS_M_RAW_FP16_TFLITE
-        private const val DEFAULT_ONNX_MODEL_ASSET = RTMDET_ONNX_MODEL_ASSET
         private const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
         private const val RTMDET_CONFIDENCE_THRESHOLD = RTMDetSwiftParity.CONFIDENCE_THRESHOLD
         private const val LOW_CONFIDENCE_OVERSIZED_THRESHOLD = 0.65f
@@ -249,10 +247,8 @@ class FurnitureFitManager(private val context: Context) {
         fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean =
             ArSupportChecker.isArCoreSupported(context)
 
-        /** True when a room viewer's [initializeAuto] has already created the shared session. */
-        fun isSharedBackendReady(): Boolean {
-            return sharedLiteRtBackend != null || sharedBackend?.assetName == DEFAULT_ONNX_MODEL_ASSET
-        }
+        /** True when a room viewer's [initializeAuto] has already created the shared interpreter. */
+        fun isSharedBackendReady(): Boolean = sharedLiteRtBackend != null
 
         /**
          * Mirrors Swift `RTMDetModelService.releaseResources()` when a room viewer disappears.
@@ -369,11 +365,10 @@ class FurnitureFitManager(private val context: Context) {
                         embedsRtmdetPreprocess = modelMetadata[RTMDET_EMBEDDED_PREPROCESS_METADATA] ==
                             RTMDET_EMBEDDED_PREPROCESS_VALUE,
                         executionProvider = createdSession.executionProvider,
-                        isRtmdetRaw = onnxAssetName == RTMDET_ONNX_MODEL_ASSET ||
-                            (session.outputInfo.containsKey("cls_80") &&
+                        isRtmdetRaw = session.outputInfo.containsKey("cls_80") &&
                                 session.outputInfo.containsKey("bbox_80") &&
                                 session.outputInfo.containsKey("kernel_80") &&
-                                session.outputInfo.containsKey("mask_feat")),
+                                session.outputInfo.containsKey("mask_feat"),
                     )
                     sharedBackend = backend
                     LogUtil.i(
@@ -507,62 +502,28 @@ class FurnitureFitManager(private val context: Context) {
         val isRtmdetRaw: Boolean,
     )
 
-    /**
-     * Initializes the accelerated RTMDet backend, retaining ONNX Runtime as fallback.
-     */
+    /** Initializes the packaged FP16 LiteRT RTMDet backend. */
     fun initializeAuto(): Boolean {
         LogUtil.i(TAG, "Initializing furniture segmentation backend...")
 
-        try {
-            val backend = sharedLiteRtBackend(context)
-            if (backend != null) {
-                liteRtBackend = backend
-                ortBackend = null
-                ortEnv = null
-                ortSession = null
-                loadedOnnxAssetName = null
-                LogUtil.i(TAG, "Using ${backend.executionProvider} RTMDet backend")
-                return true
-            }
+        val backend = try {
+            sharedLiteRtBackend(context)
         } catch (e: Exception) {
             LogUtil.w(TAG, "LiteRT initialization failed: ${e.message}")
+            null
+        }
+        if (backend == null) {
+            LogUtil.e(TAG, "LiteRT initialization failed - segmentation disabled")
+            return false
         }
 
-        try {
-            initializeOnnx()
-            if (ortSession != null) {
-                LogUtil.i(TAG, "Using ONNX Runtime backend")
-                return true
-            }
-        } catch (e: Exception) {
-            LogUtil.w(TAG, "ONNX initialization failed: ${e.message}")
-        }
-
-        LogUtil.e(TAG, "ONNX initialization failed - segmentation disabled")
-        return false
-    }
-
-    /** Initialize ONNX Runtime session from asset ONNX model. */
-    fun initializeOnnx(onnxAssetName: String = DEFAULT_ONNX_MODEL_ASSET) {
-        val initStartNanos = System.nanoTime()
-        LogUtil.i(TAG, "initializeOnnx called with '$onnxAssetName'")
-        val backend = sharedOnnxBackend(context, onnxAssetName)
-        if (backend != null) {
-            liteRtBackend = null
-            ortBackend = backend
-            ortEnv = backend.env
-            ortSession = backend.session
-            loadedOnnxAssetName = backend.assetName
-            LogUtil.i(
-                TAG,
-                "Using shared ONNX model '$onnxAssetName' in ${elapsedMillis(initStartNanos)}ms",
-            )
-        } else {
-            ortBackend = null
-            ortEnv = null
-            ortSession = null
-            loadedOnnxAssetName = null
-        }
+        liteRtBackend = backend
+        ortBackend = null
+        ortEnv = null
+        ortSession = null
+        loadedOnnxAssetName = null
+        LogUtil.i(TAG, "Using ${backend.executionProvider} RTMDet backend")
+        return true
     }
 
     private fun inputFloatBuffer(floatCount: Int): FloatBuffer {
@@ -1920,11 +1881,10 @@ class FurnitureFitManager(private val context: Context) {
         (System.nanoTime() - startNanos) / 1_000_000L
 
     private fun isRtmdetRawSession(session: OrtSession): Boolean {
-        return loadedOnnxAssetName == RTMDET_ONNX_MODEL_ASSET ||
-            (session.outputInfo.containsKey("cls_80") &&
+        return session.outputInfo.containsKey("cls_80") &&
                 session.outputInfo.containsKey("bbox_80") &&
                 session.outputInfo.containsKey("kernel_80") &&
-                session.outputInfo.containsKey("mask_feat"))
+                session.outputInfo.containsKey("mask_feat")
     }
 
     private fun preprocessFrameForModel(

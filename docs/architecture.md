@@ -12,7 +12,7 @@ native implementations. The authoritative path-to-code inventory is
 | Authentication | `LoginView` → `AuthenticationManager` → `OTPVerificationView` → Firebase Auth | `LoginActivity` → `AuthenticationManager` → `OTPVerificationActivity` → Firebase Auth |
 | AI room creation | Flat preview immediately → GeoCalib/Depth Anything/RTMDet on first save → textured USDZ | Immediate method picker → sampled EXIF-aware decode → flat full-photo GLB preview; metric measurement stack is wired beside generation |
 | Manual room creation | Boundary editor → `SinglePhotoRoomReconstructor` → textured mesh/USDZ path | `RoomBoundaryActivity` → five-plane textured GLB → `GLBRoomActivity` |
-| Furniture Fit | RTMDet Core ML → class-aware NMS → mask affinity → transparent overlays | RTMDet FP16 LiteRT GPU (ONNX fallback) → boxes-only identify or mask segmentation → transparent overlays |
+| Furniture Fit | RTMDet Core ML → class-aware NMS → mask affinity → transparent overlays | RTMDet FP16 LiteRT (GPU or XNNPACK CPU) → boxes-only identify or mask segmentation → transparent overlays |
 | Saved room | Private `Documents/SavedRooms` | Private `files/rooms` (excluded from backup/transfer) |
 
 ## Deep dives
