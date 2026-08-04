@@ -14,15 +14,22 @@ class OrientationLockManager {
 
     private init() {}
 
+    private var foregroundWindowScene: UIWindowScene? {
+        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return windowScenes.first(where: { $0.activationState == .foregroundActive }) ?? windowScenes.first
+    }
+
     /// Lock to portrait only
     func lockToPortrait() {
         lockedOrientation = .portrait
 
         // Force orientation update on iOS 16+
         if #available(iOS 16.0, *) {
-            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
-            windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            let windowScene = foregroundWindowScene
             windowScene?.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { error in
+                logDebug("⚠️ [Orientation] Portrait geometry update failed: \(error.localizedDescription)")
+            }
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
         }
@@ -32,13 +39,29 @@ class OrientationLockManager {
     func lockToLandscape() {
         lockedOrientation = .landscape
 
-        // Force orientation update on iOS 16+
+        // Request either landscape side so iOS can follow how the user is holding the phone.
+        // Forcing landscapeRight caused a 180° flip for landscapeLeft captures.
         if #available(iOS 16.0, *) {
-            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
-            windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+            let windowScene = foregroundWindowScene
+            let requestedMask: UIInterfaceOrientationMask
+            switch UIDevice.current.orientation {
+            case .landscapeLeft:
+                // Device and interface landscape names are intentionally opposite in UIKit.
+                requestedMask = .landscapeRight
+            case .landscapeRight:
+                requestedMask = .landscapeLeft
+            default:
+                requestedMask = .landscape
+            }
             windowScene?.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: requestedMask)) { error in
+                logDebug("⚠️ [Orientation] Landscape geometry update failed: \(error.localizedDescription)")
+            }
         } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            let interfaceOrientation: UIInterfaceOrientation = UIDevice.current.orientation == .landscapeLeft
+                ? .landscapeRight
+                : .landscapeLeft
+            UIDevice.current.setValue(interfaceOrientation.rawValue, forKey: "orientation")
         }
     }
 
@@ -47,7 +70,7 @@ class OrientationLockManager {
         lockedOrientation = .all
 
         if #available(iOS 16.0, *) {
-            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+            let windowScene = foregroundWindowScene
             windowScene?.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
         }
     }

@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
@@ -33,8 +32,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
-import com.furnit.android.ar.ArSupportChecker
-import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.services.PhotoRoomGenerationService
@@ -78,9 +75,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var selectedImageUri: Uri? = null
     private var cameraPhotoUri: Uri? = null
     private var detectedOrientation: PhotoOrientation = PhotoOrientation.PORTRAIT
-    /** True after user tapped the orientation row — keeps true landscape for 0.5× shots when needed. */
-    private var orientationUserOverridden: Boolean = false
-    /** True when the user indicates the photo was taken with the wide-angle (0.5x) lens; fixes camera position in the 3D viewer. */
+    /** True when the selected/captured source uses the wide-angle camera. */
     private var photoWideAngle: Boolean = false
     private var selectedCameraMode: CameraCaptureMode = CameraCaptureMode.STANDARD
 
@@ -90,7 +85,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var aiGenerationRunning = false
     /** Bumped on cancel/restart so stale generation callbacks are ignored and folders deleted. */
     private var aiSessionId: Int = 0
-    private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
     private val furnitureFitManager by lazy { FurnitureFitManager(this) }
     private var furnitureFitInitialized = false
     private var furnitureFitPreloadJob: Job? = null
@@ -104,7 +98,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         if (uri != null) {
             DebugLogger.d("SinglePhotoRoom", "Image selected: $uri")
             selectedImageUri = uri
-            pendingMetricAnchors = null
             loadImageFromUri(uri)
         } else {
             DebugLogger.d("SinglePhotoRoom", "No image selected")
@@ -136,35 +129,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    private val arPhotoCaptureLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode != RESULT_OK) {
-            DebugLogger.d("SinglePhotoRoom", "AR photo capture cancelled")
-            return@registerForActivityResult
-        }
-        val data = result.data
-        val imageUriString = data?.getStringExtra(ArDepthPhotoCaptureActivity.EXTRA_CAPTURED_IMAGE_URI)
-        val anchors: ArrayList<MetricAnchor>? = data?.extras?.let { bundle ->
-            @Suppress("UNCHECKED_CAST", "DEPRECATION")
-            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                bundle.getSerializable(ArDepthPhotoCaptureActivity.EXTRA_METRIC_ANCHORS, ArrayList::class.java)
-            } else {
-                bundle.getSerializable(ArDepthPhotoCaptureActivity.EXTRA_METRIC_ANCHORS)
-            }) as? ArrayList<MetricAnchor>
-        }
-        if (imageUriString.isNullOrBlank()) {
-            DebugLogger.d("SinglePhotoRoom", "AR photo capture missing image uri")
-            Toast.makeText(this, getString(R.string.camera_ar_photo_failed), Toast.LENGTH_SHORT).show()
-            return@registerForActivityResult
-        }
-        photoWideAngle = false
-        pendingMetricAnchors = anchors
-        selectedImageUri = Uri.parse(imageUriString)
-        DebugLogger.d("SinglePhotoRoom", "AR photo captured with anchors=${anchors?.size ?: 0}")
-        loadImageFromUri(selectedImageUri!!)
-    }
-
     private val wideAngleCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -179,7 +143,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             return@registerForActivityResult
         }
         photoWideAngle = true
-        pendingMetricAnchors = null
         selectedImageUri = Uri.parse(imageUriString)
         DebugLogger.d("SinglePhotoRoom", "Wide-angle photo captured: $selectedImageUri")
         loadImageFromUri(selectedImageUri!!)
@@ -1047,10 +1010,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     private fun launchCamera() {
         photoWideAngle = false
-        if (ArSupportChecker.isArCoreSupported(this)) {
-            arPhotoCaptureLauncher.launch(Intent(this, ArDepthPhotoCaptureActivity::class.java))
-            return
-        }
         try {
             val photoFile = createImageFile()
             cameraPhotoUri = FileProvider.getUriForFile(
@@ -1132,7 +1091,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             selectedBitmap = bitmap
             selectedImageView.setImageBitmap(bitmap)
             singleImageScanStatusView.visibility = View.GONE
-            orientationUserOverridden = false
             // Keep photoWideAngle from the capture/picker path that selected this image.
 
             // Must match bitmap pixels used for room generation (see PhotoOrientation.fromBitmapDimensions KDoc).
@@ -1146,20 +1104,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    /** Matches room metadata (ultra-wide portrait bias unless user locked orientation). */
+    /** Viewer orientation must follow the EXIF-normalized pixels exactly. */
     private fun metadataOrientationStringForViewer(): String {
-        val o = if (orientationUserOverridden) {
-            detectedOrientation
-        } else {
-            PhotoOrientation.coercePortraitForUltraWide(detectedOrientation, photoWideAngle)
-        }
-        return if (o.isLandscape) "landscape" else "portrait"
+        return if (detectedOrientation.isLandscape) "landscape" else "portrait"
     }
 
     private fun updateOrientationIndicator() {
         DebugLogger.d(
             "SinglePhotoRoom",
-            "Detected orientation: ${detectedOrientation.value} (userOverridden=$orientationUserOverridden)",
+            "Detected orientation: ${detectedOrientation.value}",
         )
     }
 
@@ -1482,7 +1435,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         initialView.visibility = View.VISIBLE
         selectedBitmap = null
         selectedImageUri = null
-        orientationUserOverridden = false
         photoWideAngle = false
         selectedCameraMode = CameraCaptureMode.STANDARD
     }

@@ -2443,12 +2443,12 @@ struct SinglePhotoRoomView: View {
             let previewToken = UUID()
             selectedImagePreviewToken = previewToken
             selectedImagePreview = nil
+            selectedOrientation = PhotoOrientation.detect(from: image)
+            logDebug("📐 [View] Auto-detected orientation: \(selectedOrientation.rawValue)")
 
             Task { @MainActor in
                 // Let SwiftUI paint the AI / Manual buttons before any follow-up work.
                 await Task.yield()
-                selectedOrientation = PhotoOrientation.detect(from: image)
-                logDebug("📐 [View] Auto-detected orientation: \(selectedOrientation.rawValue)")
                 prewarmDepthAnythingModelIfNeeded()
                 logDebug("🤖 [View] Depth Anything prewarm requested (RTMDet deferred until Create)")
             }
@@ -2888,6 +2888,9 @@ struct CameraCaptureView: View {
                         // Capture with ultra-wide camera
                         Button(action: {
                             logDebug("📷 [Camera] Opening wide-angle camera")
+                            // Change the app orientation mask before SwiftUI presents its hosting
+                            // controller; waiting for the represented child to appear is too late.
+                            OrientationLockManager.shared.lockToLandscape()
                             showWideAngleCamera = true
                         }) {
                             HStack(spacing: 12) {
@@ -3175,6 +3178,9 @@ class WideAngleCameraViewController: UIViewController {
     private var photoOutput: AVCapturePhotoOutput?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var currentDevice: AVCaptureDevice?
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var previewRotationObservation: NSKeyValueObservation?
+    private var captureRotationObservation: NSKeyValueObservation?
 
     // UI Elements
     private let captureButton = UIButton(type: .system)
@@ -3188,7 +3194,13 @@ class WideAngleCameraViewController: UIViewController {
     }
 
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        return .landscapeRight
+        switch UIDevice.current.orientation {
+        case .landscapeRight:
+            return .landscapeLeft
+        default:
+            // UIDevice landscapeLeft maps to UIInterfaceOrientation landscapeRight.
+            return .landscapeRight
+        }
     }
 
     override func viewDidLoad() {
@@ -3198,10 +3210,31 @@ class WideAngleCameraViewController: UIViewController {
         setupUI()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        OrientationLockManager.shared.lockToLandscape()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        updateCaptureRotation()
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = view.bounds
+        updateCaptureRotation()
         updateGridOverlay()
+    }
+
+    override func viewWillTransition(
+        to size: CGSize,
+        with coordinator: UIViewControllerTransitionCoordinator
+    ) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            self?.updateCaptureRotation()
+        }
     }
 
     private func setupCamera() {
@@ -3253,6 +3286,11 @@ class WideAngleCameraViewController: UIViewController {
 
             if let previewLayer = previewLayer {
                 view.layer.addSublayer(previewLayer)
+                rotationCoordinator = AVCaptureDevice.RotationCoordinator(
+                    device: captureDevice,
+                    previewLayer: previewLayer
+                )
+                observeCaptureRotationChanges()
             }
 
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -3320,12 +3358,57 @@ class WideAngleCameraViewController: UIViewController {
             gridOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             gridOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            captureButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            captureButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -30),
+            // Keep the shutter in the familiar bottom-center position and inside the safe area.
+            // The former trailing-edge constraint landed halfway down a portrait screen while
+            // the landscape transition was still in flight.
+            captureButton.widthAnchor.constraint(equalToConstant: 88),
+            captureButton.heightAnchor.constraint(equalToConstant: 88),
+            captureButton.centerXAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerXAnchor),
+            captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
 
-            cancelButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            cancelButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20)
+            cancelButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            cancelButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor)
         ])
+    }
+
+    /// Keep preview and encoded still horizon-level using the angles for this exact camera.
+    /// AVFoundation may require different preview and capture angles on some devices.
+    private func updateCaptureRotation() {
+        guard let rotationCoordinator else { return }
+        applyCaptureRotation(rotationCoordinator.videoRotationAngleForHorizonLevelCapture)
+        applyPreviewRotation(rotationCoordinator.videoRotationAngleForHorizonLevelPreview)
+    }
+
+    /// Rotation-coordinator values change when the physical device turns even if SwiftUI's
+    /// presentation controller does not trigger another layout pass.
+    private func observeCaptureRotationChanges() {
+        guard let rotationCoordinator else { return }
+        previewRotationObservation = rotationCoordinator.observe(
+            \.videoRotationAngleForHorizonLevelPreview,
+            options: [.initial, .new]
+        ) { [weak self] coordinator, _ in
+            self?.applyPreviewRotation(coordinator.videoRotationAngleForHorizonLevelPreview)
+        }
+        captureRotationObservation = rotationCoordinator.observe(
+            \.videoRotationAngleForHorizonLevelCapture,
+            options: [.initial, .new]
+        ) { [weak self] coordinator, _ in
+            self?.applyCaptureRotation(coordinator.videoRotationAngleForHorizonLevelCapture)
+        }
+    }
+
+    private func applyCaptureRotation(_ angle: CGFloat) {
+        if let photoConnection = photoOutput?.connection(with: .video),
+           photoConnection.isVideoRotationAngleSupported(angle) {
+            photoConnection.videoRotationAngle = angle
+        }
+    }
+
+    private func applyPreviewRotation(_ angle: CGFloat) {
+        if let previewConnection = previewLayer?.connection,
+           previewConnection.isVideoRotationAngleSupported(angle) {
+            previewConnection.videoRotationAngle = angle
+        }
     }
 
     private func updateGridOverlay() {
@@ -3377,6 +3460,10 @@ class WideAngleCameraViewController: UIViewController {
     @objc private func capturePhoto() {
         guard let photoOutput = photoOutput else { return }
 
+        // Re-read the device-specific horizon angles at capture time so the still and preview
+        // cannot diverge during a landscape-left/landscape-right transition.
+        updateCaptureRotation()
+
         let settings = AVCapturePhotoSettings()
         // Use maxPhotoDimensions from photoOutput (iOS 16+)
         settings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
@@ -3406,6 +3493,11 @@ class WideAngleCameraViewController: UIViewController {
         super.viewWillDisappear(animated)
         CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_stopRequested", details: "reason=viewWillDisappear")
         captureSession?.stopRunning()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        OrientationLockManager.shared.lockToPortrait()
     }
 
     deinit {

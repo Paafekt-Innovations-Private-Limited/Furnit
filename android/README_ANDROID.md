@@ -74,11 +74,12 @@ Per-release checklist:
 ## Room Creation
 
 - `SinglePhotoRoomActivity` owns the take-photo/select-photo screen.
-- The method picker is displayed immediately after image selection; sampled EXIF-aware bitmap decode and AI generation continue off the UI thread.
+- Standard capture delegates to the device camera; the in-app wide capture selects the widest back camera with a capture-quality JPEG output instead of a low-resolution auxiliary sensor.
+- The method picker is displayed immediately after image selection; a quality-bounded, EXIF-normalized bitmap decode and AI generation continue off the UI thread.
 - `PhotoRoomGenerationService` owns the AI room-generation job lifecycle.
 - `SinglePhotoRoomReconstructor` writes the textured GLB room output.
 - `GlbGenerator.generateFlatPhotoGlb` builds the **AI default**: one full-photo textured plane (Swift parity, avoids dragged/stretched cuboid crops).
-- AI flat-photo GLBs embed the full-photo texture as JPEG to reduce file size and speed up preview/save.
+- AI flat-photo GLBs embed the full-photo texture as JPEG quality 95 to preserve room-photo detail while keeping preview/save practical.
 - `GlbGenerator.generateGlb` builds the **manual default**: floor, ceiling, and wall planes with cropped photo textures.
 - `RoomGenerationAssets` records the packaged Swift-parity asset contract.
 - Generated preview folders are promoted into `files/rooms/` only when the user saves the room.

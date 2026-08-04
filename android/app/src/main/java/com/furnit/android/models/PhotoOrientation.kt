@@ -3,16 +3,18 @@ package com.furnit.android.models
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
+import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 
 /**
- * Photo orientation for room capture: **how the user held the phone** (portrait vs landscape).
+ * Photo orientation for room capture after applying encoded EXIF rotation.
  *
- * **Ultra-wide (0.5×) lens:** Many devices store a **landscape-wide** buffer even for upright shots.
- * When the user marks the photo as 0.5× wide-angle, we coerce [LANDSCAPE] → [PORTRAIT] unless they
- * explicitly overrode orientation (SinglePhotoRoom).
+ * The value is derived from EXIF-normalized pixels. Lens choice must never override it: the
+ * in-app ultra-wide capture is landscape-locked, and relabelling those pixels as portrait causes
+ * the room viewer to crop and enlarge the image.
  */
 enum class PhotoOrientation(val value: String) {
     PORTRAIT("portrait"),
@@ -23,7 +25,7 @@ enum class PhotoOrientation(val value: String) {
         /**
          * Orientation implied by **pixel layout** of the bitmap actually passed to generated room / saved as thumbnail.
          *
-         * Use this for room **metadata and generated room viewer viewer** after decode (and optional EXIF rotation).
+         * Use this for room metadata and the generated-room viewer after decode and EXIF rotation.
          */
         fun fromBitmapDimensions(bitmap: Bitmap): PhotoOrientation {
             val w = bitmap.width
@@ -36,23 +38,38 @@ enum class PhotoOrientation(val value: String) {
         }
 
         /**
-         * Ultra-wide (0.5×) photos are often encoded wider than tall while the user held the phone vertically.
-         * When [ultraWideLens] is true, treat an automatic [LANDSCAPE] classification as [PORTRAIT].
-         * Do **not** use this when the user explicitly chose landscape (see SinglePhotoRoom orientation tap).
-         */
-        fun coercePortraitForUltraWide(orientation: PhotoOrientation, ultraWideLens: Boolean): PhotoOrientation {
-            if (!ultraWideLens) return orientation
-            return if (orientation == LANDSCAPE) PORTRAIT else orientation
-        }
-
-        /**
-         * Decode a full-resolution bitmap and apply JPEG/WebP **EXIF orientation** so pixels match what
-         * the user sees in the gallery (upright portrait, etc.).
+         * Decode a quality-bounded bitmap and apply JPEG/WebP **EXIF orientation** so pixels match
+         * what the user sees in the gallery (upright portrait, etc.).
          *
          * [BitmapFactory.decodeStream] ignores EXIF; applying it here keeps generated rooms aligned
          * with the upright photo the user saw in the picker.
          */
         fun loadBitmapApplyingExif(context: Context, uri: Uri, maxDimensionPx: Int = Int.MAX_VALUE): Bitmap? {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    return ImageDecoder.decodeBitmap(
+                        ImageDecoder.createSource(context.contentResolver, uri),
+                    ) { decoder, info, _ ->
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        if (maxDimensionPx != Int.MAX_VALUE && maxDimensionPx > 0) {
+                            val width = info.size.width
+                            val height = info.size.height
+                            val longestSide = maxOf(width, height)
+                            if (longestSide > maxDimensionPx) {
+                                val scale = maxDimensionPx.toFloat() / longestSide.toFloat()
+                                decoder.setTargetSize(
+                                    maxOf(1, (width * scale).toInt()),
+                                    maxOf(1, (height * scale).toInt()),
+                                )
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Some document providers cannot create an ImageDecoder source. The
+                    // stride-safe BitmapFactory + EXIF path below supports those providers.
+                }
+            }
+
             val options = BitmapFactory.Options().apply { inSampleSize = 1 }
             if (maxDimensionPx != Int.MAX_VALUE) {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

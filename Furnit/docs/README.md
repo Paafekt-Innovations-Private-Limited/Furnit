@@ -28,6 +28,11 @@ RTMDet object anchor → USDZ on first save**. Swift entry points: `SinglePhotoR
 `CameraExifSidecar.swift` → `DepthAnythingRoomReconstructor.swift` → `USDZModel` /
 `ModelViewerView`.
 
+Photo orientation follows the displayed pixel dimensions after EXIF rotation, including normalized
+`.up` images. The custom 0.5× capture stays landscape on either device side, applies the same
+AVFoundation rotation coordination to its preview and encoded still, and keeps the shutter
+bottom-center inside the safe area.
+
 ## Room viewer smoke test
 
 1. Home → **Photo → 3D** → capture or pick a room photo → AI path opens preview instantly → tap

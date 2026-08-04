@@ -140,6 +140,7 @@ class GlbGenerator {
                 planes = listOf(plane),
                 textures = listOf(photoTexture),
                 textureNames = listOf("photo_room_flat"),
+                jpegQuality = 95,
             )
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to generate flat photo GLB", e)
@@ -152,12 +153,13 @@ class GlbGenerator {
         planes: List<PlaneGeometry>,
         textures: List<Bitmap>,
         textureNames: List<String>,
+        jpegQuality: Int = 88,
     ): Boolean {
         require(planes.size == textures.size && planes.size == textureNames.size) {
             "Plane, texture, and name counts must match"
         }
 
-        val textureData = textures.map { bitmapToJpegTextureData(it) }
+        val textureData = textures.map { bitmapToJpegTextureData(it, jpegQuality) }
         val binaryData = buildBinaryBuffer(planes, textureData.map { it.bytes })
         val json = buildGltfJson(planes, textureData, textureNames)
         val glbData = assembleGlb(json, binaryData)
@@ -298,10 +300,10 @@ class GlbGenerator {
      * Natural room photos encode much faster and smaller as JPEG than PNG.
      * Downscale very large camera images so GLB files stay WebView- and GPU-friendly.
      */
-    private fun bitmapToJpegTextureData(bitmap: Bitmap): TextureData {
+    private fun bitmapToJpegTextureData(bitmap: Bitmap, jpegQuality: Int): TextureData {
         val textureBitmap = scaleBitmapForTexture(bitmap, maxDimension = 2048)
         val stream = ByteArrayOutputStream()
-        textureBitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)
+        textureBitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality.coerceIn(0, 100), stream)
         if (textureBitmap !== bitmap) {
             textureBitmap.recycle()
         }

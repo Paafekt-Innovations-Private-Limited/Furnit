@@ -2308,9 +2308,12 @@ class GLBRoomActivity : AppCompatActivity() {
             const planeWidth = flatPhotoWidth;
             const planeHeight = flatPhotoHeight;
             const standoff = depthAnythingImagePlaneStandoff(planeWidth, planeHeight);
-            // Bias look slightly below wall center so cover framing leaves headroom under the top edge.
+            // Bias the crop slightly below wall center so cover framing leaves headroom, but keep
+            // camera and target at the same height. Tilting a camera toward an already-perspective
+            // photograph applies a second perspective transform and makes straight pixels look
+            // warped/soft.
             const lookAtY = planeHeight * 0.43;
-            const camY = lookAtY + Math.max(planeHeight * 0.05, 0.08);
+            const camY = lookAtY;
             // glTF plane normal is +Z; WebGL/Three.js must view from +Z (SceneKit preview parity).
             // Camera on −Z shows the back face and the photo appears horizontally mirrored.
             camera.position.set(0, camY, standoff);

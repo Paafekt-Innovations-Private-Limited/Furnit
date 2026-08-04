@@ -10,45 +10,65 @@ enum PhotoOrientation: String, Codable, Hashable {
     case landscape
     case square
 
-    /// Detect orientation from EXIF metadata
-    /// iPhone camera: .up = landscape (sensor native), .left/.right = portrait (rotated)
+    /// Detect the orientation users actually see after applying the UIImage's EXIF transform.
+    ///
+    /// Camera and picker paths can return either a sensor-native image plus `.left`/`.right`
+    /// metadata or an already-normalized `.up` image. Classifying `.up` as landscape therefore
+    /// mislabels normalized portrait captures and makes the room viewer rotate to landscape.
     static func detect(from image: UIImage) -> PhotoOrientation {
         let exif = image.imageOrientation
-        let uiWidth = image.size.width
-        let uiHeight = image.size.height
-        let cgWidth = image.cgImage?.width ?? 0
-        let cgHeight = image.cgImage?.height ?? 0
+        let rawPixelSize: CGSize
+        let orientationAppliesToRawPixels: Bool
+        if let cgImage = image.cgImage {
+            rawPixelSize = CGSize(width: cgImage.width, height: cgImage.height)
+            orientationAppliesToRawPixels = true
+        } else if let ciImage = image.ciImage {
+            rawPixelSize = ciImage.extent.size
+            orientationAppliesToRawPixels = true
+        } else {
+            rawPixelSize = CGSize(
+                width: image.size.width * image.scale,
+                height: image.size.height * image.scale
+            )
+            // With no raw backing extent, UIImage.size is the only display-space size available.
+            orientationAppliesToRawPixels = false
+        }
+        let swapsAxes: Bool
+        switch exif {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            swapsAxes = orientationAppliesToRawPixels
+        case .up, .upMirrored, .down, .downMirrored:
+            swapsAxes = false
+        @unknown default:
+            swapsAxes = false
+        }
+        let displayWidth = swapsAxes ? rawPixelSize.height : rawPixelSize.width
+        let displayHeight = swapsAxes ? rawPixelSize.width : rawPixelSize.height
 
         logDebug("📐 [Orientation] ========== DETECTION START ==========")
         logDebug("📐 [Orientation] EXIF raw value: \(exif.rawValue)")
         logDebug("📐 [Orientation] EXIF name: \(exif)")
-        logDebug("📐 [Orientation] UIImage.size: \(uiWidth) x \(uiHeight)")
-        logDebug("📐 [Orientation] CGImage size: \(cgWidth) x \(cgHeight)")
+        logDebug("📐 [Orientation] source pixels: \(rawPixelSize.width) x \(rawPixelSize.height)")
+        logDebug("📐 [Orientation] displayed pixels: \(displayWidth) x \(displayHeight)")
 
-        switch exif {
-        case .up, .upMirrored, .down, .downMirrored:
-            logDebug("📐 [Orientation] EXIF .up/.down → landscape")
-            logDebug("📐 [Orientation] ========== RESULT: LANDSCAPE ==========")
-            return .landscape
-
-        case .left, .leftMirrored, .right, .rightMirrored:
-            logDebug("📐 [Orientation] EXIF .left/.right → portrait")
-            logDebug("📐 [Orientation] ========== RESULT: PORTRAIT ==========")
-            return .portrait
-
-        @unknown default:
-            logDebug("📐 [Orientation] EXIF unknown → portrait (default)")
-            logDebug("📐 [Orientation] ========== RESULT: PORTRAIT (default) ==========")
+        guard displayWidth > 1, displayHeight > 1 else {
+            logDebug("📐 [Orientation] invalid dimensions → portrait")
             return .portrait
         }
+        if displayWidth > displayHeight * 1.05 {
+            logDebug("📐 [Orientation] displayed aspect → landscape")
+            return .landscape
+        }
+        if displayHeight > displayWidth * 1.05 {
+            logDebug("📐 [Orientation] displayed aspect → portrait")
+            return .portrait
+        }
+        logDebug("📐 [Orientation] displayed aspect → square")
+        return .square
     }
 
-    /// For **saved** Splat thumbnails and other upright JPEGs: orientation is usually baked to `.up`, so
-    /// ``detect(from:)`` would wrongly return `.landscape` for portrait rooms (AR roll then stays landscape-native).
-    ///
-    /// Prefer **logical** width/height from ``UIImage/size`` (orientation is applied by UIKit) so landscape
-    /// captures stay landscape even when on-disk EXIF still says `.left`/`.right` from the capture pipeline.
-    /// Only for ~square images do we fall back to EXIF hints.
+    /// Compatibility detection for saved Splat thumbnails. Prefer logical width/height and preserve
+    /// the legacy EXIF disambiguation only for nearly square stored images.
     static func detectFromStoredRoomThumbnail(_ image: UIImage) -> PhotoOrientation {
         let exif = image.imageOrientation
         let w = Float(image.size.width * image.scale)

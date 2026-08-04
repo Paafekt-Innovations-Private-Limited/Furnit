@@ -3,8 +3,10 @@ package com.furnit.android
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ImageFormat
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -35,15 +37,35 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.math.atan
+
+internal data class RoomCameraCandidate(
+    val cameraId: String,
+    val horizontalFovDegrees: Double,
+    val maxJpegPixels: Long,
+)
+
+internal fun selectWidestCaptureQualityCamera(
+    candidates: List<RoomCameraCandidate>,
+    minimumJpegPixels: Long,
+): RoomCameraCandidate? {
+    val captureQualityCandidates = candidates.filter { it.maxJpegPixels >= minimumJpegPixels }
+    return captureQualityCandidates.ifEmpty { candidates }
+        .maxWithOrNull(
+            compareBy<RoomCameraCandidate> { it.horizontalFovDegrees }
+                .thenBy { it.maxJpegPixels },
+        )
+}
 
 /**
  * Ultra-wide / wide back-camera capture for room creation (iOS `WideAngleCameraView` parity).
- * Landscape-locked, flash off, rule-of-thirds grid, lowest focal-length back camera when available.
+ * Landscape-locked, flash off, rule-of-thirds grid, widest capture-quality back camera available.
  */
 class WideAnglePhotoCaptureActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_CAPTURED_IMAGE_URI = "captured_image_uri"
         private const val TAG = "WideAngleCapture"
+        private const val MIN_QUALITY_JPEG_PIXELS = 5_000_000L
     }
 
     private lateinit var previewView: PreviewView
@@ -224,7 +246,6 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
                 provider.unbindAll()
                 val camera = provider.bindToLifecycle(this, selector, preview, imageCapture)
                 applyWidestLogicalZoom(camera)
-                brightenPreviewIfSupported(camera)
                 LogUtil.d(TAG, "Camera bound ultraWide=$usingUltraWide")
             } catch (e: Exception) {
                 LogUtil.e(TAG, "bindToLifecycle failed", e)
@@ -236,8 +257,7 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
 
     @androidx.annotation.OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
     private fun ultraWideOrBackSelector(provider: ProcessCameraProvider): CameraSelector {
-        var bestId: String? = null
-        var bestFocal = Float.MAX_VALUE
+        val candidates = mutableListOf<RoomCameraCandidate>()
         for (info in provider.availableCameraInfos) {
             val cam2 = Camera2CameraInfo.from(info)
             val facing = cam2.getCameraCharacteristic(CameraCharacteristics.LENS_FACING)
@@ -245,17 +265,41 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
             val focals = cam2.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
                 ?: continue
             val minFocal = focals.minOrNull() ?: continue
-            if (minFocal < bestFocal) {
-                bestFocal = minFocal
-                bestId = cam2.cameraId
+            val sensorSize = cam2.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+                ?: continue
+            if (sensorSize.width <= 0f || minFocal <= 0f) continue
+            val horizontalFov = Math.toDegrees(
+                2.0 * atan((sensorSize.width / (2f * minFocal)).toDouble()),
+            )
+            val streamMap = cam2.getCameraCharacteristic(
+                CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP,
+            )
+            val maxJpegPixels = try {
+                streamMap
+                    ?.getOutputSizes(ImageFormat.JPEG)
+                    ?.maxOfOrNull { size -> size.width.toLong() * size.height.toLong() }
+                    ?: 0L
+            } catch (_: RuntimeException) {
+                0L
             }
+            candidates += RoomCameraCandidate(cam2.cameraId, horizontalFov, maxJpegPixels)
         }
 
-        // Heuristic: ultra-wide focal lengths are typically well below the main ~4mm class.
-        usingUltraWide = bestFocal < 3.2f && bestId != null
+        // Raw focal length alone can select a tiny, low-resolution macro/depth sensor. Rank by
+        // actual horizontal field of view and exclude sub-5 MP auxiliary cameras when a
+        // capture-quality back camera is available.
+        val best = selectWidestCaptureQualityCamera(candidates, MIN_QUALITY_JPEG_PIXELS)
+        usingUltraWide = best != null && best.horizontalFovDegrees >= 80.0
+        if (best != null) {
+            LogUtil.d(
+                TAG,
+                "Selected back camera id=${best.cameraId} horizontalFov=${"%.1f".format(Locale.US, best.horizontalFovDegrees)} " +
+                    "maxJpegPixels=${best.maxJpegPixels}",
+            )
+        }
 
-        return if (bestId != null) {
-            val targetId = bestId
+        return if (best != null) {
+            val targetId = best.cameraId
             CameraSelector.Builder()
                 .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                 .addCameraFilter { cameraInfos ->
@@ -289,22 +333,12 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
         LogUtil.d(TAG, "Camera zoom min=$minZoom ultraWide=$usingUltraWide")
     }
 
-    private fun brightenPreviewIfSupported(camera: androidx.camera.core.Camera) {
-        val exposure = camera.cameraInfo.exposureState
-        if (!exposure.isExposureCompensationSupported) return
-        val range = exposure.exposureCompensationRange
-        val target = minOf(range.upper, maxOf(0, range.upper / 3))
-        if (target > 0) {
-            camera.cameraControl.setExposureCompensationIndex(target)
-            LogUtil.d(TAG, "Exposure compensation set to $target in $range")
-        }
-    }
-
     private fun capturePhoto() {
         if (capturing) return
         val capture = imageCapture ?: return
         capturing = true
         captureButton.isEnabled = false
+        previewView.display?.rotation?.let { capture.targetRotation = it }
 
         val photoFile = createImageFile()
         val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
@@ -313,6 +347,13 @@ class WideAnglePhotoCaptureActivity : AppCompatActivity() {
             cameraExecutor,
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(photoFile.absolutePath, bounds)
+                    LogUtil.d(
+                        TAG,
+                        "Saved wide capture ${bounds.outWidth}x${bounds.outHeight} " +
+                            "bytes=${photoFile.length()} ultraWide=$usingUltraWide",
+                    )
                     val uri = outputFileResults.savedUri
                         ?: FileProvider.getUriForFile(
                             this@WideAnglePhotoCaptureActivity,
