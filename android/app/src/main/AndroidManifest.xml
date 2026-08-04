@@ -56,7 +56,16 @@
             android:name=".ModelDetailActivity"
             android:exported="false"
             android:theme="@style/Theme.Furnit.FullScreen" />
-        <activity android:name=".SinglePhotoRoomActivity" android:exported="false" />
+        <!--
+             Photo decoding and room generation are owned by this activity while its
+             full-screen progress overlay is visible. Keep that instance across phone
+             rotation so the in-flight callback and selected photo are not orphaned.
+             The screen is built programmatically and relays out for the new size.
+        -->
+        <activity
+            android:name=".SinglePhotoRoomActivity"
+            android:configChanges="orientation|screenSize"
+            android:exported="false" />
         <activity android:name=".SettingsImageScanActivity" android:exported="false" />
         <activity android:name=".RoomBoundaryActivity" android:exported="false" />
         <activity

@@ -6,11 +6,12 @@
 2. Selected photos are sampled and EXIF-normalized off the UI thread so full-resolution decode does not block the picker.
 3. The user chooses AI generation or manual setup. The method picker is shown immediately; AI generation is posted after the UI frame renders.
 4. AI generation starts `PhotoRoomGenerationService.startGenerationInBackground`.
-5. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true` and no artificial wait time.
-6. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB (Swift parity) with an embedded JPEG texture.
-7. Metadata is written beside the GLB, including room dimensions, depth, photo orientation, and preview state.
-8. Preview rooms are saved permanently through `PhotoRoomGenerationService.promoteToLibrary`.
-9. Saved rooms open through `GLBRoomActivity`, which receives the saved dimensions for camera framing and ruler display.
+5. `SinglePhotoRoomActivity` handles orientation and screen-size configuration changes without recreation, keeping the selected photo, progress overlay, and in-flight generation callback attached when the phone rotates.
+6. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true` and no artificial wait time.
+7. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB (Swift parity) with an embedded JPEG texture.
+8. Metadata is written beside the GLB, including room dimensions, depth, photo orientation, and preview state.
+9. Preview rooms are saved permanently through `PhotoRoomGenerationService.promoteToLibrary`.
+10. Saved rooms open through `GLBRoomActivity`, which receives the saved dimensions for camera framing and ruler display.
 
 Manual setup still uses boundary-based texture crops and `GlbGenerator.generateGlb` (five-plane cuboid).
 
@@ -61,4 +62,9 @@ Use:
 ./gradlew :app:assembleDebug
 ```
 
-After creating an AI room, confirm the picker appears before generation work, the preview shows a flat photo wall (not visibly stretched plane crops), `GLBRoomActivity` recenters the camera in front of the mesh, and the top controls are floating rather than a full-width band.
+After starting AI generation from both standard and wide-angle photos, rotate the phone between
+portrait and landscape while the progress overlay is visible. Confirm that the overlay remains,
+progress continues, and the generated room opens. Also confirm that the picker appears before
+generation work, the preview shows a flat photo wall (not visibly stretched plane crops),
+`GLBRoomActivity` recenters the camera in front of the mesh, and the top controls are floating rather
+than a full-width band.
