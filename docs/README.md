@@ -44,6 +44,7 @@ descriptions of the current app.
 | [`../android/docs/README.md`](../android/docs/README.md) | Active index | Android code-local documentation |
 | [`../android/docs/AUTHENTICATION.md`](../android/docs/AUTHENTICATION.md) | Active operations | Firebase/Play signing, locale country defaults, OTP autofill, and production smoke test |
 | [`../android/docs/ANDROID_ROOM_CREATION.md`](../android/docs/ANDROID_ROOM_CREATION.md) | Active reference | Room-generation and GLB flow |
+| [`../android/docs/FURNITURE_FIT_PERFORMANCE.md`](../android/docs/FURNITURE_FIT_PERFORMANCE.md) | Active reference | Android RTMDet LiteRT/ONNX execution, Swift-parity frame ownership, and profiling |
 | [`../android/docs/ANDROID_STUDIO_RUN.md`](../android/docs/ANDROID_STUDIO_RUN.md) | Active runbook | Android Studio/device run instructions |
 | [`../android/docs/TEST_AND_SETTINGS.md`](../android/docs/TEST_AND_SETTINGS.md) | Active runbook | Room, Furniture Fit, assets, and auth smoke tests |
 | [`../android/README.md`](../android/README.md) | Active overview | Compact Android architecture |

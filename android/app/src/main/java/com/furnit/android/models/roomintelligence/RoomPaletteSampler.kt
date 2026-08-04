@@ -9,6 +9,7 @@ import kotlin.math.sqrt
 
 object BitmapStraightSrgbExtractor {
     const val DEFAULT_ALPHA_THRESHOLD = 16
+    private val pixelScratch = ThreadLocal<IntArray>()
 
     /**
      * Mean straight-sRGB color. Transparent pixels are ignored and premultiplied channels are
@@ -21,7 +22,13 @@ object BitmapStraightSrgbExtractor {
         alphaThreshold: Int = DEFAULT_ALPHA_THRESHOLD,
     ): StraightSrgbColor? {
         if (bitmap.width <= 0 || bitmap.height <= 0) return null
-        val pixels = IntArray(bitmap.width * bitmap.height)
+        val requiredPixels = bitmap.width * bitmap.height
+        val currentScratch = pixelScratch.get()
+        val pixels = if (currentScratch == null || currentScratch.size != requiredPixels) {
+            IntArray(requiredPixels).also(pixelScratch::set)
+        } else {
+            currentScratch
+        }
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         return meanPremultipliedArgb(
             pixels = pixels,

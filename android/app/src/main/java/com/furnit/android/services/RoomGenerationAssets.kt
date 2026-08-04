@@ -12,6 +12,7 @@ object RoomGenerationAssets {
     const val GEOCALIB_PINHOLE_CNN_ONNX =
         "room_generation/geocalib/geocalib_pinhole_cnn.onnx"
     const val RTMDET_INS_M_RAW_ONNX = "rtmdet-ins-m-raw.onnx"
+    const val RTMDET_INS_M_RAW_FP16_TFLITE = "rtmdet-ins-m-raw-fp16.tflite"
 
     private val swiftParitySpecs = listOf(
         AssetSpec(
@@ -28,6 +29,11 @@ object RoomGenerationAssets {
             id = "rtmdet_ins_m",
             assetPath = RTMDET_INS_M_RAW_ONNX,
             role = "object_masking",
+        ),
+        AssetSpec(
+            id = "rtmdet_ins_m_fp16_litert",
+            assetPath = RTMDET_INS_M_RAW_FP16_TFLITE,
+            role = "accelerated_object_masking",
         ),
     )
 

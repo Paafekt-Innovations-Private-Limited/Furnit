@@ -46,7 +46,7 @@ iOS detail starts at `Furnit/docs/README.md`; RTMDet detail is owned by
 | Metric measurement/calibration | `android/app/src/main/java/com/furnit/android/services/DepthAnythingRoomMeasurer.kt`, `roomreconstruction/DepthAnythingRoomMeasurementPipeline.kt`, `GeoCalibCalibrationService.kt`, `FocalResolver.kt`, `ScaleEstimator.kt` |
 | Manual boundaries | `android/app/src/main/java/com/furnit/android/RoomBoundaryActivity.kt`, `utils/RoomBoundaryManager.kt` |
 | GLB viewer/library | `android/app/src/main/java/com/furnit/android/GLBRoomActivity.kt`, `models/ModelManager.kt`, WebView assets under `android/app/src/main/assets/` |
-| RTMDet/Furniture Fit | `android/app/src/main/java/com/furnit/android/services/FurnitureFitManager.kt`, `FurnitureFitOverlayView.kt`, `FurnitureFitFragment.kt`, `FurnitureFitActivity.kt` |
+| RTMDet/Furniture Fit | `android/app/src/main/java/com/furnit/android/services/FurnitureFitManager.kt`, `services/RTMDetLiteRtBackend.kt`, `services/RTMDetSwiftParity.kt`, `FurnitureFitOverlayView.kt`, `FurnitureFitFragment.kt`, `FurnitureFitActivity.kt` |
 | Packaged models | `android/room_generation_models/src/main/assets/`, `android/rtmdet_models/src/main/assets/` |
 | Firebase certificate repair | `android/scripts/fix_firebase_android_auth.sh` |
 | Tests | `android/app/src/test/`, `android/app/src/androidTest/` |

@@ -26,3 +26,10 @@ cleanup after confirming no external feature branch consumes them:
 - `smartypants_camera_error`
 - `smartypants_failed_save`
 - `smartypants_screenshot_failed`
+
+## RTMDet GPU cold-cache verification
+
+The 2026-08-04 first-install device run compiled the LiteRT OpenCL delegate in 28,918 ms and created
+the configured serialization artifact in app `code_cache`. A killed-process relaunch using that
+cache has not yet been timed. Verify reuse across a normal cold process restart and after app/driver
+updates; do not move RTMDet back to application startup to hide an unverified cache miss.

@@ -323,11 +323,16 @@ class SettingsImageScanActivity : AppCompatActivity() {
                         statusView.text = getString(R.string.single_image_scan_no_overlay)
                         return@runOnUiThread
                     }
-                    overlayView.setMaskAndDetections(result.mask, result.detections, result.inputSize)
+                    overlayView.setMaskAndDetections(
+                        result.mask,
+                        result.detections,
+                        result.inputSize,
+                        primaryDetection = result.primaryDetection,
+                    )
                     statusView.text = if (result.detections.isEmpty()) {
                         getString(R.string.single_image_scan_no_objects)
                     } else {
-                        val detection = result.detections.first()
+                        val detection = result.primaryDetection ?: result.detections.first()
                         getString(
                             R.string.single_image_scan_overlay_ready,
                             FurnitureClassNames.localized(

@@ -16,7 +16,10 @@ import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.UnavailableException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -73,8 +76,10 @@ class FurnitureFitArCameraController(
 
     @Volatile
     private var pendingPhotoCaptureRequest: PendingPhotoCaptureRequest? = null
-    private val pendingInferenceBitmapLock = Any()
-    private var pendingInferenceBitmap: Bitmap? = null
+    /** Prevents multiple GL frames from queueing conversion before the consumer marks inference busy. */
+    private val frameDispatchInFlight = AtomicBoolean(false)
+    /** Plane arrays return here after background conversion, avoiding multi-megabyte allocation per frame. */
+    private val reusableCopiedFrame = AtomicReference<CopiedYuv420Frame?>(null)
 
     private val bboxLock = Any()
     private var bboxCenterImageX = 0f
@@ -94,12 +99,10 @@ class FurnitureFitArCameraController(
     private var lastMetricDistanceSource: String? = null
     private var lastMetricDistanceDiagnostic: String? = null
 
-    private var lastInferencePostMs = 0L
-    /** Min time between frames handed to segmentation (iOS ~0.07s; slightly lower here for responsiveness). */
-    var minFrameIntervalMs: Long = 55L
-
     @Volatile
-    private var preferImmediateNextBitmap = false
+    private var lastInferencePostMs = 0L
+    /** Swift's ARSession delegate coalesces expensive camera/depth copies to one every 0.28 seconds. */
+    var minFrameIntervalMs: Long = 280L
 
     private val measurementHandler = Handler(Looper.getMainLooper())
     /** Debounced apply of AR overlay scale (mirrors iOS `assistedMeasurementDebounceSeconds` ~0.85s). */
@@ -343,29 +346,9 @@ class FurnitureFitArCameraController(
         lastMetricDistanceDiagnostic
     }
 
-    /**
-     * Call when one segmentation pass finishes so the next camera bitmap is not also delayed by [minFrameIntervalMs]
-     * (mirrors iOS `preferImmediateNextInference`).
-     */
+    /** RTMDet clears Swift's immediate-next hint without changing its cadence. */
     fun onInferenceFinished() {
-        if (preferImmediateNextBitmap) {
-            lastInferencePostMs = 0L
-            preferImmediateNextBitmap = false
-        }
-        val latestPendingBitmap = synchronized(pendingInferenceBitmapLock) {
-            val pendingBitmap = pendingInferenceBitmap
-            pendingInferenceBitmap = null
-            pendingBitmap
-        }
-        if (latestPendingBitmap != null && shouldPostBitmapFrame()) {
-            lastInferencePostMs = SystemClock.elapsedRealtime()
-            val consumer = onBitmapFrame
-            if (consumer != null) {
-                inferenceExecutor.execute { consumer(latestPendingBitmap) }
-            } else if (!latestPendingBitmap.isRecycled) {
-                latestPendingBitmap.recycle()
-            }
-        }
+        // Deliberately no-op: this controller is RTMDet-only.
     }
 
     fun requestPhotoCapture(callback: (ArPhotoCaptureResult?) -> Unit) {
@@ -434,10 +417,9 @@ class FurnitureFitArCameraController(
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         }
-        synchronized(pendingInferenceBitmapLock) {
-            pendingInferenceBitmap?.takeIf { !it.isRecycled }?.recycle()
-            pendingInferenceBitmap = null
-        }
+        frameDispatchInFlight.set(false)
+        lastInferencePostMs = 0L
+        reusableCopiedFrame.set(null)
         pendingPhotoCaptureRequest?.bestBitmap?.takeIf { !it.isRecycled }?.recycle()
         pendingPhotoCaptureRequest = null
         synchronized(sessionGlLock) {
@@ -569,19 +551,40 @@ class FurnitureFitArCameraController(
         }
         backgroundRenderer.draw(frame)
 
+        val imageDimensions = frame.camera.imageIntrinsics.imageDimensions
+        val rawW = imageDimensions.getOrNull(0)?.takeIf { it > 0 } ?: return
+        val rawH = imageDimensions.getOrNull(1)?.takeIf { it > 0 } ?: return
+
+        val captureRequest = pendingPhotoCaptureRequest
+        val inferencePostTimeMs: Long
+        if (captureRequest == null) {
+            // Match Swift's ARSession path: drop busy frames before acquiring/copying the CPU image.
+            if (!shouldPostBitmapFrame() || frameDispatchInFlight.get()) {
+                return
+            }
+            inferencePostTimeMs = SystemClock.elapsedRealtime()
+            if (inferencePostTimeMs - lastInferencePostMs < minFrameIntervalMs) return
+            if (!frameDispatchInFlight.compareAndSet(false, true)) {
+                return
+            }
+        } else {
+            inferencePostTimeMs = 0L
+        }
+
+        // Match Swift: depth/metric work is coalesced with an accepted camera frame, never a busy drop.
+        updateArScaleForCurrentFrame(frame, rawW, rawH)
+
         val image = try {
             frame.acquireCameraImage()
         } catch (_: Exception) {
             null
-        } ?: return
+        }
+        if (image == null) {
+            if (captureRequest == null) frameDispatchInFlight.set(false)
+            return
+        }
 
         try {
-            val rawW = image.width
-            val rawH = image.height
-            // AR overlay scale uses bbox + intrinsics only — inverse matrix does not require decoding YUV.
-            updateArScaleForCurrentFrame(frame, rawW, rawH)
-
-            val captureRequest = pendingPhotoCaptureRequest
             if (captureRequest != null) {
                 val rawBitmap = image.yuv420888ToBitmap()
                 if (rawBitmap == null) {
@@ -597,8 +600,8 @@ class FurnitureFitArCameraController(
                     frame = frame,
                     orientedImageWidth = orientedBitmap.width,
                     orientedImageHeight = orientedBitmap.height,
-                    rawImageWidth = rawW,
-                    rawImageHeight = rawH,
+                    rawImageWidth = image.width,
+                    rawImageHeight = image.height,
                     lockedPhotoOrientation = lockedPhotoOrientation,
                 )
                 captureRequest.attempts += 1
@@ -628,39 +631,33 @@ class FurnitureFitArCameraController(
                 return
             }
 
-            if (!shouldPostBitmapFrame()) {
-                preferImmediateNextBitmap = true
-                val rawBitmap = image.yuv420888ToBitmap() ?: return
-                val (orientedBitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
-                if (orientedBitmap !== rawBitmap) {
-                    rawBitmap.recycle()
-                }
-                synchronized(pendingInferenceBitmapLock) {
-                    pendingInferenceBitmap?.takeIf { it !== orientedBitmap && !it.isRecycled }?.recycle()
-                    pendingInferenceBitmap = orientedBitmap
-                }
+            val copiedFrame = image.copyYuv420Frame(reusableCopiedFrame.getAndSet(null))
+            if (copiedFrame == null) {
+                frameDispatchInFlight.set(false)
                 return
             }
-
-            val now = SystemClock.elapsedRealtime()
-            val allowPost = shouldPostBitmapFrame() && (now - lastInferencePostMs >= minFrameIntervalMs)
-            if (!allowPost) {
-                return
-            }
-
-            // Expensive: YUV → bitmap only when we actually feed segmentation (throttled by [minFrameIntervalMs]).
-            val rawBmp = image.yuv420888ToBitmap() ?: return
-            val (orientedBmp, _) = rawBmp.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
-            if (orientedBmp !== rawBmp) {
-                rawBmp.recycle()
-            }
-
-            lastInferencePostMs = now
-            val consumer = onBitmapFrame
-            if (consumer != null) {
-                inferenceExecutor.execute { consumer(orientedBmp) }
-            } else {
-                orientedBmp.recycle()
+            try {
+                inferenceExecutor.execute {
+                    var deliveredBitmap: Bitmap? = null
+                    try {
+                        val rawBitmap = copiedFrame.toBitmap() ?: return@execute
+                        val (orientedBitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
+                        if (orientedBitmap !== rawBitmap && !rawBitmap.isRecycled) {
+                            rawBitmap.recycle()
+                        }
+                        deliveredBitmap = orientedBitmap
+                        lastInferencePostMs = SystemClock.elapsedRealtime()
+                        val consumer = onBitmapFrame ?: return@execute
+                        consumer(orientedBitmap)
+                        deliveredBitmap = null // Consumer owns and eventually recycles the frame.
+                    } finally {
+                        deliveredBitmap?.takeIf { !it.isRecycled }?.recycle()
+                        reusableCopiedFrame.set(copiedFrame)
+                        frameDispatchInFlight.set(false)
+                    }
+                }
+            } catch (_: RejectedExecutionException) {
+                frameDispatchInFlight.set(false)
             }
         } finally {
             image.close()

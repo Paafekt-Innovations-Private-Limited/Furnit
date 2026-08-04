@@ -1,0 +1,425 @@
+package com.furnit.android.services
+
+import android.content.Context
+import com.furnit.android.utils.LogUtil
+import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import org.tensorflow.lite.DataType
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.Tensor
+import org.tensorflow.lite.gpu.CompatibilityList
+import org.tensorflow.lite.gpu.GpuDelegate
+import org.tensorflow.lite.gpu.GpuDelegateFactory
+
+internal data class RTMDetLiteRtRun(
+    val cls80: FloatArray,
+    val cls40: FloatArray,
+    val cls20: FloatArray,
+    val bbox80: FloatArray,
+    val bbox40: FloatArray,
+    val bbox20: FloatArray,
+    val kernel80: FloatArray,
+    val kernel40: FloatArray,
+    val kernel20: FloatArray,
+    val maskFeat: FloatArray,
+    val inputPackingMillis: Long,
+    val inferenceMillis: Long,
+    val outputCopyMillis: Long,
+    val nativeInferenceMillis: Long?,
+)
+
+/** Pure tensor-layout helpers kept visible to focused JVM parity tests. */
+internal object RTMDetLiteRtTensorLayout {
+    fun packArgbToNhwcBgr(
+        source: IntArray,
+        destination: FloatArray,
+    ) {
+        require(destination.size == source.size * 3)
+        var destinationIndex = 0
+        for (pixel in source) {
+            destination[destinationIndex++] = (pixel and 0xFF).toFloat()
+            destination[destinationIndex++] = ((pixel ushr 8) and 0xFF).toFloat()
+            destination[destinationIndex++] = ((pixel ushr 16) and 0xFF).toFloat()
+        }
+    }
+
+    fun nhwcToNchw(
+        source: FloatArray,
+        destination: FloatArray,
+        height: Int,
+        width: Int,
+        channels: Int,
+    ) {
+        val spatialSize = height * width
+        require(source.size == spatialSize * channels)
+        require(destination.size == source.size)
+        for (channel in 0 until channels) {
+            var sourceIndex = channel
+            var destinationIndex = channel * spatialSize
+            repeat(spatialSize) {
+                destination[destinationIndex++] = source[sourceIndex]
+                sourceIndex += channels
+            }
+        }
+    }
+}
+
+/**
+ * Persistent FP16 LiteRT runner for RTMDet.
+ *
+ * LiteRT's GPU delegate is thread-affine. This backend owns one dedicated serial thread and
+ * creates, warms, invokes, and closes both the delegate and interpreter on that same thread.
+ * Callers may therefore preload from an IO thread and later invoke from Furniture Fit's rotating
+ * frame lanes without violating the GPU contract.
+ */
+internal class RTMDetLiteRtBackend private constructor(
+    private val executor: ExecutorService,
+    private val state: RuntimeState,
+) : AutoCloseable {
+    val executionProvider: String = state.executionProvider
+    val inputWidth: Int = state.inputWidth
+    val inputHeight: Int = state.inputHeight
+
+    fun run(
+        argbPixels: IntArray,
+        requireKernels: Boolean,
+        requireMaskFeat: Boolean,
+    ): RTMDetLiteRtRun {
+        check(!executor.isShutdown) { "RTMDet LiteRT backend is closed" }
+        return executor.submit<RTMDetLiteRtRun> {
+            state.run(argbPixels, requireKernels, requireMaskFeat)
+        }.get()
+    }
+
+    override fun close() {
+        if (executor.isShutdown) return
+        runCatching {
+            executor.submit {
+                state.interpreter.close()
+                state.gpuDelegate?.close()
+            }.get()
+        }.onFailure { error ->
+            LogUtil.w(TAG, "Could not close RTMDet LiteRT backend cleanly: ${error.message}")
+        }
+        executor.shutdown()
+        runCatching { executor.awaitTermination(5, TimeUnit.SECONDS) }
+    }
+
+    private data class OutputBuffer(
+        val name: String,
+        val shape: IntArray,
+        val bytes: ByteBuffer,
+        val floats: FloatBuffer,
+        val nhwcValues: FloatArray,
+        val nchwValues: FloatArray,
+    ) {
+        val height: Int get() = shape[1]
+        val width: Int get() = shape[2]
+        val channels: Int get() = shape[3]
+
+        fun prepareForWrite() {
+            bytes.clear()
+            floats.clear()
+        }
+
+        fun copyToNchw(): FloatArray {
+            floats.position(0)
+            floats.get(nhwcValues)
+            RTMDetLiteRtTensorLayout.nhwcToNchw(
+                source = nhwcValues,
+                destination = nchwValues,
+                height = height,
+                width = width,
+                channels = channels,
+            )
+            return nchwValues
+        }
+    }
+
+    private class RuntimeState(
+        val interpreter: Interpreter,
+        val gpuDelegate: GpuDelegate?,
+        val executionProvider: String,
+        val inputWidth: Int,
+        val inputHeight: Int,
+        private val inputBytes: ByteBuffer,
+        private val inputFloats: FloatBuffer,
+        private val inputValues: FloatArray,
+        private val outputsByName: Map<String, OutputBuffer>,
+    ) {
+        private val signatureInputs = mapOf<String, Any>(INPUT_NAME to inputBytes)
+        private val signatureOutputs = outputsByName.mapValues { it.value.bytes as Any }
+
+        fun warmUp(): Long {
+            inputValues.fill(0f)
+            inputFloats.clear()
+            inputFloats.put(inputValues)
+            inputBytes.position(0)
+            outputsByName.values.forEach(OutputBuffer::prepareForWrite)
+            val startNanos = System.nanoTime()
+            interpreter.runSignature(signatureInputs, signatureOutputs, SIGNATURE_KEY)
+            return elapsedMillis(startNanos)
+        }
+
+        fun run(
+            argbPixels: IntArray,
+            requireKernels: Boolean,
+            requireMaskFeat: Boolean,
+        ): RTMDetLiteRtRun {
+            require(argbPixels.size == inputWidth * inputHeight) {
+                "Expected ${inputWidth}x$inputHeight pixels, received ${argbPixels.size}"
+            }
+
+            val packingStartNanos = System.nanoTime()
+            RTMDetLiteRtTensorLayout.packArgbToNhwcBgr(argbPixels, inputValues)
+            inputFloats.clear()
+            // One bulk native copy avoids 1.2 million direct-buffer method calls per frame. The
+            // values remain byte-for-byte equivalent to Swift's ImageType(BGR) input contract.
+            inputFloats.put(inputValues)
+            inputBytes.position(0)
+            val inputPackingMillis = elapsedMillis(packingStartNanos)
+
+            outputsByName.values.forEach(OutputBuffer::prepareForWrite)
+            val inferenceStartNanos = System.nanoTime()
+            interpreter.runSignature(signatureInputs, signatureOutputs, SIGNATURE_KEY)
+            val inferenceMillis = elapsedMillis(inferenceStartNanos)
+            val nativeInferenceMillis = interpreter.lastNativeInferenceDurationNanoseconds
+                ?.let { TimeUnit.NANOSECONDS.toMillis(it) }
+
+            val outputCopyStartNanos = System.nanoTime()
+            fun output(name: String, required: Boolean = true): FloatArray =
+                if (required) checkNotNull(outputsByName[name]) { "Missing LiteRT output '$name'" }.copyToNchw()
+                else FloatArray(0)
+
+            val result = RTMDetLiteRtRun(
+                cls80 = output("cls_80"),
+                cls40 = output("cls_40"),
+                cls20 = output("cls_20"),
+                bbox80 = output("bbox_80"),
+                bbox40 = output("bbox_40"),
+                bbox20 = output("bbox_20"),
+                kernel80 = output("kernel_80", requireKernels),
+                kernel40 = output("kernel_40", requireKernels),
+                kernel20 = output("kernel_20", requireKernels),
+                maskFeat = output("mask_feat", requireMaskFeat),
+                inputPackingMillis = inputPackingMillis,
+                inferenceMillis = inferenceMillis,
+                outputCopyMillis = elapsedMillis(outputCopyStartNanos),
+                nativeInferenceMillis = nativeInferenceMillis,
+            )
+            return result
+        }
+    }
+
+    companion object {
+        private const val TAG = "RTMDetLiteRt"
+        private const val SIGNATURE_KEY = "serving_default"
+        private const val INPUT_NAME = "input"
+        private const val MODEL_TOKEN = "furnit_rtmdet_ins_m_fp16_7edbd669"
+        private val REQUIRED_OUTPUT_NAMES = setOf(
+            "cls_80", "cls_40", "cls_20",
+            "bbox_80", "bbox_40", "bbox_20",
+            "kernel_80", "kernel_40", "kernel_20",
+            "mask_feat",
+        )
+
+        fun create(context: Context, assetName: String): RTMDetLiteRtBackend? {
+            val executor = Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "RTMDetLiteRt")
+            }
+            return try {
+                val appContext = context.applicationContext
+                val state = executor.submit<RuntimeState> {
+                    createRuntimeState(appContext, assetName)
+                }.get()
+                RTMDetLiteRtBackend(executor, state)
+            } catch (error: Exception) {
+                executor.shutdownNow()
+                LogUtil.e(TAG, "LiteRT initialization failed: ${rootMessage(error)}", error)
+                null
+            }
+        }
+
+        private fun createRuntimeState(context: Context, assetName: String): RuntimeState {
+            val initStartNanos = System.nanoTime()
+            val modelFile = copyAssetToCache(context, assetName)
+            val modelBuffer = FileInputStream(modelFile).channel.use { channel ->
+                channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, channel.size())
+            }
+
+            val gpuOptions = try {
+                CompatibilityList().use { compatibility ->
+                    if (!compatibility.isDelegateSupportedOnThisDevice) return@use null
+                    compatibility.bestOptionsForThisDevice
+                        .setPrecisionLossAllowed(true)
+                        .setInferencePreference(GpuDelegateFactory.Options.INFERENCE_PREFERENCE_SUSTAINED_SPEED)
+                        .setSerializationParams(context.codeCacheDir.absolutePath, MODEL_TOKEN)
+                }
+            } catch (error: Exception) {
+                LogUtil.w(TAG, "Could not query GPU compatibility: ${rootMessage(error)}")
+                null
+            }
+
+            if (gpuOptions != null) {
+                var gpuDelegate: GpuDelegate? = null
+                var gpuInterpreter: Interpreter? = null
+                try {
+                    gpuDelegate = GpuDelegate(gpuOptions)
+                    modelBuffer.position(0)
+                    gpuInterpreter = Interpreter(
+                        modelBuffer,
+                        Interpreter.Options()
+                            .setNumThreads(1)
+                            .addDelegate(gpuDelegate),
+                    )
+                    return prepareRuntimeState(
+                        interpreter = gpuInterpreter,
+                        gpuDelegate = gpuDelegate,
+                        executionProvider = "LITERT_GPU_FP16",
+                        assetName = assetName,
+                        initStartNanos = initStartNanos,
+                    )
+                } catch (gpuError: Exception) {
+                    runCatching { gpuInterpreter?.close() }
+                    runCatching { gpuDelegate?.close() }
+                    LogUtil.w(
+                        TAG,
+                        "GPU delegate compile/warm-up failed; using LiteRT XNNPACK: ${rootMessage(gpuError)}",
+                    )
+                }
+            }
+
+            modelBuffer.position(0)
+            val cpuInterpreter = Interpreter(
+                modelBuffer,
+                Interpreter.Options()
+                    .setUseXNNPACK(true)
+                    .setNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4)),
+            )
+            return try {
+                prepareRuntimeState(
+                    interpreter = cpuInterpreter,
+                    gpuDelegate = null,
+                    executionProvider = "LITERT_CPU_XNNPACK_FP16",
+                    assetName = assetName,
+                    initStartNanos = initStartNanos,
+                )
+            } catch (error: Exception) {
+                cpuInterpreter.close()
+                throw error
+            }
+        }
+
+        private fun prepareRuntimeState(
+            interpreter: Interpreter,
+            gpuDelegate: GpuDelegate?,
+            executionProvider: String,
+            assetName: String,
+            initStartNanos: Long,
+        ): RuntimeState {
+            interpreter.allocateTensors()
+            validateSignature(interpreter)
+            val inputTensor = interpreter.getInputTensorFromSignature(INPUT_NAME, SIGNATURE_KEY)
+            require(inputTensor.dataType() == DataType.FLOAT32) {
+                "Expected Float32 LiteRT input, got ${inputTensor.dataType()}"
+            }
+            val inputShape = inputTensor.shape()
+            require(inputShape.size == 4 && inputShape[0] == 1 && inputShape[3] == 3) {
+                "Expected NHWC input [1,H,W,3], got ${inputShape.contentToString()}"
+            }
+            val inputHeight = inputShape[1]
+            val inputWidth = inputShape[2]
+            val inputBytes = directBuffer(inputTensor.numBytes())
+            val outputsByName = REQUIRED_OUTPUT_NAMES.associateWith { name ->
+                outputBuffer(name, interpreter.getOutputTensorFromSignature(name, SIGNATURE_KEY))
+            }
+            val state = RuntimeState(
+                interpreter = interpreter,
+                gpuDelegate = gpuDelegate,
+                executionProvider = executionProvider,
+                inputWidth = inputWidth,
+                inputHeight = inputHeight,
+                inputBytes = inputBytes,
+                inputFloats = inputBytes.asFloatBuffer(),
+                inputValues = FloatArray(inputTensor.numElements()),
+                outputsByName = outputsByName,
+            )
+            val warmUpMillis = state.warmUp()
+            LogUtil.i(
+                TAG,
+                "Loaded '$assetName' provider=$executionProvider input=${inputWidth}x$inputHeight " +
+                    "warmUp=${warmUpMillis}ms total=${elapsedMillis(initStartNanos)}ms " +
+                    "thread=${Thread.currentThread().name}",
+            )
+            return state
+        }
+
+        private fun validateSignature(interpreter: Interpreter) {
+            require(SIGNATURE_KEY in interpreter.signatureKeys) {
+                "Missing LiteRT signature '$SIGNATURE_KEY': ${interpreter.signatureKeys.contentToString()}"
+            }
+            require(INPUT_NAME in interpreter.getSignatureInputs(SIGNATURE_KEY)) {
+                "Missing LiteRT input '$INPUT_NAME'"
+            }
+            val actualOutputs = interpreter.getSignatureOutputs(SIGNATURE_KEY).toSet()
+            require(actualOutputs.containsAll(REQUIRED_OUTPUT_NAMES)) {
+                "Missing LiteRT outputs: ${REQUIRED_OUTPUT_NAMES - actualOutputs}"
+            }
+        }
+
+        private fun outputBuffer(name: String, tensor: Tensor): OutputBuffer {
+            require(tensor.dataType() == DataType.FLOAT32) {
+                "$name must be Float32, got ${tensor.dataType()}"
+            }
+            val shape = tensor.shape()
+            require(shape.size == 4 && shape[0] == 1) {
+                "$name must be rank-4 NHWC, got ${shape.contentToString()}"
+            }
+            val bytes = directBuffer(tensor.numBytes())
+            val elementCount = tensor.numElements()
+            return OutputBuffer(
+                name = name,
+                shape = shape,
+                bytes = bytes,
+                floats = bytes.asFloatBuffer(),
+                nhwcValues = FloatArray(elementCount),
+                nchwValues = FloatArray(elementCount),
+            )
+        }
+
+        private fun directBuffer(byteCount: Int): ByteBuffer =
+            ByteBuffer.allocateDirect(byteCount).order(ByteOrder.nativeOrder())
+
+        private fun copyAssetToCache(context: Context, assetName: String): File {
+            val output = File(context.cacheDir, assetName)
+            val installToken = context.packageManager
+                .getPackageInfo(context.packageName, 0)
+                .lastUpdateTime
+                .toString()
+            val tokenFile = File(context.cacheDir, "$assetName.install-token")
+            val currentToken = runCatching { tokenFile.takeIf(File::isFile)?.readText() }.getOrNull()
+            if (output.isFile && output.length() > 0L && currentToken == installToken) return output
+
+            context.assets.open(assetName).use { input ->
+                output.outputStream().use(input::copyTo)
+            }
+            tokenFile.writeText(installToken)
+            return output
+        }
+
+        private fun elapsedMillis(startNanos: Long): Long =
+            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
+
+        private fun rootMessage(error: Throwable): String {
+            var root = error
+            while (root.cause != null && root.cause !== root) root = root.cause!!
+            return root.message ?: root.javaClass.simpleName
+        }
+    }
+}

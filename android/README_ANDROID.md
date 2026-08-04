@@ -76,15 +76,28 @@ Per-release checklist:
 - `RoomGenerationAssets` records the packaged Swift-parity asset contract.
 - Generated preview folders are promoted into `files/rooms/` only when the user saves the room.
 
-Android packages the Depth Anything metric depth, GeoCalib pinhole, and RTMDet furniture segmentation ONNX models via install-time Play Asset Delivery packs (`room_generation_models`, `rtmdet_models`). Install-time packs merge into the app's `AssetManager`, so runtime asset paths are unchanged.
+Android packages the Depth Anything metric depth and GeoCalib pinhole ONNX models plus RTMDet
+LiteRT/ONNX furniture-segmentation models via install-time Play Asset Delivery packs
+(`room_generation_models`, `rtmdet_models`). Install-time packs merge into the app's `AssetManager`,
+so runtime asset paths are unchanged.
 
 ## Furniture Segmentation
 
-- Model: `rtmdet-ins-m-raw.onnx` in the `rtmdet_models` install-time asset pack.
-- Runtime: ONNX Runtime Android.
+- Primary model: `rtmdet-ins-m-raw-fp16.tflite` in the `rtmdet_models` install-time asset pack.
+- Fallback model: `rtmdet-ins-m-raw.onnx` in the same asset pack.
+- Runtime: persistent LiteRT 1.4.2 FP16 GPU delegate first; ONNX Runtime tries accelerator-only
+  NNAPI FP16 and then XNNPACK/CPU if LiteRT cannot initialize.
 - Manager: `app/src/main/java/com/furnit/android/services/FurnitureFitManager.kt`.
-- Backend lifetime: shared process-wide `OrtEnvironment`, `OrtSession`, session options, and single-thread executor.
-- Fast identify: live identify requests cls/bbox outputs only; mask kernels, `mask_feat`, mask planes, and affinity grouping are reserved for segmentation modes.
+- Backend lifetime: Swift-parity ownership—do not load at application launch; request RTMDet when
+  AI photo-room generation begins and when a room appears; ensure again when Fit activates; release
+  the LiteRT interpreter/delegate or ONNX session and reusable scratch storage when the saved-room
+  viewer disappears. The serial inference executor remains process infrastructure rather than
+  loaded model state.
+- Fast identify: live identify copies/decodes cls and bbox outputs only; kernel/mask layout copies,
+  mask planes, and affinity grouping are reserved for segmentation modes.
+- Graph contract: raw BGR `0...255` input normalization and the Swift 80→160 bilinear mask-feature
+  resize are embedded in the shipped models; Android retains Swift's class-aware NMS, dynamic mask
+  head, affinity grouping, primary-cluster selection, and cutout rules.
 - Output: `SegmentationResult.mask` is an ARGB bitmap. Non-furniture pixels have alpha `0`; furniture pixels are opaque camera RGB.
 - Display: `FurnitureFitOverlayView` draws the cutout over the current GLB room screen.
 
@@ -119,7 +132,10 @@ Bundled sample room assets live in `app/src/main/assets/bundled_rooms/`.
 
 ## Local Asset Notes
 
-The root repository ignores `*.onnx` by default. Android's `.gitignore` explicitly allows the three shipped model ONNX files in the asset pack modules, and `.gitattributes` stores all `*.onnx` files in Git LFS. Run `git lfs pull` after a fresh clone if the model files are missing.
+The root repository ignores local `*.onnx` and `*.tflite` exports by default. Android's
+`.gitignore` explicitly allows the shipped asset-pack models; repository/Android `.gitattributes`
+store ONNX and TFLite model files in Git LFS. Run `git lfs pull` after a fresh clone if model files
+are missing.
 
 Do not add old native room-generation model exports or large local experiment folders back into app assets.
 

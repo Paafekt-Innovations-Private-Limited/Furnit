@@ -50,9 +50,21 @@ object MeasurementObjectDetection {
             LogUtil.w(TAG, "RTMDet measurement detection timed out")
             return null
         }
-        val detections = segmentation?.detections ?: return null
+        val result = segmentation ?: return null
         val imageWidth = image.width
         val imageHeight = image.height
+        // FurnitureFitManager keeps Android UI detections in the square model coordinate space;
+        // Swift returns source-image coordinates. Normalize here before scoring/measuring so a
+        // portrait or landscape photo produces the same bbox geometry on both platforms.
+        val inputSize = result.inputSize.coerceAtLeast(1).toFloat()
+        val detections = result.detections.map { detection ->
+            detection.copy(
+                x = detection.x * imageWidth / inputSize,
+                y = detection.y * imageHeight / inputSize,
+                w = detection.w * imageWidth / inputSize,
+                h = detection.h * imageHeight / inputSize,
+            )
+        }
         val detection = selectMeasurementObjectBBox(detections, imageWidth, imageHeight) ?: return null
         val rect = clampedBBox(detection, imageWidth, imageHeight)
         if (rect.leftX >= rect.rightX || rect.topY >= rect.bottomY) return null

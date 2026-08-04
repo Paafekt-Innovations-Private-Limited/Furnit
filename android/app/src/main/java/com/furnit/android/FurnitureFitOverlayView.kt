@@ -28,6 +28,7 @@ data class DetectionResult(
 class FurnitureFitOverlayView(context: Context) : View(context) {
     private var maskBitmap: Bitmap? = null
     private var detections: List<DetectionResult> = emptyList()
+    private var primaryDetection: DetectionResult? = null
     private var detectionClusters: List<List<Int>> = emptyList()
     private var inputSize = 640 // Model input size
     private var sourceFrameWidth = 640
@@ -502,8 +503,8 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         return copy
     }
 
-    private fun maybeResetTransformForPrimaryDetection(dets: List<DetectionResult>) {
-        val newPrimaryLabel = dets.firstOrNull()?.label
+    private fun maybeResetTransformForPrimaryDetection(primary: DetectionResult?) {
+        val newPrimaryLabel = primary?.label
         if (newPrimaryLabel != null && newPrimaryLabel != lastPrimaryLabel) {
             furnitureScale = 1.0f
             translateX = 0f
@@ -518,7 +519,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         val displayedHeight = displayedFurnitureHeightMeters
         val roomHeight = roomHeightMeters
         if (displayedHeight == null || roomHeight == null || displayedHeight <= roomHeight || height <= 1) return 1f
-        val referenceDetectionHeight = detections.firstOrNull()?.h
+        val referenceDetectionHeight = primaryDetection?.h
         val referenceHeightPx = referenceDetectionHeight?.takeIf { it > 1f }
             ?: maskBitmap?.height?.toFloat()
             ?: return 1f
@@ -545,8 +546,9 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     fun setDetections(dets: List<DetectionResult>, modelInputSize: Int = 640) {
-        maybeResetTransformForPrimaryDetection(dets)
+        maybeResetTransformForPrimaryDetection(dets.firstOrNull())
         detections = dets
+        primaryDetection = dets.firstOrNull()
         detectionClusters = emptyList()
         inputSize = modelInputSize
         sourceFrameWidth = modelInputSize
@@ -596,10 +598,12 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         frameAlignedOverlay: Boolean = false,
         sourceWidth: Int = mask?.width ?: modelInputSize,
         sourceHeight: Int = mask?.height ?: modelInputSize,
+        primaryDetection: DetectionResult? = dets.firstOrNull(),
     ) {
-        maybeResetTransformForPrimaryDetection(dets)
+        maybeResetTransformForPrimaryDetection(primaryDetection)
         replaceMaskBitmap(mask)
         detections = dets
+        this.primaryDetection = primaryDetection
         detectionClusters = clusters
         inputSize = modelInputSize
         sourceFrameWidth = sourceWidth.takeIf { it > 0 } ?: modelInputSize

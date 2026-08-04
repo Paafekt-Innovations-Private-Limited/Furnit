@@ -35,10 +35,18 @@ ruler/pinch/tap helpers, recenter/save, and AR resize. It is not a full-width ba
 
 Toggle full-video mode with the in-room **viewfinder** button (`ic_text_viewfinder`) while brain is active. This matches Swift's `text.viewfinder` toolbar control; the old Settings switch has been removed.
 
-`FurnitureFitManager` uses a process-wide ONNX Runtime backend so room-viewer sessions reuse the
-same `OrtEnvironment`, `OrtSession`, session options, and single-thread inference executor. Identify
-mode requests cls/bbox outputs only and skips mask-plane/affinity work; segmentation modes request
-kernels plus `mask_feat` to build cutouts.
+RTMDet ownership matches Swift: application launch does not load the model; starting AI photo-room
+generation requests it for the upcoming preview; opening a room viewer also ensures its shared
+backend asynchronously; activating Fit ensures it again; and leaving a saved-room viewer releases
+the backend after accepted inference drains. The primary path is the FP16 LiteRT GPU model, with
+ONNX Runtime retained as a hardware-first NNAPI then XNNPACK fallback. Identify mode consumes only
+cls/bbox results and skips mask-plane/affinity work; segmentation modes use kernels plus `mask_feat`
+to build cutouts.
+
+Live frame ownership matches Swift: busy AR frames are dropped before CPU-image/depth work, accepted
+AR frames leave the GL thread after a quick plane copy, and CameraX supplies native rotated RGBA with
+latest-frame backpressure. Model-input and cutout buffers are reused on the serial inference queue.
+See [`docs/FURNITURE_FIT_PERFORMANCE.md`](docs/FURNITURE_FIT_PERFORMANCE.md).
 
 ## Packaged Assets
 

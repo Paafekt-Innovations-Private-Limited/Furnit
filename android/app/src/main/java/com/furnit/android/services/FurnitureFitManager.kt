@@ -6,8 +6,10 @@ import android.graphics.Bitmap.Config
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
+import com.furnit.android.BuildConfig
 import com.furnit.android.utils.LogUtil
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
@@ -15,6 +17,7 @@ import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtProvider
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
+import ai.onnxruntime.providers.NNAPIFlags
 import com.furnit.android.DetectionResult
 import com.furnit.android.ar.ArSupportChecker
 import java.io.File
@@ -22,6 +25,11 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import java.util.EnumSet
 import org.json.JSONObject
 import kotlin.math.ceil
 import kotlin.math.exp
@@ -29,6 +37,7 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 // Result containing mask and detections
 data class SegmentationResult(
@@ -44,11 +53,22 @@ data class SegmentationResult(
 /**
  * FurnitureFitManager handles furniture detection and selected-object cutout generation.
  *
- * Inference backend: ONNX Runtime. The renderer outputs real camera pixels only inside the
- * selected mask and leaves every other pixel transparent so the room remains visible behind it.
+ * Inference backend: FP16 LiteRT GPU with ONNX Runtime fallback. The renderer outputs real camera
+ * pixels only inside the selected mask and leaves every other pixel transparent so the room
+ * remains visible behind it.
  */
 class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private enum class CallbackDelivery { MAIN, INFERENCE }
+    /**
+     * Session generation for queued/running work. Swift rotates its Core ML inference queue when
+     * Furniture Fit stops so an abandoned prediction cannot hold up the next session. ONNX Runtime
+     * exposes an explicit per-run termination primitive, so Android invalidates queued work and
+     * terminates the active run to provide the same stop -> immediate restart guarantee without
+     * running two calls against the shared scratch buffers concurrently.
+     */
+    private val inferenceGeneration = AtomicLong(0L)
+    private val activeRunOptions = AtomicReference<OrtSession.RunOptions?>(null)
     private val bboxExpandMargin = 0.08f
     private val includeSupportingTableForMonitorScene = true
     private val enableMorphCloseForMask = false
@@ -60,27 +80,27 @@ class FurnitureFitManager(private val context: Context) {
     companion object {
         private const val TAG = "FurnitureFitManager"
         private const val RTMDET_ONNX_MODEL_ASSET = RoomGenerationAssets.RTMDET_INS_M_RAW_ONNX
+        private const val RTMDET_TFLITE_MODEL_ASSET = RoomGenerationAssets.RTMDET_INS_M_RAW_FP16_TFLITE
         private const val DEFAULT_ONNX_MODEL_ASSET = RTMDET_ONNX_MODEL_ASSET
         private const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
-        private const val RTMDET_CONFIDENCE_THRESHOLD = 0.30f
+        private const val RTMDET_CONFIDENCE_THRESHOLD = RTMDetSwiftParity.CONFIDENCE_THRESHOLD
         private const val LOW_CONFIDENCE_OVERSIZED_THRESHOLD = 0.65f
         private const val OVERSIZED_BOX_AREA_FRACTION = 0.45f
         private const val RTMDET_MASK_KEEP_THRESHOLD = 0.80f
-        private const val DEFAULT_NMS_IOU_THRESHOLD = 0.50f
-        private const val DEFAULT_MAX_DETECTIONS = 1000
-        private const val RAW_MASK_AFFINITY_THRESHOLD = 0.12f
-        private const val RAW_MASK_AFFINITY_BIT_THRESHOLD = 0.50f
-        // Keep the established 0.5 contour while giving only the narrow edge band fractional alpha.
-        // This avoids a separate blur/morphology pass in the per-frame compositor.
+        private const val DEFAULT_NMS_IOU_THRESHOLD = RTMDetSwiftParity.NMS_IOU_THRESHOLD
+        private const val DEFAULT_MAX_DETECTIONS = RTMDetSwiftParity.MAX_DETECTION_COUNT
+        private const val RAW_MASK_AFFINITY_THRESHOLD = RTMDetSwiftParity.MASK_AFFINITY_THRESHOLD
+        private const val RAW_MASK_AFFINITY_BIT_THRESHOLD = RTMDetSwiftParity.MASK_AFFINITY_BIT_THRESHOLD
+        // Legacy postprocessed-prototype models retain their established 0.5 contour. Raw RTMDet
+        // rendering uses RTMDetSwiftParity.rawMaskRenderAlpha (Swift's 0.30 contour) directly.
         private const val RAW_MASK_RENDER_THRESHOLD = 0.50f
         private const val RAW_MASK_RENDER_ANTIALIAS_HALF_WIDTH = 0.05f
-        private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
-        /** When true, RTMDet only surfaces the curated furniture classes in RTMDET_ALLOWED_CLASS_IDS.
-         *  When false, ALL COCO classes are scored. Mirrors iOS `controlledList`. */
-        private const val CONTROLLED_LIST = true
 
-        private const val RTMDET_INPUT_SIZE = 640
-        private const val RTMDET_MASK_SIDE = 80
+        private const val RTMDET_INPUT_SIZE = RTMDetSwiftParity.MODEL_SIDE
+        private const val RTMDET_SOURCE_MASK_SIDE = RTMDetSwiftParity.SOURCE_MASK_SIDE
+        private const val RTMDET_MASK_SIDE = RTMDetSwiftParity.MASK_SIDE
+        private const val RTMDET_EMBEDDED_PREPROCESS_METADATA = "furnit.rtmdet.preprocess"
+        private const val RTMDET_EMBEDDED_PREPROCESS_VALUE = "bgr_mean_std"
         private val RTMDET_DETECTION_OUTPUTS = linkedSetOf(
             "cls_80", "bbox_80",
             "cls_40", "bbox_40",
@@ -89,13 +109,139 @@ class FurnitureFitManager(private val context: Context) {
 
         private val sharedBackendLock = Any()
         @Volatile private var sharedBackend: OnnxBackend? = null
-        private val sharedWarmupStarted = java.util.concurrent.atomic.AtomicBoolean(false)
-        @Volatile private var sharedWarmupFinished: Boolean = false
-        private val sharedInferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-        private var sharedInputBuffer: FloatBuffer? = null
-        private var sharedInputFloatCount: Int = 0
-        private var sharedInputTensor: OnnxTensor? = null
-        private var sharedInputShape: LongArray? = null
+        @Volatile private var sharedLiteRtBackend: RTMDetLiteRtBackend? = null
+        private val sharedResourceGeneration = java.util.concurrent.atomic.AtomicLong(0L)
+
+        /** Reusable memory belongs to one serial inference lane and is never shared across lanes. */
+        private class InferenceWorkspace {
+            var inputBuffer: FloatBuffer? = null
+            var inputFloatCount: Int = 0
+            var inputTensor: OnnxTensor? = null
+            var inputShape: LongArray? = null
+            var preparedBitmap: Bitmap? = null
+            var preparedPixels = IntArray(0)
+            var framePixels = IntArray(0)
+            var outputPixels = IntArray(0)
+            val preprocessPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+            fun close() {
+                inputTensor?.close()
+                inputTensor = null
+                inputShape = null
+                inputBuffer = null
+                inputFloatCount = 0
+                preparedBitmap?.takeIf { !it.isRecycled }?.recycle()
+                preparedBitmap = null
+                preparedPixels = IntArray(0)
+                framePixels = IntArray(0)
+                outputPixels = IntArray(0)
+            }
+        }
+
+        private data class InferenceLane(
+            val generation: Long,
+            val executor: ExecutorService,
+            val workspace: InferenceWorkspace,
+        )
+
+        private val sharedInferenceLaneLock = Any()
+        private val sharedInferenceLifecycleLock = Any()
+        private val sharedInferenceWorkspace = ThreadLocal<InferenceWorkspace>()
+        private val sharedReleaseExecutor = Executors.newSingleThreadExecutor()
+        private var sharedInferenceLaneGeneration = 0L
+        @Volatile private var sharedInferenceLane = createInferenceLane(sharedInferenceLaneGeneration)
+        private var sharedAcceptedLaneTaskCount = 0
+        private var pendingSharedReleaseGeneration: Long? = null
+        private val lastCutoutAlphaStatsLogMs = AtomicLong(0L)
+
+        private data class CreatedOrtSession(
+            val session: OrtSession,
+            val options: SessionOptions,
+            val executionProvider: String,
+        )
+
+        private fun createInferenceLane(generation: Long): InferenceLane = InferenceLane(
+            generation = generation,
+            executor = Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "FurnitureFitInference-$generation")
+            },
+            workspace = InferenceWorkspace(),
+        )
+
+        private fun noteSharedLaneTaskAccepted() {
+            synchronized(sharedInferenceLifecycleLock) {
+                sharedAcceptedLaneTaskCount += 1
+            }
+        }
+
+        private fun noteSharedLaneTaskFinished() {
+            val releaseGeneration = synchronized(sharedInferenceLifecycleLock) {
+                check(sharedAcceptedLaneTaskCount > 0) { "Unbalanced Furniture Fit inference task count" }
+                sharedAcceptedLaneTaskCount -= 1
+                if (sharedAcceptedLaneTaskCount == 0) {
+                    pendingSharedReleaseGeneration.also { pendingSharedReleaseGeneration = null }
+                } else {
+                    null
+                }
+            }
+            if (releaseGeneration != null) scheduleSharedBackendRelease(releaseGeneration)
+        }
+
+        private fun executeOnSharedInferenceLane(task: () -> Unit): Boolean {
+            synchronized(sharedInferenceLaneLock) {
+                val lane = sharedInferenceLane
+                noteSharedLaneTaskAccepted()
+                return try {
+                    lane.executor.execute {
+                        sharedInferenceWorkspace.set(lane.workspace)
+                        try {
+                            task()
+                        } finally {
+                            sharedInferenceWorkspace.remove()
+                            noteSharedLaneTaskFinished()
+                        }
+                    }
+                    true
+                } catch (_: java.util.concurrent.RejectedExecutionException) {
+                    noteSharedLaneTaskFinished()
+                    false
+                }
+            }
+        }
+
+        /**
+         * Literal Swift-style queue rotation. Existing work stays on its retired serial queue;
+         * subsequent frames use a new queue with independent scratch memory.
+         */
+        private fun rotateSharedInferenceLane(): Long {
+            synchronized(sharedInferenceLaneLock) {
+                val retiredLane = sharedInferenceLane
+                sharedInferenceLaneGeneration += 1L
+                val nextLane = createInferenceLane(sharedInferenceLaneGeneration)
+                sharedInferenceLane = nextLane
+
+                noteSharedLaneTaskAccepted()
+                try {
+                    retiredLane.executor.execute {
+                        try {
+                            retiredLane.workspace.close()
+                        } finally {
+                            noteSharedLaneTaskFinished()
+                        }
+                    }
+                } catch (_: java.util.concurrent.RejectedExecutionException) {
+                    retiredLane.workspace.close()
+                    noteSharedLaneTaskFinished()
+                }
+                retiredLane.executor.shutdown()
+                return nextLane.generation
+            }
+        }
+
+        private fun currentInferenceWorkspace(): InferenceWorkspace =
+            checkNotNull(sharedInferenceWorkspace.get()) {
+                "Furniture Fit inference scratch accessed outside its owning serial lane"
+            }
 
         /**
          * Metric overlay sizing uses ARCore depth/planes when the device supports ARCore; otherwise non-metric fallback.
@@ -103,48 +249,86 @@ class FurnitureFitManager(private val context: Context) {
         fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean =
             ArSupportChecker.isArCoreSupported(context)
 
-        /**
-         * Preload the shared RTMDet ONNX session (asset copy + [OrtSession] create).
-         * Mirror iOS room-open `RTMDetModelService.ensureModelLoaded()` so Fit is not blocked
-         * by a multi-second cold session create on the first tap.
-         */
-        fun preloadShared(context: Context): Boolean {
-            return sharedOnnxBackend(context.applicationContext, DEFAULT_ONNX_MODEL_ASSET) != null
+        /** True when a room viewer's [initializeAuto] has already created the shared session. */
+        fun isSharedBackendReady(): Boolean {
+            return sharedLiteRtBackend != null || sharedBackend?.assetName == DEFAULT_ONNX_MODEL_ASSET
         }
 
         /**
-         * Process-level RTMDet preload + warmup. This keeps screen entry from launching a dummy
-         * segmentation request while the camera is already trying to process the first real frame.
+         * Mirrors Swift `RTMDetModelService.releaseResources()` when a room viewer disappears.
+         * Release is serialized after any accepted inference so an in-flight ONNX call is never
+         * closed underneath itself. A new viewer initialization cancels a queued stale release.
          */
-        fun preloadAndWarmSharedAsync(context: Context) {
-            if (sharedWarmupFinished || !sharedWarmupStarted.compareAndSet(false, true)) return
-            val appContext = context.applicationContext
-            Thread({
-                val manager = FurnitureFitManager(appContext)
-                try {
-                    val initialized = manager.initializeAuto()
-                    val warmed = initialized && manager.warmupInferenceBlocking()
-                    sharedWarmupFinished = warmed
-                    if (!warmed) sharedWarmupStarted.set(false)
-                    LogUtil.i(TAG, "Shared RTMDet preload/warmup initialized=$initialized warmed=$warmed")
-                } catch (e: Exception) {
-                    LogUtil.w(TAG, "Shared RTMDet preload/warmup failed: ${e.message}")
-                    sharedWarmupStarted.set(false)
-                } finally {
-                    manager.close()
+        fun releaseSharedResourcesAsync() {
+            val releaseGeneration = sharedResourceGeneration.incrementAndGet()
+            // Retire the current workspace even when it is idle. The shared backend itself is
+            // released only after every accepted task on all retired lanes has completed.
+            rotateSharedInferenceLane()
+            val releaseNow = synchronized(sharedInferenceLifecycleLock) {
+                pendingSharedReleaseGeneration = releaseGeneration
+                if (sharedAcceptedLaneTaskCount == 0) {
+                    pendingSharedReleaseGeneration = null
+                    true
+                } else {
+                    false
                 }
-            }, "rtmdet-preload-warmup").apply {
-                isDaemon = true
-                start()
+            }
+            if (releaseNow) scheduleSharedBackendRelease(releaseGeneration)
+        }
+
+        private fun scheduleSharedBackendRelease(releaseGeneration: Long) {
+            sharedReleaseExecutor.execute {
+                if (sharedResourceGeneration.get() != releaseGeneration) return@execute
+                synchronized(sharedInferenceLifecycleLock) {
+                    if (sharedAcceptedLaneTaskCount != 0) {
+                        pendingSharedReleaseGeneration = releaseGeneration
+                        return@execute
+                    }
+                }
+                synchronized(sharedBackendLock) {
+                    if (sharedResourceGeneration.get() != releaseGeneration) return@execute
+                    synchronized(sharedInferenceLifecycleLock) {
+                        if (sharedAcceptedLaneTaskCount != 0) {
+                            pendingSharedReleaseGeneration = releaseGeneration
+                            return@execute
+                        }
+                    }
+                    val backend = sharedBackend
+                    sharedBackend = null
+                    val liteRtBackend = sharedLiteRtBackend
+                    sharedLiteRtBackend = null
+                    backend?.session?.close()
+                    backend?.options?.close()
+                    liteRtBackend?.close()
+                }
+                LogUtil.i(TAG, "Released shared RTMDet resources after room viewer disappeared")
             }
         }
 
-        /** True when [preloadShared] / [initializeAuto] has already created the shared session. */
-        fun isSharedBackendReady(): Boolean {
-            return sharedBackend?.assetName == DEFAULT_ONNX_MODEL_ASSET
+        private fun sharedLiteRtBackend(context: Context): RTMDetLiteRtBackend? {
+            // A newly appearing viewer supersedes any release queued by the previous viewer.
+            sharedResourceGeneration.incrementAndGet()
+            synchronized(sharedInferenceLifecycleLock) {
+                pendingSharedReleaseGeneration = null
+            }
+            sharedLiteRtBackend?.let { return it }
+            synchronized(sharedBackendLock) {
+                sharedLiteRtBackend?.let { return it }
+                val backend = RTMDetLiteRtBackend.create(
+                    context = context.applicationContext,
+                    assetName = RTMDET_TFLITE_MODEL_ASSET,
+                ) ?: return null
+                sharedLiteRtBackend = backend
+                return backend
+            }
         }
 
         private fun sharedOnnxBackend(context: Context, onnxAssetName: String): OnnxBackend? {
+            // A newly appearing viewer supersedes any release queued by the previous viewer.
+            sharedResourceGeneration.incrementAndGet()
+            synchronized(sharedInferenceLifecycleLock) {
+                pendingSharedReleaseGeneration = null
+            }
             sharedBackend?.takeIf { it.assetName == onnxAssetName }?.let { return it }
             synchronized(sharedBackendLock) {
                 sharedBackend?.takeIf { it.assetName == onnxAssetName }?.let { return it }
@@ -154,34 +338,10 @@ class FurnitureFitManager(private val context: Context) {
                     val appContext = context.applicationContext
                     val file = copyAssetToFile(appContext, onnxAssetName)
                     val env = OrtEnvironment.getEnvironment()
-                    val availableProviders = OrtEnvironment.getAvailableProviders()
-                    val opts = SessionOptions().apply {
-                        setOptimizationLevel(SessionOptions.OptLevel.ALL_OPT)
-                        setExecutionMode(SessionOptions.ExecutionMode.SEQUENTIAL)
-                        // XNNPACK uses its own worker pool. Keep ORT's intra-op pool single-threaded
-                        // and non-spinning so the two pools do not fight on the first live frames.
-                        setIntraOpNumThreads(1)
-                        setInterOpNumThreads(1)
-                        addConfigEntry("session.intra_op.allow_spinning", "0")
-                        if (availableProviders.contains(OrtProvider.XNNPACK)) {
-                            try {
-                                addXnnpack(
-                                    mapOf(
-                                        "intra_op_num_threads" to Runtime.getRuntime()
-                                            .availableProcessors()
-                                            .coerceIn(2, 4)
-                                            .toString(),
-                                    ),
-                                )
-                                LogUtil.i(TAG, "ONNX execution provider requested: XNNPACK available=$availableProviders")
-                            } catch (e: OrtException) {
-                                LogUtil.w(TAG, "Failed to enable XNNPACK; falling back to CPU: ${e.message}")
-                            }
-                        } else {
-                            LogUtil.i(TAG, "ONNX execution provider requested: CPU; available=$availableProviders")
-                        }
-                    }
-                    val session = env.createSession(file.absolutePath, opts)
+                    val createdSession = createRtmdetSession(env, file)
+                    val opts = createdSession.options
+                    val session = createdSession.session
+                    val modelMetadata = session.metadata.customMetadata
                     val backend = OnnxBackend(
                         env = env,
                         session = session,
@@ -206,6 +366,9 @@ class FurnitureFitManager(private val context: Context) {
                             ?.toInt()
                             ?.takeIf { it > 0 }
                             ?: RTMDET_INPUT_SIZE,
+                        embedsRtmdetPreprocess = modelMetadata[RTMDET_EMBEDDED_PREPROCESS_METADATA] ==
+                            RTMDET_EMBEDDED_PREPROCESS_VALUE,
+                        executionProvider = createdSession.executionProvider,
                         isRtmdetRaw = onnxAssetName == RTMDET_ONNX_MODEL_ASSET ||
                             (session.outputInfo.containsKey("cls_80") &&
                                 session.outputInfo.containsKey("bbox_80") &&
@@ -215,7 +378,9 @@ class FurnitureFitManager(private val context: Context) {
                     sharedBackend = backend
                     LogUtil.i(
                         TAG,
-                        "Loaded shared ONNX model '$onnxAssetName' in ${(System.nanoTime() - initStartNanos) / 1_000_000L}ms",
+                        "Loaded shared ONNX model '$onnxAssetName' provider=${createdSession.executionProvider} " +
+                            "embeddedPreprocess=${backend.embedsRtmdetPreprocess} " +
+                            "in ${(System.nanoTime() - initStartNanos) / 1_000_000L}ms",
                     )
                     for ((name, info) in session.inputInfo) {
                         LogUtil.i(TAG, "ONNX input: $name -> ${info.info}")
@@ -231,15 +396,92 @@ class FurnitureFitManager(private val context: Context) {
             }
         }
 
+        /**
+         * Swift requests CPU + Neural Engine before falling back to CPU/GPU. NNAPI with relaxed
+         * FP16 is the corresponding Android hardware path. Session creation performs NNAPI graph
+         * compilation, so a device with an incompatible accelerator fails here and immediately
+         * falls back to the already-proven XNNPACK path; plain ORT CPU remains the final fallback.
+         */
+        private fun createRtmdetSession(env: OrtEnvironment, file: File): CreatedOrtSession {
+            val availableProviders = OrtEnvironment.getAvailableProviders()
+            LogUtil.i(TAG, "Available ONNX execution providers: $availableProviders")
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
+                availableProviders.contains(OrtProvider.NNAPI)
+            ) {
+                val options = SessionOptions()
+                try {
+                    options.setOptimizationLevel(SessionOptions.OptLevel.ALL_OPT)
+                    options.setExecutionMode(SessionOptions.ExecutionMode.SEQUENTIAL)
+                    options.addNnapi(EnumSet.of(NNAPIFlags.USE_FP16, NNAPIFlags.CPU_DISABLED))
+                    LogUtil.i(TAG, "Compiling RTMDet for NNAPI (FP16, accelerator-only)")
+                    return CreatedOrtSession(
+                        session = env.createSession(file.absolutePath, options),
+                        options = options,
+                        executionProvider = "NNAPI_FP16",
+                    )
+                } catch (e: Exception) {
+                    options.close()
+                    LogUtil.w(TAG, "NNAPI RTMDet session unavailable; trying XNNPACK: ${e.message}")
+                }
+            }
+
+            if (availableProviders.contains(OrtProvider.XNNPACK)) {
+                val options = SessionOptions()
+                try {
+                    val workerCount = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
+                    options.setOptimizationLevel(SessionOptions.OptLevel.ALL_OPT)
+                    options.setExecutionMode(SessionOptions.ExecutionMode.SEQUENTIAL)
+                    options.setIntraOpNumThreads(1)
+                    options.setInterOpNumThreads(1)
+                    options.addConfigEntry("session.intra_op.allow_spinning", "0")
+                    options.addXnnpack(mapOf("intra_op_num_threads" to workerCount.toString()))
+                    LogUtil.i(TAG, "Compiling RTMDet for XNNPACK workers=$workerCount")
+                    return CreatedOrtSession(
+                        session = env.createSession(file.absolutePath, options),
+                        options = options,
+                        executionProvider = "XNNPACK",
+                    )
+                } catch (e: Exception) {
+                    options.close()
+                    LogUtil.w(TAG, "XNNPACK RTMDet session unavailable; using ORT CPU: ${e.message}")
+                }
+            }
+
+            val options = SessionOptions()
+            LogUtil.i(TAG, "Compiling RTMDet for default ORT CPU")
+            return try {
+                CreatedOrtSession(
+                    session = env.createSession(file.absolutePath, options),
+                    options = options,
+                    executionProvider = "CPU",
+                )
+            } catch (e: Exception) {
+                options.close()
+                throw e
+            }
+        }
+
         @Throws(IOException::class)
         private fun copyAssetToFile(context: Context, assetName: String): File {
             val outFile = File(context.cacheDir, assetName)
-            if (outFile.exists() && outFile.length() > 0L) return outFile
+            val installToken = context.packageManager
+                .getPackageInfo(context.packageName, 0)
+                .lastUpdateTime
+                .toString()
+            val tokenFile = File(context.cacheDir, "$assetName.install-token")
+            if (
+                outFile.exists() && outFile.length() > 0L &&
+                runCatching { tokenFile.takeIf(File::isFile)?.readText() }.getOrNull() == installToken
+            ) {
+                return outFile
+            }
             context.assets.open(assetName).use { input ->
                 java.io.FileOutputStream(outFile).use { output ->
                     input.copyTo(output)
                 }
             }
+            tokenFile.writeText(installToken)
             return outFile
         }
     }
@@ -249,6 +491,7 @@ class FurnitureFitManager(private val context: Context) {
     @Volatile private var ortBackend: OnnxBackend? = null
     @Volatile private var ortEnv: OrtEnvironment? = null
     @Volatile private var ortSession: OrtSession? = null
+    @Volatile private var liteRtBackend: RTMDetLiteRtBackend? = null
     private var loadedOnnxAssetName: String? = null
 
     private data class OnnxBackend(
@@ -259,14 +502,31 @@ class FurnitureFitManager(private val context: Context) {
         val inputName: String,
         val inputWidth: Int,
         val inputHeight: Int,
+        val embedsRtmdetPreprocess: Boolean,
+        val executionProvider: String,
         val isRtmdetRaw: Boolean,
     )
 
     /**
-     * Initializes the ONNX Runtime segmentation backend.
+     * Initializes the accelerated RTMDet backend, retaining ONNX Runtime as fallback.
      */
     fun initializeAuto(): Boolean {
-        LogUtil.i(TAG, "Initializing furniture segmentation ONNX backend...")
+        LogUtil.i(TAG, "Initializing furniture segmentation backend...")
+
+        try {
+            val backend = sharedLiteRtBackend(context)
+            if (backend != null) {
+                liteRtBackend = backend
+                ortBackend = null
+                ortEnv = null
+                ortSession = null
+                loadedOnnxAssetName = null
+                LogUtil.i(TAG, "Using ${backend.executionProvider} RTMDet backend")
+                return true
+            }
+        } catch (e: Exception) {
+            LogUtil.w(TAG, "LiteRT initialization failed: ${e.message}")
+        }
 
         try {
             initializeOnnx()
@@ -288,6 +548,7 @@ class FurnitureFitManager(private val context: Context) {
         LogUtil.i(TAG, "initializeOnnx called with '$onnxAssetName'")
         val backend = sharedOnnxBackend(context, onnxAssetName)
         if (backend != null) {
+            liteRtBackend = null
             ortBackend = backend
             ortEnv = backend.env
             ortSession = backend.session
@@ -304,50 +565,20 @@ class FurnitureFitManager(private val context: Context) {
         }
     }
 
-    /**
-     * One cold forward pass so the first live Fit frame does not pay ORT graph JIT costs.
-     * Safe to call after [initializeAuto]; runs on the shared inference executor.
-     */
-    fun warmupInferenceBlocking(timeoutMs: Long = 8_000L): Boolean {
-        if (ortSession == null) return false
-        val width = (ortBackend?.inputWidth ?: RTMDET_INPUT_SIZE).coerceAtLeast(64)
-        val height = (ortBackend?.inputHeight ?: RTMDET_INPUT_SIZE).coerceAtLeast(64)
-        val warmupBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        // Mid-gray so liveliness gates / empty-frame heuristics cannot skip work.
-        warmupBitmap.eraseColor(0xFF808080.toInt())
-        val latch = java.util.concurrent.CountDownLatch(1)
-        val startedAt = System.nanoTime()
-        try {
-            segmentWithDetectionsAsync(warmupBitmap) {
-                latch.countDown()
-            }
-            val finished = latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
-            LogUtil.i(
-                TAG,
-                "warmupInference finished=$finished in ${(System.nanoTime() - startedAt) / 1_000_000L}ms",
-            )
-            return finished
-        } catch (e: Exception) {
-            LogUtil.w(TAG, "warmupInference failed: ${e.message}")
-            return false
-        } finally {
-            if (!warmupBitmap.isRecycled) warmupBitmap.recycle()
-        }
-    }
-
     private fun inputFloatBuffer(floatCount: Int): FloatBuffer {
-        val current = sharedInputBuffer
-        val buffer = if (current == null || sharedInputFloatCount != floatCount) {
-            sharedInputTensor?.close()
-            sharedInputTensor = null
-            sharedInputShape = null
+        val workspace = currentInferenceWorkspace()
+        val current = workspace.inputBuffer
+        val buffer = if (current == null || workspace.inputFloatCount != floatCount) {
+            workspace.inputTensor?.close()
+            workspace.inputTensor = null
+            workspace.inputShape = null
             ByteBuffer
                 .allocateDirect(floatCount * java.lang.Float.BYTES)
                 .order(ByteOrder.nativeOrder())
                 .asFloatBuffer()
                 .also {
-                    sharedInputBuffer = it
-                    sharedInputFloatCount = floatCount
+                    workspace.inputBuffer = it
+                    workspace.inputFloatCount = floatCount
                     LogUtil.i(TAG, "Allocated direct ONNX input buffer: floats=$floatCount bytes=${floatCount * java.lang.Float.BYTES}")
                 }
         } else {
@@ -358,8 +589,9 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     private fun inputTensor(env: OrtEnvironment, buffer: FloatBuffer, shape: LongArray): OnnxTensor {
-        val currentTensor = sharedInputTensor
-        val currentShape = sharedInputShape
+        val workspace = currentInferenceWorkspace()
+        val currentTensor = workspace.inputTensor
+        val currentShape = workspace.inputShape
         if (currentTensor != null && currentShape != null && currentShape.contentEquals(shape)) {
             buffer.rewind()
             return currentTensor
@@ -368,8 +600,8 @@ class FurnitureFitManager(private val context: Context) {
         currentTensor?.close()
         buffer.rewind()
         val tensor = OnnxTensor.createTensor(env, buffer, shape)
-        sharedInputTensor = tensor
-        sharedInputShape = shape.copyOf()
+        workspace.inputTensor = tensor
+        workspace.inputShape = shape.copyOf()
         LogUtil.i(TAG, "Created reusable ONNX input tensor: shape=${shape.contentToString()}")
         return tensor
     }
@@ -388,6 +620,21 @@ class FurnitureFitManager(private val context: Context) {
         analyzeFrameAsync(frame, includeMask = true, selectedClassIds = emptySet(), pinnedDetections = null, callback = callback)
     }
 
+    /** Live-frame variant: release the frame-admission gate before posting overlay work to main. */
+    fun segmentWithDetectionsOnInferenceThreadAsync(
+        frame: Bitmap?,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        analyzeFrameAsync(
+            frame,
+            includeMask = true,
+            selectedClassIds = emptySet(),
+            pinnedDetections = null,
+            callbackDelivery = CallbackDelivery.INFERENCE,
+            callback = callback,
+        )
+    }
+
     fun detectWithDetectionsAsync(
         frame: Bitmap?,
         requireClusters: Boolean = false,
@@ -399,6 +646,22 @@ class FurnitureFitManager(private val context: Context) {
             selectedClassIds = emptySet(),
             pinnedDetections = null,
             requireClusters = requireClusters,
+            callback = callback,
+        )
+    }
+
+    fun detectWithDetectionsOnInferenceThreadAsync(
+        frame: Bitmap?,
+        requireClusters: Boolean = false,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        analyzeFrameAsync(
+            frame,
+            includeMask = false,
+            selectedClassIds = emptySet(),
+            pinnedDetections = null,
+            requireClusters = requireClusters,
+            callbackDelivery = CallbackDelivery.INFERENCE,
             callback = callback,
         )
     }
@@ -428,43 +691,124 @@ class FurnitureFitManager(private val context: Context) {
         )
     }
 
+    fun segmentSelectedInstancesOnInferenceThreadAsync(
+        frame: Bitmap?,
+        pinnedDetections: List<DetectionResult>,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        analyzeFrameAsync(
+            frame,
+            includeMask = true,
+            selectedClassIds = emptySet(),
+            pinnedDetections = pinnedDetections,
+            callbackDelivery = CallbackDelivery.INFERENCE,
+            callback = callback,
+        )
+    }
+
     private fun analyzeFrameAsync(
         frame: Bitmap?,
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>? = null,
         requireClusters: Boolean = false,
+        callbackDelivery: CallbackDelivery = CallbackDelivery.MAIN,
         callback: (SegmentationResult?) -> Unit,
     ) {
         if (frame == null) {
-            mainHandler.postDelayed({ callback(null) }, 200)
+            if (callbackDelivery == CallbackDelivery.MAIN) {
+                mainHandler.postDelayed({ deliverCallback(callback, CallbackDelivery.MAIN, null) }, 200)
+            } else {
+                deliverCallback(callback, callbackDelivery, null)
+            }
             return
         }
 
-        try {
-            sharedInferenceExecutor.execute {
-                try {
-                    if (ortSession != null) {
+        val acceptedGeneration = inferenceGeneration.get()
+        val submitted = executeOnSharedInferenceLane inferenceTask@{
+            if (inferenceGeneration.get() != acceptedGeneration) {
+                deliverCallback(callback, callbackDelivery, null)
+                return@inferenceTask
+            }
+
+            try {
+                if (inferenceGeneration.get() != acceptedGeneration) {
+                    deliverCallback(callback, callbackDelivery, null)
+                    return@inferenceTask
+                }
+                if (ortSession != null) {
+                    val runOptions = try {
+                        OrtSession.RunOptions()
+                    } catch (e: Exception) {
+                        LogUtil.e(TAG, "Could not create ONNX run options", e)
+                        deliverCallback(callback, callbackDelivery, null)
+                        return@inferenceTask
+                    }
+                    activeRunOptions.set(runOptions)
+                    try {
                         runOnnxInferenceWithDetections(
                             frame,
                             includeMask,
                             selectedClassIds,
                             pinnedDetections,
                             requireClusters,
+                            runOptions,
+                            acceptedGeneration,
+                            callbackDelivery,
                             callback,
                         )
-                        return@execute
+                    } finally {
+                        activeRunOptions.compareAndSet(runOptions, null)
+                        try {
+                            runOptions.close()
+                        } catch (e: Exception) {
+                            LogUtil.w(TAG, "Could not close ONNX run options: ${e.message}")
+                        }
                     }
-
-                    mainHandler.post { callback(null) }
-                } catch (e: Exception) {
-                    LogUtil.e("FurnitureFitManager", "inference error", e)
-                    mainHandler.post { callback(null) }
+                    return@inferenceTask
                 }
+
+                if (liteRtBackend != null) {
+                    runLiteRtInferenceWithDetections(
+                        frame = frame,
+                        includeMask = includeMask,
+                        selectedClassIds = selectedClassIds,
+                        pinnedDetections = pinnedDetections,
+                        requireClusters = requireClusters,
+                        acceptedGeneration = acceptedGeneration,
+                        callbackDelivery = callbackDelivery,
+                        callback = callback,
+                    )
+                    return@inferenceTask
+                }
+
+                deliverCallback(callback, callbackDelivery, null)
+            } catch (e: Exception) {
+                LogUtil.e("FurnitureFitManager", "inference error", e)
+                deliverCallback(callback, callbackDelivery, null)
             }
-        } catch (e: java.util.concurrent.RejectedExecutionException) {
-            // close() shut the executor down (screen tearing down); drop this frame quietly.
-            mainHandler.post { callback(null) }
+        }
+        if (!submitted) {
+            deliverCallback(callback, callbackDelivery, null)
+        }
+    }
+
+    private fun deliverCallback(
+        callback: (SegmentationResult?) -> Unit,
+        delivery: CallbackDelivery,
+        result: SegmentationResult?,
+    ) {
+        val invoke = {
+            try {
+                callback(result)
+            } catch (exception: Exception) {
+                LogUtil.e(TAG, "Furniture Fit result callback failed", exception)
+            }
+        }
+        if (delivery == CallbackDelivery.MAIN && Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(invoke)
+        } else {
+            invoke()
         }
     }
 
@@ -531,7 +875,85 @@ class FurnitureFitManager(private val context: Context) {
         }
     }
 
+    /** Swift's raw RTMDet compositor: bilinear sampling, per-instance crop, max-alpha union. */
+    private fun composeRtmdetRawMaskCutoutArgb(
+        framePixels: IntArray,
+        outPixels: IntArray,
+        maskPlanes: List<FloatArray?>,
+        detections: List<Detection>,
+        selectedIndices: List<Int>,
+        frameW: Int,
+        frameH: Int,
+        modelW: Int,
+        modelH: Int,
+    ): Int {
+        outPixels.fill(0x00000000)
+        if (frameW <= 0 || frameH <= 0 || selectedIndices.isEmpty()) return 0
+
+        val maskSide = RTMDET_MASK_SIDE
+        val maxMaskIndex = maskSide - 1
+        val xLower = IntArray(frameW)
+        val xUpper = IntArray(frameW)
+        val xWeight = FloatArray(frameW)
+        val yLower = IntArray(frameH)
+        val yUpper = IntArray(frameH)
+        val yWeight = FloatArray(frameH)
+
+        fun fillAxis(count: Int, lower: IntArray, upper: IntArray, weight: FloatArray) {
+            val scale = maskSide.toFloat() / count.toFloat()
+            for (index in 0 until count) {
+                val coordinate = ((index + 0.5f) * scale - 0.5f).coerceIn(0f, maxMaskIndex.toFloat())
+                val low = floor(coordinate.toDouble()).toInt()
+                lower[index] = low
+                upper[index] = min(maxMaskIndex, low + 1)
+                weight[index] = coordinate - low
+            }
+        }
+        fillAxis(frameW, xLower, xUpper, xWeight)
+        fillAxis(frameH, yLower, yUpper, yWeight)
+
+        var paintedPixels = 0
+        for (rawIndex in selectedIndices) {
+            val plane = maskPlanes.getOrNull(rawIndex) ?: continue
+            if (plane.size != maskSide * maskSide) continue
+            val detection = detections.getOrNull(rawIndex) ?: continue
+            val bounds = RTMDetSwiftParity.paddedSourceBounds(
+                box = detection.toSwiftParityBox(),
+                modelWidth = modelW.toFloat(),
+                modelHeight = modelH.toFloat(),
+                sourceWidth = frameW,
+                sourceHeight = frameH,
+            ) ?: continue
+
+            for (y in bounds.minY..bounds.maxY) {
+                val upperRow = yLower[y] * maskSide
+                val lowerRow = yUpper[y] * maskSide
+                val wy = yWeight[y]
+                val frameRow = y * frameW
+                for (x in bounds.minX..bounds.maxX) {
+                    val x0 = xLower[x]
+                    val x1 = xUpper[x]
+                    val wx = xWeight[x]
+                    val top = plane[upperRow + x0] + (plane[upperRow + x1] - plane[upperRow + x0]) * wx
+                    val bottom = plane[lowerRow + x0] + (plane[lowerRow + x1] - plane[lowerRow + x0]) * wx
+                    val alpha = RTMDetSwiftParity.rawMaskRenderAlpha(top + (bottom - top) * wy)
+                    if (alpha <= 0) continue
+                    val pixelIndex = frameRow + x
+                    val existingAlpha = (outPixels[pixelIndex] ushr 24) and 0xFF
+                    if (alpha <= existingAlpha) continue
+                    if (existingAlpha == 0) paintedPixels++
+                    outPixels[pixelIndex] = (alpha shl 24) or (framePixels[pixelIndex] and 0x00FFFFFF)
+                }
+            }
+        }
+        return paintedPixels
+    }
+
     private fun logCutoutAlphaStats(stage: String, pixels: IntArray, width: Int, height: Int) {
+        if (!BuildConfig.DEBUG) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val previous = lastCutoutAlphaStatsLogMs.get()
+        if (now - previous < 1_000L || !lastCutoutAlphaStatsLogMs.compareAndSet(previous, now)) return
         if (pixels.isEmpty() || width <= 0 || height <= 0) return
         var opaqueCount = 0
         var translucentCount = 0
@@ -979,30 +1401,138 @@ class FurnitureFitManager(private val context: Context) {
         }
     }
 
+    private fun runLiteRtInferenceWithDetections(
+        frame: Bitmap,
+        includeMask: Boolean,
+        selectedClassIds: Set<Int>,
+        pinnedDetections: List<DetectionResult>?,
+        requireClusters: Boolean,
+        acceptedGeneration: Long,
+        callbackDelivery: CallbackDelivery,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        val result = try {
+            runLiteRtSegmentationOnce(
+                frame = frame,
+                includeMask = includeMask,
+                selectedClassIds = selectedClassIds,
+                pinnedDetections = pinnedDetections,
+                requireClusters = requireClusters,
+                acceptedGeneration = acceptedGeneration,
+            )
+        } catch (e: Exception) {
+            if (inferenceGeneration.get() != acceptedGeneration) {
+                LogUtil.d(TAG, "Discarded abandoned LiteRT inference generation=$acceptedGeneration")
+            } else {
+                LogUtil.e(TAG, "LiteRT inference with detections failed", e)
+            }
+            null
+        }
+        deliverCallback(callback, callbackDelivery, result)
+    }
+
+    /** One persistent LiteRT GPU forward followed by the same Swift-parity Kotlin postprocess. */
+    private fun runLiteRtSegmentationOnce(
+        frame: Bitmap,
+        includeMask: Boolean,
+        selectedClassIds: Set<Int>,
+        pinnedDetections: List<DetectionResult>?,
+        requireClusters: Boolean,
+        acceptedGeneration: Long,
+    ): SegmentationResult? {
+        val backend = liteRtBackend ?: return null
+        val totalStartNanos = System.nanoTime()
+        val inputW = backend.inputWidth
+        val inputH = backend.inputHeight
+        val usesLetterboxPreprocess = inputH >= 1280 || inputW >= 1280
+        LogUtil.i(
+            TAG,
+            "Furniture segmentation LiteRT start: ${frame.width}x${frame.height} -> " +
+                "${if (usesLetterboxPreprocess) "letterbox" else "stretch"} ${inputW}x$inputH " +
+                "provider=${backend.executionProvider} embeddedPreprocess=true",
+        )
+
+        val preprocessStartNanos = System.nanoTime()
+        val preparedBitmap = preprocessFrameForModel(frame, inputW, inputH, usesLetterboxPreprocess)
+        val intValues = reusablePreparedPixels(inputW * inputH)
+        preparedBitmap.getPixels(intValues, 0, inputW, 0, 0, inputW, inputH)
+        val resizeAndReadMillis = elapsedMillis(preprocessStartNanos)
+
+        val requireRawMasks = includeMask || requireClusters
+        val run = backend.run(
+            argbPixels = intValues,
+            requireKernels = requireRawMasks,
+            requireMaskFeat = requireRawMasks,
+        )
+        if (inferenceGeneration.get() != acceptedGeneration) {
+            LogUtil.d(TAG, "Discarded abandoned LiteRT inference generation=$acceptedGeneration")
+            return null
+        }
+
+        val preprocessMillis = resizeAndReadMillis + run.inputPackingMillis
+        val inferenceAndOutputMillis = run.inferenceMillis + run.outputCopyMillis
+        LogUtil.i(
+            TAG,
+            "Furniture segmentation preprocess: ${preprocessMillis}ms " +
+                "(resize+read=${resizeAndReadMillis} inputBgrPack=${run.inputPackingMillis})",
+        )
+        LogUtil.i(
+            TAG,
+            "Furniture segmentation inference: ${inferenceAndOutputMillis}ms " +
+                "(LiteRT invoke=${run.inferenceMillis} native=${run.nativeInferenceMillis ?: -1} " +
+                "outputNhwcToNchw=${run.outputCopyMillis})",
+        )
+
+        val raw = RtmdetRawOutputs(
+            levels = listOf(
+                RtmdetLevelOutput(run.cls80, run.bbox80, run.kernel80, side = 80, stride = 8f),
+                RtmdetLevelOutput(run.cls40, run.bbox40, run.kernel40, side = 40, stride = 16f),
+                RtmdetLevelOutput(run.cls20, run.bbox20, run.kernel20, side = 20, stride = 32f),
+            ),
+            maskFeat = run.maskFeat,
+        )
+        return handleRtmdetRawResults(
+            frame = frame,
+            inputW = inputW,
+            inputH = inputH,
+            includeMask = includeMask,
+            selectedClassIds = selectedClassIds,
+            pinnedDetections = pinnedDetections,
+            requireClusters = requireClusters,
+            results = null,
+            rawOverride = raw,
+            totalStartNanos = totalStartNanos,
+            preprocessMillis = preprocessMillis,
+            inferenceMillis = inferenceAndOutputMillis,
+        )
+    }
+
     private fun runOnnxInferenceWithDetections(
         frame: Bitmap,
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>?,
         requireClusters: Boolean = false,
+        runOptions: OrtSession.RunOptions,
+        acceptedGeneration: Long,
+        callbackDelivery: CallbackDelivery,
         callback: (SegmentationResult?) -> Unit,
     ) {
-        try {
-            val base = runOnnxSegmentationOnce(
+        val result = try {
+            runOnnxSegmentationOnce(
                 frame,
                 includeMask,
                 selectedClassIds,
                 pinnedDetections,
                 requireClusters,
-            ) ?: run {
-                mainHandler.post { callback(null) }
-                return
-            }
-            mainHandler.post { callback(base) }
+                runOptions,
+                acceptedGeneration,
+            )
         } catch (e: Exception) {
             LogUtil.e("FurnitureFitManager", "ONNX inference with detections failed", e)
-            mainHandler.post { callback(null) }
+            null
         }
+        deliverCallback(callback, callbackDelivery, result)
     }
 
     /** Single ONNX forward + mask; no main-thread hop. */
@@ -1012,6 +1542,8 @@ class FurnitureFitManager(private val context: Context) {
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>? = null,
         requireClusters: Boolean = false,
+        runOptions: OrtSession.RunOptions,
+        acceptedGeneration: Long,
     ): SegmentationResult? {
         return try {
             val totalStartNanos = System.nanoTime()
@@ -1023,14 +1555,18 @@ class FurnitureFitManager(private val context: Context) {
             val inputH = backend?.inputHeight ?: RTMDET_INPUT_SIZE
             val usesLetterboxPreprocess = inputH >= 1280 || inputW >= 1280
             val isRtmdetRaw = backend?.isRtmdetRaw ?: isRtmdetRawSession(session)
+            val embedsRtmdetPreprocess = backend?.embedsRtmdetPreprocess == true
             LogUtil.i(
                 TAG,
-                "Furniture segmentation ONNX start: ${frame.width}x${frame.height} -> ${if (usesLetterboxPreprocess) "letterbox" else "stretch"} ${inputW}x${inputH}"
+                "Furniture segmentation ONNX start: ${frame.width}x${frame.height} -> " +
+                    "${if (usesLetterboxPreprocess) "letterbox" else "stretch"} ${inputW}x${inputH} " +
+                    "provider=${backend?.executionProvider ?: "unknown"} " +
+                    "embeddedPreprocess=$embedsRtmdetPreprocess",
             )
 
             val preprocessStartNanos = System.nanoTime()
             val preparedBitmap = preprocessFrameForModel(frame, inputW, inputH, usesLetterboxPreprocess)
-            val intValues = IntArray(inputW * inputH)
+            val intValues = reusablePreparedPixels(inputW * inputH)
             preparedBitmap.getPixels(intValues, 0, inputW, 0, 0, inputW, inputH)
             val inputBuffer = inputFloatBuffer(3 * inputH * inputW)
             val hw = inputH * inputW
@@ -1043,9 +1579,18 @@ class FurnitureFitManager(private val context: Context) {
                     val g = ((v shr 8) and 0xFF).toFloat()
                     val b = (v and 0xFF).toFloat()
                     if (isRtmdetRaw) {
-                        inputBuffer.put(0 * hw + pixelIdx, (b - 103.53f) / 57.375f)
-                        inputBuffer.put(1 * hw + pixelIdx, (g - 116.28f) / 57.12f)
-                        inputBuffer.put(2 * hw + pixelIdx, (r - 123.675f) / 58.395f)
+                        if (embedsRtmdetPreprocess) {
+                            // Match Swift's Core ML ImageType(BGR): raw 0...255 BGR enters the
+                            // graph, where mean/std normalization is part of the model contract.
+                            inputBuffer.put(0 * hw + pixelIdx, b)
+                            inputBuffer.put(1 * hw + pixelIdx, g)
+                            inputBuffer.put(2 * hw + pixelIdx, r)
+                        } else {
+                            // Backward compatibility for the original Android raw-head asset.
+                            inputBuffer.put(0 * hw + pixelIdx, (b - 103.53f) / 57.375f)
+                            inputBuffer.put(1 * hw + pixelIdx, (g - 116.28f) / 57.12f)
+                            inputBuffer.put(2 * hw + pixelIdx, (r - 123.675f) / 58.395f)
+                        }
                     } else {
                         inputBuffer.put(0 * hw + pixelIdx, r / 255.0f)
                         inputBuffer.put(1 * hw + pixelIdx, g / 255.0f)
@@ -1068,7 +1613,11 @@ class FurnitureFitManager(private val context: Context) {
                 }
             val inputs = mapOf(inputName to tensor)
             val runResults =
-                if (requestedOutputs == null) session.run(inputs) else session.run(inputs, requestedOutputs)
+                if (requestedOutputs == null) {
+                    session.run(inputs, runOptions)
+                } else {
+                    session.run(inputs, requestedOutputs, runOptions)
+                }
             runResults.use { results ->
                 val inferenceMillis = elapsedMillis(inferenceStartNanos)
                 LogUtil.i(TAG, "Furniture segmentation inference: ${inferenceMillis}ms")
@@ -1306,10 +1855,10 @@ class FurnitureFitManager(private val context: Context) {
                     val bandY0 = floor((tightFy0 - bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
                     val bandY1 = ceil((tightFy1 + bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
 
-                    val framePixels = IntArray(frameW * frameH)
+                    val framePixels = reusableFramePixels(frameW * frameH)
                     frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
 
-                    val outPixels = IntArray(frameW * frameH)
+                    val outPixels = reusableOutputPixels(frameW * frameH)
                     composeProtoMaskCutoutArgb(
                         framePixels = framePixels,
                         outPixels = outPixels,
@@ -1336,7 +1885,11 @@ class FurnitureFitManager(private val context: Context) {
                 SegmentationResult(maskResult, detectionResults, inputW, detectionResults.firstOrNull())
             }
         } catch (e: Exception) {
-            LogUtil.e(TAG, "ONNX segmentation once failed", e)
+            if (inferenceGeneration.get() != acceptedGeneration) {
+                LogUtil.d(TAG, "Discarded abandoned ONNX inference generation=$acceptedGeneration")
+            } else {
+                LogUtil.e(TAG, "ONNX segmentation once failed", e)
+            }
             null
         }
     }
@@ -1380,25 +1933,51 @@ class FurnitureFitManager(private val context: Context) {
         inputH: Int,
         usesLetterbox: Boolean,
     ): Bitmap {
-        if (!usesLetterbox) {
-            return Bitmap.createScaledBitmap(frame, inputW, inputH, true)
-                .copy(Config.ARGB_8888, false)
+        val workspace = currentInferenceWorkspace()
+        val current = workspace.preparedBitmap
+        val output = if (
+            current == null || current.isRecycled || current.width != inputW || current.height != inputH
+        ) {
+            current?.takeIf { !it.isRecycled }?.recycle()
+            Bitmap.createBitmap(inputW, inputH, Config.ARGB_8888).also {
+                workspace.preparedBitmap = it
+            }
+        } else {
+            current
+        }
+        val canvas = Canvas(output)
+        val destination = if (!usesLetterbox) {
+            RectF(0f, 0f, inputW.toFloat(), inputH.toFloat())
+        } else {
+            val scale = min(inputW.toFloat() / frame.width.toFloat(), inputH.toFloat() / frame.height.toFloat())
+            val scaledW = max(1f, frame.width * scale)
+            val scaledH = max(1f, frame.height * scale)
+            val left = (inputW - scaledW) * 0.5f
+            val top = (inputH - scaledH) * 0.5f
+            RectF(left, top, left + scaledW, top + scaledH)
         }
 
-        val scale = min(inputW.toFloat() / frame.width.toFloat(), inputH.toFloat() / frame.height.toFloat())
-        val scaledW = max(1, (frame.width * scale).toInt())
-        val scaledH = max(1, (frame.height * scale).toInt())
-        val scaledBitmap = Bitmap.createScaledBitmap(frame, scaledW, scaledH, true)
-        val output = Bitmap.createBitmap(inputW, inputH, Config.ARGB_8888)
-        val canvas = Canvas(output)
-        canvas.drawColor(Color.rgb(114, 114, 114))
-        val left = (inputW - scaledW) * 0.5f
-        val top = (inputH - scaledH) * 0.5f
-        canvas.drawBitmap(scaledBitmap, left, top, Paint(Paint.FILTER_BITMAP_FLAG))
-        if (scaledBitmap !== frame && !scaledBitmap.isRecycled) {
-            scaledBitmap.recycle()
-        }
+        canvas.drawColor(if (usesLetterbox) Color.rgb(114, 114, 114) else Color.TRANSPARENT)
+        canvas.drawBitmap(frame, null, destination, workspace.preprocessPaint)
         return output
+    }
+
+    private fun reusablePreparedPixels(size: Int): IntArray {
+        val workspace = currentInferenceWorkspace()
+        if (workspace.preparedPixels.size != size) workspace.preparedPixels = IntArray(size)
+        return workspace.preparedPixels
+    }
+
+    private fun reusableFramePixels(size: Int): IntArray {
+        val workspace = currentInferenceWorkspace()
+        if (workspace.framePixels.size != size) workspace.framePixels = IntArray(size)
+        return workspace.framePixels
+    }
+
+    private fun reusableOutputPixels(size: Int): IntArray {
+        val workspace = currentInferenceWorkspace()
+        if (workspace.outputPixels.size != size) workspace.outputPixels = IntArray(size)
+        return workspace.outputPixels
     }
 
     private fun selectDetectionProtoOutputs(
@@ -1465,17 +2044,20 @@ class FurnitureFitManager(private val context: Context) {
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>?,
         requireClusters: Boolean,
-        results: OrtSession.Result,
+        results: OrtSession.Result?,
+        rawOverride: RtmdetRawOutputs? = null,
         totalStartNanos: Long,
         preprocessMillis: Long = 0,
         inferenceMillis: Long = 0,
     ): SegmentationResult? {
         val parseStartNanos = System.nanoTime()
-        val raw = extractRtmdetRawOutputs(
-            results = results,
-            requireKernels = includeMask || requireClusters,
-            requireMaskFeat = includeMask || requireClusters,
-        ) ?: run {
+        val raw = rawOverride ?: results?.let {
+            extractRtmdetRawOutputs(
+                results = it,
+                requireKernels = includeMask || requireClusters,
+                requireMaskFeat = includeMask || requireClusters,
+            )
+        } ?: run {
             LogUtil.e(TAG, "RTMDet raw outputs missing")
             return null
         }
@@ -1485,20 +2067,22 @@ class FurnitureFitManager(private val context: Context) {
             return SegmentationResult(null, emptyList(), inputW, null)
         }
 
-        val sortedDets = detections.sortedByDescending { it.confidence }.take(500)
-        val keepDets = mutableListOf<Detection>()
-        val suppressed = BooleanArray(sortedDets.size)
-        for (i in sortedDets.indices) {
-            if (suppressed[i]) continue
-            keepDets.add(sortedDets[i])
-            for (j in i + 1 until sortedDets.size) {
-                if (suppressed[j]) continue
-                if (sortedDets[i].classId != sortedDets[j].classId) continue
-                if (calculateIoU(sortedDets[i], sortedDets[j]) > DEFAULT_NMS_IOU_THRESHOLD) {
-                    suppressed[j] = true
+        val nmsIndices = RTMDetSwiftParity.classAwareNms(
+            candidates = detections.map { it.toSwiftParityBox() },
+            iouThreshold = DEFAULT_NMS_IOU_THRESHOLD,
+            limit = DEFAULT_MAX_DETECTIONS,
+        )
+        // Swift's live layer ranks the NMS result again: confidence first and, for an exact score
+        // tie, larger area first. Keep graph/mask indices aligned to that user-visible ordering.
+        val keepDets = nmsIndices
+            .map(detections::get)
+            .sortedWith { left, right ->
+                if (left.confidence == right.confidence) {
+                    (right.w * right.h).compareTo(left.w * left.h)
+                } else {
+                    right.confidence.compareTo(left.confidence)
                 }
             }
-        }
         val parseNmsMillis = elapsedMillis(parseStartNanos)
         LogUtil.i(
             TAG,
@@ -1507,25 +2091,13 @@ class FurnitureFitManager(private val context: Context) {
 
         val pinList = pinnedDetections.orEmpty()
         if (!includeMask && !requireClusters && selectedClassIds.isEmpty() && pinList.isEmpty()) {
-            val primaryDet = pickPrimaryOnnxDetection(
-                detections = keepDets,
+            val fastSelection = RTMDetSwiftParity.selectDefaultCluster(
+                candidates = keepDets.map { it.toSwiftParityBox() },
+                clusters = keepDets.indices.map { listOf(it) },
                 frameWidth = inputW.toFloat(),
                 frameHeight = inputH.toFloat(),
-                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
             )
-            val orderedDisplayDetections = if (primaryDet != null) {
-                buildList {
-                    add(primaryDet)
-                    for (detection in keepDets) {
-                        if (detection.anchorIdx != primaryDet.anchorIdx) add(detection)
-                    }
-                }
-            } else {
-                keepDets
-            }
-            val detectionResults = orderedDisplayDetections
-                .take(DEFAULT_MAX_DETECTIONS)
-                .map { detection ->
+            val detectionResults = keepDets.map { detection ->
                     DetectionResult(
                         x = detection.x,
                         y = detection.y,
@@ -1536,6 +2108,7 @@ class FurnitureFitManager(private val context: Context) {
                         classId = detection.classId,
                     )
                 }
+            val primaryResult = fastSelection?.representativeIndex?.let(detectionResults::getOrNull)
             LogUtil.i(TAG, "RTMDet raw total (detections only, fast): ${elapsedMillis(totalStartNanos)}ms")
             LogUtil.i(
                 TAG,
@@ -1547,7 +2120,7 @@ class FurnitureFitManager(private val context: Context) {
                 mask = null,
                 detections = detectionResults,
                 inputSize = inputW,
-                primaryDetection = detectionResults.firstOrNull(),
+                primaryDetection = primaryResult,
                 detectionClusters = emptyList(),
                 sourceWidth = frame.width,
                 sourceHeight = frame.height,
@@ -1573,50 +2146,7 @@ class FurnitureFitManager(private val context: Context) {
         } else {
             emptyList()
         }
-        val restrictToSelection = selectedClassIds.isNotEmpty() || pinList.isNotEmpty()
-        val primaryCandidates = when {
-            selectedMaskRawIndices.isNotEmpty() -> selectedMaskRawIndices.mapNotNull { keepDets.getOrNull(it) }
-            pinList.isNotEmpty() -> emptyList()
-            selectedClassIds.isEmpty() -> keepDets
-            else -> keepDets.filter { it.classId in selectedClassIds }
-        }
-        val primaryDet = if (!restrictToSelection) {
-            // Default RTMDet path: prefer the confident detection nearest frame center, then union
-            // its affinity cluster. This matches the user's live-camera intent better than taking
-            // an edge sliver solely because it has the highest global confidence.
-            pickPrimaryOnnxDetection(
-                detections = primaryCandidates,
-                frameWidth = inputW.toFloat(),
-                frameHeight = inputH.toFloat(),
-                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
-            )
-        } else {
-            pickPrimaryOnnxDetection(
-                detections = primaryCandidates,
-                frameWidth = inputW.toFloat(),
-                frameHeight = inputH.toFloat(),
-                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
-            )
-        }
-
-        val orderedDisplayDetections = if (primaryDet != null) {
-            buildList {
-                add(primaryDet)
-                for (detection in keepDets) {
-                    if (detection.anchorIdx != primaryDet.anchorIdx) add(detection)
-                }
-            }
-        } else {
-            keepDets
-        }
-        val orderedDisplayRawIndices = orderedDisplayDetections
-            .take(DEFAULT_MAX_DETECTIONS)
-            .map { displayDetection ->
-                keepDets.indexOfFirst { it.anchorIdx == displayDetection.anchorIdx }
-            }
-        val detectionResults = orderedDisplayDetections
-            .take(DEFAULT_MAX_DETECTIONS)
-            .map { detection ->
+        val detectionResults = keepDets.map { detection ->
                 DetectionResult(
                     x = detection.x,
                     y = detection.y,
@@ -1628,33 +2158,40 @@ class FurnitureFitManager(private val context: Context) {
                 )
             }
         val detectionClusters = buildDisplayClustersFromAffinityGraph(
-            orderedDisplayRawIndices = orderedDisplayRawIndices,
+            orderedDisplayRawIndices = keepDets.indices.toList(),
             affinityGraph = affinityGraph,
         )
-
-        val primaryRawIndex = primaryDet?.let { primary ->
-            keepDets.indexOfFirst { it.anchorIdx == primary.anchorIdx }
-        } ?: -1
-        val primaryGroupRawIndices = if (primaryRawIndex >= 0) {
-            affinityGraph.transitiveGroup(listOf(primaryRawIndex)).ifEmpty { listOf(primaryRawIndex) }.sorted()
+        val restrictToSelection = selectedClassIds.isNotEmpty() || pinList.isNotEmpty()
+        val defaultSelection = if (!restrictToSelection) {
+            RTMDetSwiftParity.selectDefaultCluster(
+                candidates = keepDets.map { it.toSwiftParityBox() },
+                clusters = detectionClusters,
+                frameWidth = inputW.toFloat(),
+                frameHeight = inputH.toFloat(),
+                preferCenter = true,
+                confidenceFloor = RTMDET_CONFIDENCE_THRESHOLD,
+            )
+        } else {
+            null
+        }
+        val selectedClassRawIndices = if (selectedClassIds.isNotEmpty() && pinList.isEmpty()) {
+            keepDets.indices.filter { keepDets[it].classId in selectedClassIds }
         } else {
             emptyList()
         }
-        val selectedClassRawIndices = if (selectedClassIds.isNotEmpty() && pinList.isEmpty()) {
-            primaryCandidates.mapNotNull { candidate ->
-                keepDets.indexOfFirst { it.anchorIdx == candidate.anchorIdx }.takeIf { it >= 0 }
-            }
-        } else {
-            emptyList()
+        val primaryRawIndex = when {
+            pinList.isNotEmpty() -> selectedSeedIndices.firstOrNull() ?: -1
+            selectedClassRawIndices.isNotEmpty() -> selectedClassRawIndices.first()
+            else -> defaultSelection?.representativeIndex ?: -1
         }
         val maskRawIndices = when {
             selectedMaskRawIndices.isNotEmpty() -> selectedMaskRawIndices
             pinList.isNotEmpty() -> emptyList()
             selectedClassRawIndices.isNotEmpty() -> selectedClassRawIndices
-            !restrictToSelection -> primaryGroupRawIndices
+            !restrictToSelection -> defaultSelection?.memberIndices.orEmpty()
             else -> emptyList()
         }
-        val maskDetectionsForBuild = maskRawIndices.mapNotNull { keepDets.getOrNull(it) }
+        val primaryResult = detectionResults.getOrNull(primaryRawIndex)
 
         if (!includeMask) {
             LogUtil.i(TAG, "RTMDet raw total (detections only): ${elapsedMillis(totalStartNanos)}ms")
@@ -1668,7 +2205,7 @@ class FurnitureFitManager(private val context: Context) {
                 mask = null,
                 detections = detectionResults,
                 inputSize = inputW,
-                primaryDetection = detectionResults.firstOrNull(),
+                primaryDetection = primaryResult,
                 detectionClusters = detectionClusters,
                 sourceWidth = frame.width,
                 sourceHeight = frame.height,
@@ -1677,92 +2214,31 @@ class FurnitureFitManager(private val context: Context) {
 
         var maskBuildMillis = 0L
         var maskResult: Bitmap? = null
-        if (primaryDet != null && maskDetectionsForBuild.isNotEmpty()) {
+        if (maskRawIndices.isNotEmpty()) {
             val maskBuildStartNanos = System.nanoTime()
-            val protoW = 80
-            val protoH = 80
-            val maskProto = FloatArray(protoW * protoH)
-            for (rawIndex in maskRawIndices) {
-                val detection = keepDets.getOrNull(rawIndex) ?: continue
-                val plane = rawMaskPlanes.getOrNull(rawIndex) ?: continue
-                val refinedPlane = if (restrictToSelection) {
-                    refineRtmdetMaskPlaneForDetection(
-                        plane = plane,
-                        detection = detection,
-                        inputW = inputW,
-                        inputH = inputH,
-                        protoW = protoW,
-                        protoH = protoH,
-                    )
-                } else {
-                    plane
-                }
-                for (i in refinedPlane.indices) {
-                    if (refinedPlane[i] > maskProto[i]) maskProto[i] = refinedPlane[i]
-                }
-            }
-
-            val rawClipLeftModel = maskDetectionsForBuild.minOfOrNull { it.x - it.w / 2f } ?: (primaryDet.x - primaryDet.w / 2f)
-            val rawClipTopModel = maskDetectionsForBuild.minOfOrNull { it.y - it.h / 2f } ?: (primaryDet.y - primaryDet.h / 2f)
-            val rawClipRightModel = maskDetectionsForBuild.maxOfOrNull { it.x + it.w / 2f } ?: (primaryDet.x + primaryDet.w / 2f)
-            val rawClipBottomModel = maskDetectionsForBuild.maxOfOrNull { it.y + it.h / 2f } ?: (primaryDet.y + primaryDet.h / 2f)
-            val clipWidthModel = max(1f, rawClipRightModel - rawClipLeftModel)
-            val clipHeightModel = max(1f, rawClipBottomModel - rawClipTopModel)
-            val defaultPadX = if (restrictToSelection) 0f else clipWidthModel * 0.10f
-            val defaultPadTop = if (restrictToSelection) 0f else clipHeightModel * 0.25f
-            val defaultPadBottom = if (restrictToSelection) 0f else clipHeightModel * 0.10f
-            val clipLeftModel = (rawClipLeftModel - defaultPadX).coerceAtLeast(0f)
-            val clipTopModel = (rawClipTopModel - defaultPadTop).coerceAtLeast(0f)
-            val clipRightModel = (rawClipRightModel + defaultPadX).coerceAtMost(inputW.toFloat())
-            val clipBottomModel = (rawClipBottomModel + defaultPadBottom).coerceAtMost(inputH.toFloat())
-            val protoScaleX = inputW.toFloat() / protoW.toFloat()
-            val protoScaleY = inputH.toFloat() / protoH.toFloat()
-            clipProtoMaskOutsideRect(
-                mask = maskProto,
-                protoW = protoW,
-                protoH = protoH,
-                clipX0 = floor((clipLeftModel / protoScaleX).toDouble()).toInt(),
-                clipY0 = floor((clipTopModel / protoScaleY).toDouble()).toInt(),
-                clipX1 = ceil((clipRightModel / protoScaleX).toDouble()).toInt(),
-                clipY1 = ceil((clipBottomModel / protoScaleY).toDouble()).toInt(),
-            )
-
             val frameW = frame.width
             val frameH = frame.height
-            val sxf = frameW.toFloat() / inputW.toFloat()
-            val syf = frameH.toFloat() / inputH.toFloat()
-            val tightFx0 = clipLeftModel * sxf
-            val tightFx1 = clipRightModel * sxf
-            val tightFy0 = clipTopModel * syf
-            val tightFy1 = clipBottomModel * syf
-            val bandMarginW = 0f
-            val bandMarginH = 0f
-            val bandX0 = floor((tightFx0 - bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
-            val bandX1 = ceil((tightFx1 + bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
-            val bandY0 = floor((tightFy0 - bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
-            val bandY1 = ceil((tightFy1 + bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
-
-            val framePixels = IntArray(frameW * frameH)
+            val framePixels = reusableFramePixels(frameW * frameH)
             frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
-            val outPixels = IntArray(frameW * frameH)
-            composeProtoMaskCutoutArgb(
+            val outPixels = reusableOutputPixels(frameW * frameH)
+            val paintedPixels = composeRtmdetRawMaskCutoutArgb(
                 framePixels = framePixels,
                 outPixels = outPixels,
-                maskProto = maskProto,
+                maskPlanes = rawMaskPlanes,
+                detections = keepDets,
+                selectedIndices = maskRawIndices,
                 frameW = frameW,
                 frameH = frameH,
-                protoW = protoW,
-                protoH = protoH,
-                x0 = bandX0,
-                x1 = bandX1,
-                y0 = bandY0,
-                y1 = bandY1,
+                modelW = inputW,
+                modelH = inputH,
             )
-            maskResult = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888).also { maskBmp ->
-                maskBmp.setHasAlpha(true)
-                maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
+            if (paintedPixels > 0) {
+                maskResult = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888).also { maskBmp ->
+                    maskBmp.setHasAlpha(true)
+                    maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
+                }
+                logCutoutAlphaStats("rtmdet", outPixels, frameW, frameH)
             }
-            logCutoutAlphaStats("rtmdet", outPixels, frameW, frameH)
             maskBuildMillis = elapsedMillis(maskBuildStartNanos)
             LogUtil.i(TAG, "RTMDet cutout mask build: ${maskBuildMillis}ms")
         }
@@ -1774,13 +2250,13 @@ class FurnitureFitManager(private val context: Context) {
             TAG,
             "stageMillis: preprocess=$preprocessMillis inference=$inferenceMillis " +
                 "parse+nms=$parseNmsMillis maskPlanes=$rawMaskPlaneMillis maskBuild=$maskBuildMillis total=${elapsedMillis(totalStartNanos)} " +
-                "(planes=${maskDetectionsForBuild.size} includeMask=true)",
+                "(planes=${maskRawIndices.size} includeMask=true)",
         )
         return SegmentationResult(
             mask = maskResult,
             detections = detectionResults,
             inputSize = inputW,
-            primaryDetection = detectionResults.firstOrNull(),
+            primaryDetection = primaryResult,
             detectionClusters = detectionClusters,
             sourceWidth = frame.width,
             sourceHeight = frame.height,
@@ -1792,27 +2268,50 @@ class FurnitureFitManager(private val context: Context) {
         requireKernels: Boolean,
         requireMaskFeat: Boolean,
     ): RtmdetRawOutputs? {
-        fun value(name: String): Any? {
-            return results.get(name).orElse(null)?.value
+        fun floats(name: String): FloatArray {
+            val value = results.get(name).orElse(null) ?: return FloatArray(0)
+            val tensor = value as? OnnxTensor
+            if (tensor != null) {
+                val buffer = tensor.floatBuffer ?: return FloatArray(0)
+                return FloatArray(buffer.remaining()).also(buffer::get)
+            }
+            return extractFloatArray(value.value)
         }
-        val cls80 = extractFloatArray(value("cls_80"))
-        val cls40 = extractFloatArray(value("cls_40"))
-        val cls20 = extractFloatArray(value("cls_20"))
-        val bbox80 = extractFloatArray(value("bbox_80"))
-        val bbox40 = extractFloatArray(value("bbox_40"))
-        val bbox20 = extractFloatArray(value("bbox_20"))
-        val kernel80 = extractFloatArray(value("kernel_80"))
-        val kernel40 = extractFloatArray(value("kernel_40"))
-        val kernel20 = extractFloatArray(value("kernel_20"))
-        val maskFeat = extractFloatArray(value("mask_feat"))
+        val cls80 = floats("cls_80")
+        val cls40 = floats("cls_40")
+        val cls20 = floats("cls_20")
+        val bbox80 = floats("bbox_80")
+        val bbox40 = floats("bbox_40")
+        val bbox20 = floats("bbox_20")
+        val kernel80 = floats("kernel_80")
+        val kernel40 = floats("kernel_40")
+        val kernel20 = floats("kernel_20")
+        val sourceMaskFeat = floats("mask_feat")
         if (listOf(cls80, cls40, cls20, bbox80, bbox40, bbox20).any { it.isEmpty() }) {
             return null
         }
         if (requireKernels && listOf(kernel80, kernel40, kernel20).any { it.isEmpty() }) {
             return null
         }
-        if (requireMaskFeat && maskFeat.isEmpty()) {
+        if (requireMaskFeat && sourceMaskFeat.isEmpty()) {
             return null
+        }
+        val maskFeat = if (sourceMaskFeat.isEmpty()) {
+            sourceMaskFeat
+        } else {
+            val sourceArea = sourceMaskFeat.size / 8
+            val sourceSide = sqrt(sourceArea.toDouble()).roundToInt()
+            if (sourceSide * sourceSide * 8 != sourceMaskFeat.size) return null
+            when (sourceSide) {
+                RTMDET_MASK_SIDE -> sourceMaskFeat
+                RTMDET_SOURCE_MASK_SIDE -> RTMDetSwiftParity.upsampleMaskFeaturesAlignCornersFalse(
+                    source = sourceMaskFeat,
+                    channels = 8,
+                    sourceSide = sourceSide,
+                    targetSide = RTMDET_MASK_SIDE,
+                )
+                else -> return null
+            }
         }
         return RtmdetRawOutputs(
             levels = listOf(
@@ -1838,19 +2337,18 @@ class FurnitureFitManager(private val context: Context) {
                 for (x in 0 until side) {
                     val pos = y * side + x
                     var bestClass = -1
-                    var bestScore = 0f
-                    // Controlled: only the curated furniture classes. Uncontrolled: every COCO class
-                    // (channel count = cls.size / hw) so the highest-scoring object wins regardless of class.
-                    val classIds: Iterable<Int> =
-                        if (CONTROLLED_LIST) RTMDET_ALLOWED_CLASS_IDS else 0 until (level.cls.size / hw)
-                    for (classId in classIds) {
+                    var bestLogit = -Float.MAX_VALUE
+                    // Swift lets every non-blacklisted COCO class compete and applies sigmoid once
+                    // after the raw-logit argmax (sigmoid is monotonic).
+                    for (classId in 0 until (level.cls.size / hw)) {
+                        if (classId in ignoredClassIds) continue
                         val logit = level.cls[classId * hw + pos]
-                        val score = sigmoid(logit)
-                        if (score > bestScore) {
-                            bestScore = score
+                        if (logit > bestLogit) {
+                            bestLogit = logit
                             bestClass = classId
                         }
                     }
+                    val bestScore = sigmoid(bestLogit)
                     if (bestClass < 0 || bestScore < RTMDET_CONFIDENCE_THRESHOLD) continue
 
                     val centerX = (x + 0.5f) * level.stride
@@ -1897,16 +2395,17 @@ class FurnitureFitManager(private val context: Context) {
             }
             anchorBase += hw
         }
-        return detections.sortedByDescending { it.confidence }.take(500)
+        return detections.sortedByDescending { it.confidence }
     }
 
     private fun buildRtmdetRawMaskPlane(
         detection: Detection,
         maskFeat: FloatArray,
     ): FloatArray? {
-        if (detection.coeffs.size != 169 || maskFeat.size < 8 * 80 * 80) return null
-        val maskSide = 80
+        if (detection.coeffs.size != 169 || maskFeat.size < 8 * RTMDET_MASK_SIDE * RTMDET_MASK_SIDE) return null
+        val maskSide = RTMDET_MASK_SIDE
         val hw = maskSide * maskSide
+        val maskStride = RTMDET_INPUT_SIZE.toFloat() / maskSide.toFloat()
         val out = FloatArray(hw)
         val w1 = 0
         val w2 = w1 + 80
@@ -1921,8 +2420,8 @@ class FurnitureFitManager(private val context: Context) {
         for (y in 0 until maskSide) {
             for (x in 0 until maskSide) {
                 val pos = y * maskSide + x
-                val gridX = (x + 0.5f) * 8f
-                val gridY = (y + 0.5f) * 8f
+                val gridX = (x + 0.5f) * maskStride
+                val gridY = (y + 0.5f) * maskStride
                 input[0] = (detection.priorX - gridX) / max(1f, detection.levelStride * 8f)
                 input[1] = (detection.priorY - gridY) / max(1f, detection.levelStride * 8f)
                 for (c in 0 until 8) {
@@ -2195,14 +2694,14 @@ class FurnitureFitManager(private val context: Context) {
             var bestIndex = -1
             var bestIou = 0f
             for ((index, detection) in detections.withIndex()) {
-                if (index in usedDetectionIndices || detection.classId != pin.classId) continue
+                if (detection.classId != pin.classId) continue
                 val iou = calculateIoU(detection, pin)
                 if (iou > bestIou) {
                     bestIou = iou
                     bestIndex = index
                 }
             }
-            if (bestIndex < 0 || bestIou < pinMatchIouThreshold) continue
+            if (bestIndex < 0 || bestIou < pinMatchIouThreshold || bestIndex in usedDetectionIndices) continue
 
             usedDetectionIndices += bestIndex
             val clusterMembers = affinityGraph.transitiveGroup(listOf(bestIndex)).ifEmpty { listOf(bestIndex) }
@@ -2689,6 +3188,15 @@ class FurnitureFitManager(private val context: Context) {
         val levelStride: Float = 0f,
     )
 
+    private fun Detection.toSwiftParityBox(): RTMDetSwiftParity.Box = RTMDetSwiftParity.Box(
+        x = x,
+        y = y,
+        width = w,
+        height = h,
+        confidence = confidence,
+        classId = classId,
+    )
+
     private fun parseDetectionsForCurrentModel(
         outputs: DetectionProtoOutputs,
         detValue: Any?,
@@ -2840,12 +3348,43 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     fun close() {
-        // RTMDet/ONNX Runtime is shared for the process. Screen-level managers are lightweight
-        // handles and must not close the singleton session or executor while another screen may use it.
+        // RTMDet runtimes are shared for the process. Screen-level managers are lightweight
+        // handles and must not close a singleton interpreter/session while another screen may use it.
+        abandonAcceptedInference(rotateSharedLane = false)
+        liteRtBackend = null
         ortBackend = null
         ortSession = null
         ortEnv = null
         loadedOnnxAssetName = null
+    }
+
+    /**
+     * Abandons all work accepted by the current Furniture Fit session.
+     *
+     * Call this at the same lifecycle boundary where Swift rotates
+     * `coreMLInferenceQueue`. A queued frame is rejected by its generation check; an ONNX call
+     * already inside `OrtSession.run` is terminated through its private [OrtSession.RunOptions].
+     */
+    fun rotateInferenceQueueForNewSession() {
+        abandonAcceptedInference(rotateSharedLane = true)
+    }
+
+    private fun abandonAcceptedInference(rotateSharedLane: Boolean) {
+        val nextGeneration = inferenceGeneration.incrementAndGet()
+        val activeOptions = activeRunOptions.get()
+        if (activeOptions != null) {
+            try {
+                activeOptions.setTerminate(true)
+            } catch (e: Exception) {
+                LogUtil.w(TAG, "Could not terminate abandoned ONNX inference: ${e.message}")
+            }
+        }
+        val laneGeneration = if (rotateSharedLane) rotateSharedInferenceLane() else null
+        LogUtil.d(
+            TAG,
+            "Abandoned Furniture Fit inference generation=$nextGeneration" +
+                (laneGeneration?.let { "; rotated lane=$it" } ?: ""),
+        )
     }
 
     private fun flattenArrayToFloat(arr: Array<*>): FloatArray {

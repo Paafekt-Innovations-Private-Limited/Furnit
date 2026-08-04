@@ -2,6 +2,7 @@ package com.furnit.android.utils
 
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
+import android.graphics.PixelFormat
 import androidx.camera.core.ImageProxy
 
 /**
@@ -17,6 +18,7 @@ object FurnitureFitFrameUsability {
         if (sampleStep <= 0 || imageProxy.width <= 0 || imageProxy.height <= 0) return false
         return when (imageProxy.format) {
             ImageFormat.YUV_420_888 -> isFullyDarkYPlane(imageProxy, sampleStep)
+            PixelFormat.RGBA_8888 -> isFullyDarkRgbaPlane(imageProxy, sampleStep)
             else -> false
         }
     }
@@ -51,8 +53,10 @@ object FurnitureFitFrameUsability {
         val yPlane = imageProxy.planes.getOrNull(0) ?: return false
         val buffer = yPlane.buffer.duplicate()
         val rowStride = yPlane.rowStride
+        val pixelStride = yPlane.pixelStride
         val width = imageProxy.width
         val height = imageProxy.height
+        if (rowStride <= 0 || pixelStride <= 0) return false
         var sum = 0L
         var count = 0
         var y = 0
@@ -60,7 +64,9 @@ object FurnitureFitFrameUsability {
             val rowStart = y * rowStride
             var x = 0
             while (x < width) {
-                sum += buffer.get(rowStart + x).toInt() and 0xFF
+                val offset = rowStart + x * pixelStride
+                if (offset >= buffer.limit()) return false
+                sum += buffer.get(offset).toInt() and 0xFF
                 count++
                 x += sampleStep
             }
@@ -68,5 +74,36 @@ object FurnitureFitFrameUsability {
         }
         if (count <= 0) return false
         return (sum.toDouble() / count) <= MAX_MEAN_LUMINANCE
+    }
+
+    private fun isFullyDarkRgbaPlane(imageProxy: ImageProxy, sampleStep: Int): Boolean {
+        val plane = imageProxy.planes.firstOrNull() ?: return false
+        val buffer = plane.buffer.duplicate()
+        val rowStride = plane.rowStride
+        val pixelStride = plane.pixelStride
+        val width = imageProxy.width
+        val height = imageProxy.height
+        if (rowStride <= 0 || pixelStride < 4) return false
+
+        var sum = 0.0
+        var count = 0
+        var y = 0
+        while (y < height) {
+            val rowStart = y * rowStride
+            var x = 0
+            while (x < width) {
+                val offset = rowStart + x * pixelStride
+                if (offset + 2 >= buffer.limit()) return false
+                val red = buffer.get(offset).toInt() and 0xff
+                val green = buffer.get(offset + 1).toInt() and 0xff
+                val blue = buffer.get(offset + 2).toInt() and 0xff
+                sum += 0.299 * red + 0.587 * green + 0.114 * blue
+                count++
+                x += sampleStep
+            }
+            y += sampleStep
+        }
+        if (count <= 0) return false
+        return (sum / count) <= MAX_MEAN_LUMINANCE
     }
 }

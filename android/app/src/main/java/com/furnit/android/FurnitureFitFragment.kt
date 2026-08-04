@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ImageFormat
 import android.graphics.Matrix
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.net.Uri
@@ -65,6 +66,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -85,6 +87,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class FurnitureFitFragment : Fragment() {
     companion object {
@@ -108,7 +111,9 @@ class FurnitureFitFragment : Fragment() {
     /** Host for [startArCameraPath]; used to tear down / recreate ARCore when the AR setting changes while this screen is open. */
     private var cameraPathRoot: FrameLayout? = null
     private lateinit var manager: FurnitureFitManager
-    private var isProcessing = false
+    private val isModelReady = AtomicBoolean(false)
+    private var modelInitializationJob: Job? = null
+    private val isProcessing = AtomicBoolean(false)
     private val thermalCadence = FurnitureFitThermalCadence(logTag = "FurnitureFitThermal")
     private var hasFirstDetection = false
     /** After first segmentation in this fragment lifetime, skip startup progress on view/camera restart. */
@@ -163,10 +168,18 @@ class FurnitureFitFragment : Fragment() {
         cameraExecutor = Executors.newSingleThreadExecutor()
         thermalCadence.start(requireContext())
         manager = FurnitureFitManager(requireContext())
-        // Initialize the ONNX segmentation backend.
-        LogUtil.d("FurnitureFit", "Calling initializeAuto...")
-        val success = manager.initializeAuto()
-        LogUtil.d("FurnitureFit", "initializeAuto completed, success=$success")
+        // GPU delegate compilation can take seconds on a first install. Keep it off the main
+        // thread; camera admission remains closed until this shared backend is ready.
+        modelInitializationJob = lifecycleScope.launch {
+            LogUtil.d("FurnitureFit", "Calling initializeAuto...")
+            val success = withContext(Dispatchers.IO) { manager.initializeAuto() }
+            isModelReady.set(success)
+            LogUtil.d("FurnitureFit", "initializeAuto completed, success=$success")
+            if (!success && isAdded && view != null) {
+                progressContainer.visibility = View.GONE
+                statusLabel.text = getString(R.string.detector_model_unavailable)
+            }
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -422,7 +435,7 @@ class FurnitureFitFragment : Fragment() {
         previewView.visibility = View.GONE
 
         controller.shouldPostBitmapFrame = {
-            !isProcessing && thermalCadence.shouldAcceptInference()
+            isModelReady.get() && !isProcessing.get() && !thermalCadence.isPausedForThermalCritical
         }
         controller.onBitmapFrame = { bitmap -> processArCoreFrame(bitmap) }
 
@@ -436,13 +449,20 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun processArCoreFrame(bitmap: Bitmap) {
-        if (!isAdded || view == null) {
+        if (!isModelReady.get()) {
             bitmap.recycle()
-            isProcessing = false
             arCameraController?.onInferenceFinished()
             return
         }
-        if (isProcessing) {
+        if (!isAdded || view == null) {
+            bitmap.recycle()
+            isProcessing.set(false)
+            arCameraController?.onInferenceFinished()
+            return
+        }
+        if (isProcessing.get()) {
+            bitmap.recycle()
+            arCameraController?.onInferenceFinished()
             return
         }
         if (FurnitureFitFrameUsability.isFullyDark(bitmap)) {
@@ -455,38 +475,50 @@ class FurnitureFitFragment : Fragment() {
             }
             return
         }
-        if (!thermalCadence.tryBeginInference()) {
+        if (thermalCadence.isPausedForThermalCritical) {
             bitmap.recycle()
             arCameraController?.onInferenceFinished()
             return
         }
-        isProcessing = true
+        if (!isProcessing.compareAndSet(false, true)) {
+            bitmap.recycle()
+            arCameraController?.onInferenceFinished()
+            return
+        }
 
         if (!hasFirstDetection) {
             setProgress(15, getString(R.string.smartypants_preprocessing))
         }
 
-        manager.segmentWithDetectionsAsync(bitmap) { result ->
-            if (!isAdded || view == null) {
-                bitmap.recycle()
-                isProcessing = false
+        manager.segmentWithDetectionsOnInferenceThreadAsync(bitmap) { result ->
+            val sourceWidth = bitmap.width
+            val sourceHeight = bitmap.height
+            bitmap.recycle()
+            try {
+                handleSegmentationResult(result, sourceWidth, sourceHeight, isArPath = true)
+            } finally {
+                isProcessing.set(false)
                 arCameraController?.onInferenceFinished()
-                return@segmentWithDetectionsAsync
             }
-            handleSegmentationResult(result, bitmap, isArPath = true)
-            isProcessing = false
-            arCameraController?.onInferenceFinished()
         }
     }
 
     private fun handleSegmentationResult(
         result: com.furnit.android.services.SegmentationResult?,
-        sourceBitmap: Bitmap,
+        sourceWidth: Int,
+        sourceHeight: Int,
         isArPath: Boolean,
     ) {
-        val hostActivity = activity ?: return
+        val hostActivity = activity
+        if (hostActivity == null) {
+            result?.mask?.takeIf { !it.isRecycled }?.recycle()
+            return
+        }
         hostActivity.runOnUiThread {
-            if (!isAdded) return@runOnUiThread
+            if (!isAdded || view == null) {
+                result?.mask?.takeIf { !it.isRecycled }?.recycle()
+                return@runOnUiThread
+            }
 
             if (!segmentationCompletedOnceThisSession) {
                 segmentationCompletedOnceThisSession = true
@@ -513,8 +545,8 @@ class FurnitureFitFragment : Fragment() {
                 if (primaryDetection != null && result.inputSize > 0) {
                     if (isArPath) {
                         val inpF = result.inputSize.coerceAtLeast(1).toFloat()
-                        val scaleX = sourceBitmap.width / inpF
-                        val scaleY = sourceBitmap.height / inpF
+                        val scaleX = sourceWidth / inpF
+                        val scaleY = sourceHeight / inpF
                         arCameraController?.setBboxHint(
                             primaryDetection.x * scaleX,
                             primaryDetection.y * scaleY,
@@ -546,6 +578,7 @@ class FurnitureFitFragment : Fragment() {
                         clusters = result.detectionClusters,
                         sourceWidth = result.sourceWidth,
                         sourceHeight = result.sourceHeight,
+                        primaryDetection = primaryDetection,
                     )
                 } else {
                     arCameraController?.clearBboxHint()
@@ -561,6 +594,7 @@ class FurnitureFitFragment : Fragment() {
                         clusters = result.detectionClusters,
                         sourceWidth = result.sourceWidth,
                         sourceHeight = result.sourceHeight,
+                        primaryDetection = result.primaryDetection,
                     )
                 }
                 updateCalibrationPill()
@@ -1061,6 +1095,8 @@ class FurnitureFitFragment : Fragment() {
             .setTargetResolution(analysisTargetSize)
             .setTargetRotation(rotation)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .setOutputImageRotationEnabled(true)
             .build()
 
         analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -1100,7 +1136,11 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun processFrame(imageProxy: ImageProxy) {
-        if (isProcessing) {
+        if (!isModelReady.get()) {
+            imageProxy.close()
+            return
+        }
+        if (isProcessing.get()) {
             imageProxy.close()
             return
         }
@@ -1117,18 +1157,21 @@ class FurnitureFitFragment : Fragment() {
             imageProxy.close()
             return
         }
-        isProcessing = true
+        if (!isProcessing.compareAndSet(false, true)) {
+            imageProxy.close()
+            return
+        }
 
         val bitmap = imageProxy.toBitmapSafe()
         if (bitmap == null) {
             LogUtil.w("FurnitureFit", "Failed to convert imageProxy to bitmap")
-            isProcessing = false
+            isProcessing.set(false)
             imageProxy.close()
             return
         }
         if (FurnitureFitFrameUsability.isFullyDark(bitmap)) {
             bitmap.recycle()
-            isProcessing = false
+            isProcessing.set(false)
             imageProxy.close()
             activity?.runOnUiThread {
                 if (isAdded && !hasFirstDetection) {
@@ -1155,7 +1198,7 @@ class FurnitureFitFragment : Fragment() {
     private fun runCameraXSegmentation(bitmap: Bitmap) {
         if (!isAdded || view == null) {
             bitmap.recycle()
-            isProcessing = false
+            isProcessing.set(false)
             arCameraController?.onInferenceFinished()
             return
         }
@@ -1166,16 +1209,16 @@ class FurnitureFitFragment : Fragment() {
 
         val alignedBitmap = alignCameraBitmapToLockedRoom(bitmap)
 
-        manager.segmentWithDetectionsAsync(alignedBitmap) { result ->
-            if (!isAdded || view == null) {
-                alignedBitmap.recycle()
-                isProcessing = false
+        manager.segmentWithDetectionsOnInferenceThreadAsync(alignedBitmap) { result ->
+            val sourceWidth = alignedBitmap.width
+            val sourceHeight = alignedBitmap.height
+            alignedBitmap.recycle()
+            try {
+                handleSegmentationResult(result, sourceWidth, sourceHeight, isArPath = false)
+            } finally {
+                isProcessing.set(false)
                 arCameraController?.onInferenceFinished()
-                return@segmentWithDetectionsAsync
             }
-            handleSegmentationResult(result, alignedBitmap, isArPath = false)
-            isProcessing = false
-            arCameraController?.onInferenceFinished()
         }
     }
 
@@ -1234,6 +1277,9 @@ class FurnitureFitFragment : Fragment() {
     }
 
     override fun onDestroy() {
+        modelInitializationJob?.cancel()
+        modelInitializationJob = null
+        isModelReady.set(false)
         lockedFurnitureWidthMeters = null
         lockedFurnitureHeightMeters = null
         releaseCameraUseCases()
@@ -1382,8 +1428,79 @@ fun Context.displayRotationForCameraX(): Int {
     }
 }
 
-// Convert ImageProxy to Bitmap - handles YUV_420_888 format with proper stride handling
+private val cameraRgbaPixelScratch = ThreadLocal<IntArray>()
+
+internal fun copyRgba8888ToArgbPixels(
+    source: ByteBuffer,
+    width: Int,
+    height: Int,
+    rowStride: Int,
+    pixelStride: Int,
+    destination: IntArray,
+): Boolean {
+    if (
+        width <= 0 || height <= 0 || rowStride <= 0 || pixelStride < 4 ||
+        destination.size < width * height
+    ) {
+        return false
+    }
+    val lastPixelOffset = (height - 1L) * rowStride + (width - 1L) * pixelStride + 3L
+    if (lastPixelOffset >= source.limit().toLong()) return false
+
+    var output = 0
+    for (row in 0 until height) {
+        val rowStart = row * rowStride
+        for (column in 0 until width) {
+            val offset = rowStart + column * pixelStride
+            val red = source.get(offset).toInt() and 0xff
+            val green = source.get(offset + 1).toInt() and 0xff
+            val blue = source.get(offset + 2).toInt() and 0xff
+            val alpha = source.get(offset + 3).toInt() and 0xff
+            destination[output++] = (alpha shl 24) or (red shl 16) or (green shl 8) or blue
+        }
+    }
+    return true
+}
+
+// CameraX normally supplies native-converted RGBA; retain YUV as a defensive fallback.
 fun ImageProxy.toBitmapSafe(): Bitmap? {
+    return try {
+        val bitmap = when (format) {
+            PixelFormat.RGBA_8888 -> rgba8888ToBitmap()
+            ImageFormat.YUV_420_888 -> yuv420888ToBitmap()
+            else -> null
+        } ?: return null
+
+        val rotation = imageInfo.rotationDegrees
+        if (rotation == 0) return bitmap
+        val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        if (rotated !== bitmap && !bitmap.isRecycled) bitmap.recycle()
+        rotated
+    } catch (e: Exception) {
+        LogUtil.e("FurnitureFit", "toBitmap failed: ${e.message}")
+        null
+    }
+}
+
+private fun ImageProxy.rgba8888ToBitmap(): Bitmap? {
+    val plane = planes.firstOrNull() ?: return null
+    val buffer = plane.buffer.duplicate()
+    val rowStride = plane.rowStride
+    val pixelStride = plane.pixelStride
+
+    val requiredPixels = width * height
+    val currentScratch = cameraRgbaPixelScratch.get()
+    val pixels = if (currentScratch == null || currentScratch.size != requiredPixels) {
+        IntArray(requiredPixels).also(cameraRgbaPixelScratch::set)
+    } else {
+        currentScratch
+    }
+    if (!copyRgba8888ToArgbPixels(buffer, width, height, rowStride, pixelStride, pixels)) return null
+    return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+}
+
+private fun ImageProxy.yuv420888ToBitmap(): Bitmap? {
     return try {
         val yPlane = planes[0]
         val uPlane = planes[1]
@@ -1425,21 +1542,9 @@ fun ImageProxy.toBitmapSafe(): Bitmap? {
         val out = ByteArrayOutputStream()
         yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, out)
         val imageBytes = out.toByteArray()
-
-        var bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-            ?.copy(Bitmap.Config.ARGB_8888, false)
-            ?: return null
-
-        // Rotate if needed based on image rotation
-        val rotation = imageInfo.rotationDegrees
-        if (rotation != 0) {
-            val matrix = Matrix()
-            matrix.postRotate(rotation.toFloat())
-            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        }
-        bitmap
+        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
     } catch (e: Exception) {
-        LogUtil.e("FurnitureFit", "toBitmap failed: ${e.message}")
+        LogUtil.e("FurnitureFit", "YUV fallback conversion failed: ${e.message}")
         null
     }
 }

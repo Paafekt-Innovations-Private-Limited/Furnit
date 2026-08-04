@@ -68,8 +68,8 @@ the resolved cause.
 - Photo → 3D shows the AI/manual picker before heavy decode work. The default AI
   preview is an optimized flat full-photo GLB; manual setup produces a textured
   five-plane GLB.
-- Depth Anything, GeoCalib, and RTMDet ONNX models ship in install-time Play Asset
-  Delivery packs and are loaded through Android's `AssetManager`.
+- Depth Anything and GeoCalib ONNX models plus RTMDet FP16 LiteRT and ONNX fallback models ship in
+  install-time Play Asset Delivery packs and are loaded through Android's `AssetManager`.
 - `GLBRoomActivity` hosts the Three.js/WebView room plus the inline RTMDet brain and
   full-video segmentation experience.
 

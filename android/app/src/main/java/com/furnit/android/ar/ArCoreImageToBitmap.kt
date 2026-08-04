@@ -1,66 +1,178 @@
 package com.furnit.android.ar
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.graphics.Matrix
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.Image
 import com.furnit.android.utils.LogUtil
-import java.io.ByteArrayOutputStream
 import kotlin.math.hypot
 
+private val nv21Scratch = ThreadLocal<ByteArray>()
+private val argbScratch = ThreadLocal<IntArray>()
+
+internal data class CopiedYuv420Frame(
+    val width: Int,
+    val height: Int,
+    val y: ByteArray,
+    val yRowStride: Int,
+    val yPixelStride: Int,
+    val u: ByteArray,
+    val uRowStride: Int,
+    val uPixelStride: Int,
+    val v: ByteArray,
+    val vRowStride: Int,
+    val vPixelStride: Int,
+) {
+    /** Builds tightly packed NV21 after ARCore's [Image] has already been released. */
+    internal fun toNv21(): ByteArray? {
+        if (width <= 0 || height <= 0 || width % 2 != 0 || height % 2 != 0) return null
+        if (!hasPlaneExtent(y, width, height, yRowStride, yPixelStride)) return null
+        val uvWidth = width / 2
+        val uvHeight = height / 2
+        if (!hasPlaneExtent(u, uvWidth, uvHeight, uRowStride, uPixelStride)) return null
+        if (!hasPlaneExtent(v, uvWidth, uvHeight, vRowStride, vPixelStride)) return null
+
+        val requiredBytes = width * height * 3 / 2
+        val currentNv21 = nv21Scratch.get()
+        val nv21 = if (currentNv21 == null || currentNv21.size != requiredBytes) {
+            ByteArray(requiredBytes).also(nv21Scratch::set)
+        } else {
+            currentNv21
+        }
+        var output = 0
+        for (row in 0 until height) {
+            val rowStart = row * yRowStride
+            if (yPixelStride == 1) {
+                y.copyInto(nv21, output, rowStart, rowStart + width)
+                output += width
+            } else {
+                for (column in 0 until width) {
+                    nv21[output++] = y[rowStart + column * yPixelStride]
+                }
+            }
+        }
+        for (row in 0 until uvHeight) {
+            val uRowStart = row * uRowStride
+            val vRowStart = row * vRowStride
+            for (column in 0 until uvWidth) {
+                nv21[output++] = v[vRowStart + column * vPixelStride]
+                nv21[output++] = u[uRowStart + column * uPixelStride]
+            }
+        }
+        return nv21
+    }
+
+    /** Lossless, stride-aware camera conversion; Swift likewise feeds an uncompressed RGB buffer. */
+    fun toBitmap(): Bitmap? {
+        return try {
+            val pixels = toArgbPixels() ?: return null
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+            }
+        } catch (exception: Exception) {
+            LogUtil.e("ArCoreImage", "Copied YUV frame conversion failed: ${exception.message}", exception)
+            null
+        }
+    }
+
+    internal fun toArgbPixels(): IntArray? {
+        if (width <= 0 || height <= 0 || width % 2 != 0 || height % 2 != 0) return null
+        if (!hasPlaneExtent(y, width, height, yRowStride, yPixelStride)) return null
+        val uvWidth = width / 2
+        val uvHeight = height / 2
+        if (!hasPlaneExtent(u, uvWidth, uvHeight, uRowStride, uPixelStride)) return null
+        if (!hasPlaneExtent(v, uvWidth, uvHeight, vRowStride, vPixelStride)) return null
+
+        val pixelCount = width * height
+        val currentPixels = argbScratch.get()
+        val pixels = if (currentPixels == null || currentPixels.size != pixelCount) {
+            IntArray(pixelCount).also(argbScratch::set)
+        } else {
+            currentPixels
+        }
+        var output = 0
+        for (row in 0 until height) {
+            val yRowStart = row * yRowStride
+            val uRowStart = (row / 2) * uRowStride
+            val vRowStart = (row / 2) * vRowStride
+            for (column in 0 until width) {
+                val luma = y[yRowStart + column * yPixelStride].toInt() and 0xFF
+                val chromaColumn = column / 2
+                val cb = (u[uRowStart + chromaColumn * uPixelStride].toInt() and 0xFF) - 128
+                val cr = (v[vRowStart + chromaColumn * vPixelStride].toInt() and 0xFF) - 128
+                val scaledLuma = 298 * (luma - 16).coerceAtLeast(0)
+                val red = ((scaledLuma + 409 * cr + 128) shr 8).coerceIn(0, 255)
+                val green = ((scaledLuma - 100 * cb - 208 * cr + 128) shr 8).coerceIn(0, 255)
+                val blue = ((scaledLuma + 516 * cb + 128) shr 8).coerceIn(0, 255)
+                pixels[output++] = (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
+            }
+        }
+        return pixels
+    }
+
+    private fun hasPlaneExtent(
+        bytes: ByteArray,
+        planeWidth: Int,
+        planeHeight: Int,
+        rowStride: Int,
+        pixelStride: Int,
+    ): Boolean {
+        if (planeWidth <= 0 || planeHeight <= 0 || rowStride <= 0 || pixelStride <= 0) return false
+        val lastIndex = (planeHeight - 1L) * rowStride + (planeWidth - 1L) * pixelStride
+        return lastIndex >= 0L && lastIndex < bytes.size.toLong()
+    }
+}
+
 /**
- * Converts a [Image] in [ImageFormat.YUV_420_888] (ARCore [Frame.acquireCameraImage]) to a JPEG-decoded [Bitmap],
- * same approach as [com.furnit.android.toBitmapSafe] for CameraX [androidx.camera.core.ImageProxy].
+ * Copies the three ARCore planes with bulk [java.nio.ByteBuffer.get] operations. The copy is kept
+ * deliberately small on the GL thread; YUV packing/conversion happens after [Image.close].
  */
-fun Image.yuv420888ToBitmap(jpegQuality: Int = 90): Bitmap? {
+internal fun Image.copyYuv420Frame(reuse: CopiedYuv420Frame? = null): CopiedYuv420Frame? {
+    if (format != ImageFormat.YUV_420_888 || width <= 0 || height <= 0) return null
+    val imagePlanes = planes
+    if (imagePlanes.size < 3) return null
+
+    fun copyPlane(plane: Image.Plane, reusableBytes: ByteArray?): ByteArray {
+        val source = plane.buffer.duplicate()
+        source.rewind()
+        val destination = reusableBytes?.takeIf { it.size == source.remaining() }
+            ?: ByteArray(source.remaining())
+        source.get(destination)
+        return destination
+    }
+
+    return try {
+        val yPlane = imagePlanes[0]
+        val uPlane = imagePlanes[1]
+        val vPlane = imagePlanes[2]
+        CopiedYuv420Frame(
+            width = width,
+            height = height,
+            y = copyPlane(yPlane, reuse?.y),
+            yRowStride = yPlane.rowStride,
+            yPixelStride = yPlane.pixelStride,
+            u = copyPlane(uPlane, reuse?.u),
+            uRowStride = uPlane.rowStride,
+            uPixelStride = uPlane.pixelStride,
+            v = copyPlane(vPlane, reuse?.v),
+            vRowStride = vPlane.rowStride,
+            vPixelStride = vPlane.pixelStride,
+        )
+    } catch (exception: Exception) {
+        LogUtil.e("ArCoreImage", "YUV plane copy failed: ${exception.message}", exception)
+        null
+    }
+}
+
+/**
+ * Converts an ARCore [ImageFormat.YUV_420_888] image directly to an uncompressed [Bitmap].
+ */
+fun Image.yuv420888ToBitmap(): Bitmap? {
     if (format != ImageFormat.YUV_420_888) {
         LogUtil.w("ArCoreImage", "Unexpected image format: $format")
         return null
     }
-    return try {
-        val planes = planes
-        if (planes.size < 3) return null
-        val yPlane = planes[0]
-        val uPlane = planes[1]
-        val vPlane = planes[2]
-        val yBuffer = yPlane.buffer.duplicate()
-        val uBuffer = uPlane.buffer.duplicate()
-        val vBuffer = vPlane.buffer.duplicate()
-        val yRowStride = yPlane.rowStride
-        val uvRowStride = uPlane.rowStride
-        val uvPixelStride = uPlane.pixelStride
-        val width = this.width
-        val height = this.height
-        val nv21 = ByteArray(width * height * 3 / 2)
-        var pos = 0
-        for (row in 0 until height) {
-            yBuffer.position(row * yRowStride)
-            yBuffer.get(nv21, pos, width)
-            pos += width
-        }
-        val uvHeight = height / 2
-        val uvWidth = width / 2
-        for (row in 0 until uvHeight) {
-            for (col in 0 until uvWidth) {
-                val uvIndex = row * uvRowStride + col * uvPixelStride
-                vBuffer.position(uvIndex)
-                uBuffer.position(uvIndex)
-                nv21[pos++] = vBuffer.get()
-                nv21[pos++] = uBuffer.get()
-            }
-        }
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, width, height), jpegQuality, out)
-        BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
-            ?.copy(Bitmap.Config.ARGB_8888, false)
-    } catch (e: Exception) {
-        LogUtil.e("ArCoreImage", "yuv420888ToBitmap failed: ${e.message}", e)
-        null
-    }
+    return copyYuv420Frame()?.toBitmap()
 }
 
 /**

@@ -107,6 +107,12 @@ dependencies {
     // ONNX Runtime for Android model inference.
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.2'
 
+    // RTMDet's FP16 LiteRT path runs the convolutional graph on the mobile GPU.
+    // Keep the standalone delegate bundled so inference does not depend on Play Services state.
+    implementation 'com.google.ai.edge.litert:litert:1.4.2'
+    implementation 'com.google.ai.edge.litert:litert-gpu:1.4.2'
+    implementation 'com.google.ai.edge.litert:litert-gpu-api:1.4.2'
+
     // SceneView for GLB/GLTF room rendering.
     implementation 'io.github.sceneview:sceneview:2.3.3'
 

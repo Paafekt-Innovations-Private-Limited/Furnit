@@ -29,6 +29,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
@@ -92,6 +93,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
     private val furnitureFitManager by lazy { FurnitureFitManager(this) }
     private var furnitureFitInitialized = false
+    private var furnitureFitPreloadJob: Job? = null
     private var singleImageScanRequestId = 0
     private var imageLoadRequestId = 0
     private val maxRoomPhotoDimensionPx = 2048
@@ -1184,6 +1186,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         singleImageScanStatusView.text = getString(R.string.single_image_scan_scanning)
         singleImageScanStatusView.visibility = View.VISIBLE
         lifecycleScope.launch {
+            furnitureFitPreloadJob?.join()
             val initialized = if (furnitureFitInitialized) {
                 true
             } else {
@@ -1213,11 +1216,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         result.mask,
                         result.detections,
                         result.inputSize,
+                        primaryDetection = result.primaryDetection,
                     )
                     singleImageScanStatusView.text = if (result.detections.isEmpty()) {
                         getString(R.string.single_image_scan_no_objects)
                     } else {
-                        val detection = result.detections.first()
+                        val detection = result.primaryDetection ?: result.detections.first()
                         getString(
                             R.string.single_image_scan_overlay_ready,
                             FurnitureClassNames.localized(
@@ -1267,6 +1271,21 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         // iOS parity — no stop / run-in-background controls on generation overlay.
     }
 
+    /** Match Swift's photo-room flow: request RTMDet when AI generation begins, not at app launch. */
+    private fun preloadRTMDetForPhotoRoomFlow() {
+        if (furnitureFitInitialized || furnitureFitPreloadJob?.isActive == true) return
+        furnitureFitPreloadJob = lifecycleScope.launch {
+            val initialized = withContext(Dispatchers.IO) {
+                furnitureFitManager.initializeAuto()
+            }
+            furnitureFitInitialized = initialized
+            LogUtil.d(
+                "SinglePhotoRoom",
+                "RTMDet photo-room preload completed, initialized=$initialized",
+            )
+        }
+    }
+
     /** Start AI generation when user taps AI Room (Swift parity — not on photo select). */
     private fun startAIGenerationInBackground(bitmap: Bitmap) {
         aiGenerationHandle?.cancel()
@@ -1277,6 +1296,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiSessionId++
         val session = aiSessionId
         aiGenerationRunning = true
+        preloadRTMDetForPhotoRoomFlow()
         val generationService = PhotoRoomGenerationService.getInstance(this)
         val orientationForMetadata = metadataOrientationStringForViewer()
         aiGenerationHandle = generationService.startGenerationInBackground(

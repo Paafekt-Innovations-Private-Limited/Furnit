@@ -92,6 +92,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 
 /**
@@ -145,6 +146,12 @@ class GLBRoomActivity : AppCompatActivity() {
     private var boundPreview: Preview? = null
     private var furnitureFitManager: FurnitureFitManager? = null
     private val isBrainInferenceRunning = AtomicBoolean(false)
+    private data class PendingInlineBrainFrame(
+        val bitmap: Bitmap,
+        val generation: Int,
+    )
+    /** Swift parity: at most one copied newest CameraX frame in full-video live modes. */
+    private val pendingLatestInlineBrainFrame = AtomicReference<PendingInlineBrainFrame?>(null)
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
     private val inlineBrainThermalCadence = FurnitureFitThermalCadence(logTag = "GLBRoomInlineBrainThermal")
@@ -165,6 +172,7 @@ class GLBRoomActivity : AppCompatActivity() {
     @Volatile private var inlineBrainFirstMaskLogged = false
     @Volatile private var inlineBrainFullVideoEnabled = false
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
+    private val inlineBrainPinMissingFrameCounts = mutableMapOf<String, Int>()
     private var glbPath: String? = null
     private var glbViewerCacheDir: File? = null
     private var roomName: String = ""
@@ -437,10 +445,9 @@ class GLBRoomActivity : AppCompatActivity() {
 
     /**
      * iOS hosts call `RTMDetModelService.ensureModelLoaded()` on room appear.
-     * Android previously created the ~110MB OrtSession only on Fit tap, serializing camera bind behind it.
+     * Load only here—not at application launch—then recheck when Fit is activated.
      */
     private fun preloadFurnitureFitModelInBackground() {
-        FurnitureFitManager.preloadAndWarmSharedAsync(this)
         lifecycleScope.launch(Dispatchers.IO) {
             val existingManager = furnitureFitManager
             val manager = existingManager ?: FurnitureFitManager(this@GLBRoomActivity)
@@ -450,9 +457,15 @@ class GLBRoomActivity : AppCompatActivity() {
                 LogUtil.w(TAG, "Inline brain: RTMDet preload failed")
                 return@launch
             }
+            if (isDestroyed) {
+                if (existingManager == null) manager.close()
+                releaseFurnitureFitResourcesForViewerIfNeeded()
+                return@launch
+            }
             withContext(Dispatchers.Main) {
                 if (isDestroyed) {
                     if (furnitureFitManager !== manager) manager.close()
+                    releaseFurnitureFitResourcesForViewerIfNeeded()
                     return@withContext
                 }
                 if (furnitureFitManager == null) {
@@ -460,6 +473,13 @@ class GLBRoomActivity : AppCompatActivity() {
                 }
                 LogUtil.d(TAG, "Inline brain: RTMDet preloaded while room open")
             }
+        }
+    }
+
+    /** Swift's saved-room GLB viewer releases RTMDet; its generated-room preview retains it. */
+    private fun releaseFurnitureFitResourcesForViewerIfNeeded() {
+        if (!isPreviewMode) {
+            FurnitureFitManager.releaseSharedResourcesAsync()
         }
     }
 
@@ -978,8 +998,10 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun toggleInlineBrainFullVideoMode() {
         if (brainDetectionOverlay.visibility != View.VISIBLE) return
+        clearPendingLatestInlineBrainFrame()
         inlineBrainFullVideoEnabled = !inlineBrainFullVideoEnabled
         inlineBrainSelectedPins = emptyList()
+        inlineBrainPinMissingFrameCounts.clear()
         inlineBrainHasSegmentedFurniture = false
         inlineBrainFurnitureColor = null
         inlineBrainFurnitureLabel = null
@@ -1071,9 +1093,11 @@ class GLBRoomActivity : AppCompatActivity() {
         LogUtil.i(TAG, "Inline brain timing: FIT_START mode=DEFAULT_SEGMENT")
         LogUtil.d(TAG, "Inline brain: start")
         val generation = brainSessionGeneration.incrementAndGet()
+        clearPendingLatestInlineBrainFrame()
         inlineBrainFullVideoEnabled = false
         inlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
         inlineBrainSelectedPins = emptyList()
+        inlineBrainPinMissingFrameCounts.clear()
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
         inlineBrainHasSegmentedFurniture = false
@@ -1134,11 +1158,13 @@ class GLBRoomActivity : AppCompatActivity() {
             pin.classId == detection.classId && detectionIoU(pin, detection) >= 0.50f
         }
         if (existingIndex >= 0) {
-            current.removeAt(existingIndex)
+            inlineBrainPinMissingFrameCounts.remove(inlineBrainPinKey(current.removeAt(existingIndex)))
         } else {
             current += detection
         }
         inlineBrainSelectedPins = current
+        val activeKeys = current.mapTo(mutableSetOf(), ::inlineBrainPinKey)
+        inlineBrainPinMissingFrameCounts.keys.retainAll(activeKeys)
         brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
         updateInlineBrainSegmentButton()
     }
@@ -1236,6 +1262,64 @@ class GLBRoomActivity : AppCompatActivity() {
         return if (unionArea > 0f) intersectionArea / unionArea else 0f
     }
 
+    private fun inlineBrainPinKey(detection: DetectionResult): String = buildString {
+        append(detection.classId)
+        append(':').append((detection.x * 1000f).roundToInt())
+        append(':').append((detection.y * 1000f).roundToInt())
+        append(':').append((detection.w * 1000f).roundToInt())
+        append(':').append((detection.h * 1000f).roundToInt())
+    }
+
+    /** Swift keeps a selected instance for three missed frames, then replaces/removes pins by IoU. */
+    private fun refreshInlineBrainPinsFromCandidates(candidates: List<DetectionResult>) {
+        val pins = inlineBrainSelectedPins
+        if (pins.isEmpty()) {
+            inlineBrainPinMissingFrameCounts.clear()
+            return
+        }
+
+        val usedCandidateIndices = mutableSetOf<Int>()
+        val updatedPins = mutableListOf<DetectionResult>()
+        val updatedMissingCounts = inlineBrainPinMissingFrameCounts.toMutableMap()
+        var didRemove = false
+        for (pin in pins) {
+            val pinKey = inlineBrainPinKey(pin)
+            var bestIndex = -1
+            var bestIou = 0f
+            for ((index, candidate) in candidates.withIndex()) {
+                if (index in usedCandidateIndices || candidate.classId != pin.classId) continue
+                val iou = detectionIoU(candidate, pin)
+                if (iou > bestIou) {
+                    bestIou = iou
+                    bestIndex = index
+                }
+            }
+            if (bestIndex >= 0 && bestIou >= 0.45f) {
+                val matched = candidates[bestIndex]
+                usedCandidateIndices += bestIndex
+                updatedMissingCounts.remove(pinKey)
+                updatedMissingCounts.remove(inlineBrainPinKey(matched))
+                updatedPins += matched
+                continue
+            }
+
+            val nextMissCount = (updatedMissingCounts[pinKey] ?: 0) + 1
+            if (nextMissCount > 3) {
+                updatedMissingCounts.remove(pinKey)
+                didRemove = true
+            } else {
+                updatedMissingCounts[pinKey] = nextMissCount
+                updatedPins += pin
+            }
+        }
+
+        inlineBrainSelectedPins = updatedPins
+        val remainingKeys = updatedPins.mapTo(mutableSetOf(), ::inlineBrainPinKey)
+        inlineBrainPinMissingFrameCounts.clear()
+        inlineBrainPinMissingFrameCounts.putAll(updatedMissingCounts.filterKeys(remainingKeys::contains))
+        if (didRemove) updateInlineBrainSegmentButton()
+    }
+
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindInlineBrainCamera(generation: Int) {
         if (inlineBrainArAssistedSizingEnabled) {
@@ -1261,10 +1345,10 @@ class GLBRoomActivity : AppCompatActivity() {
                 lockedPhotoOrientation = photoOrientation
                 roomHeightMetersForFallback = roomHeight.coerceAtLeast(0.1f)
                 shouldPostBitmapFrame = {
-                    brainAcceptingUpdates &&
+                        brainAcceptingUpdates &&
                         brainSessionGeneration.get() == generation &&
                         !isBrainInferenceRunning.get() &&
-                        inlineBrainThermalCadence.shouldAcceptInference()
+                        !inlineBrainThermalCadence.isPausedForThermalCritical
                 }
                 onAssistedMeasurementUpdated = {
                     runOnUiThread {
@@ -1473,12 +1557,17 @@ class GLBRoomActivity : AppCompatActivity() {
             .setTargetResolution(analysisSize)
             .setTargetRotation(displayRotationForCameraX())
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .setOutputImageRotationEnabled(true)
             .build()
 
         analysis.setAnalyzer(cameraExecutor) { imageProxy ->
             try {
                 if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@setAnalyzer
-                if (isBrainInferenceRunning.get()) return@setAnalyzer
+                if (isBrainInferenceRunning.get()) {
+                    retainLatestDroppedInlineBrainFrame(imageProxy, generation)
+                    return@setAnalyzer
+                }
                 // Covered lens: skip decode + detector; stop thrashing the progress overlay.
                 if (FurnitureFitFrameUsability.isFullyDark(imageProxy)) {
                     runOnUiThread {
@@ -1562,7 +1651,10 @@ class GLBRoomActivity : AppCompatActivity() {
             if (orientedBitmap !== sourceBitmap) sourceBitmap.recycle()
             orientedBitmap
         }
-        if (FurnitureFitFrameUsability.isFullyDark(bitmap) || !inlineBrainThermalCadence.tryBeginInference()) {
+        if (
+            FurnitureFitFrameUsability.isFullyDark(bitmap) ||
+            inlineBrainThermalCadence.isPausedForThermalCritical
+        ) {
             bitmap.recycle()
             inlineBrainArCameraController?.onInferenceFinished()
             return
@@ -1572,40 +1664,146 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun submitInlineBrainInference(bitmap: Bitmap, generation: Int) {
+        // A deferred newest frame re-enters Swift's complete processFrame path, including its
+        // all-black camera guard. Keep that guard here as well; pending frames bypass the outer
+        // CameraX admission method by design.
+        if (FurnitureFitFrameUsability.isFullyDark(bitmap)) {
+            bitmap.recycle()
+            val pendingNext = takePendingLatestInlineBrainFrame(generation)
+            if (pendingNext != null) {
+                submitInlineBrainInference(pendingNext.bitmap, generation)
+            } else if (brainSessionGeneration.get() == generation) {
+                isBrainInferenceRunning.set(false)
+                inlineBrainArCameraController?.onInferenceFinished()
+            }
+            return
+        }
         val modeSnapshot = inlineBrainMode
         val fullVideoSnapshot = inlineBrainFullVideoEnabled
         val selectedPinsSnapshot = inlineBrainSelectedPins
-        val callback: (SegmentationResult?) -> Unit = { result ->
+        val callback: (SegmentationResult?) -> Unit = callback@{ result ->
             bitmap.recycle()
+            if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) {
+                result?.mask?.takeIf { !it.isRecycled }?.recycle()
+                return@callback
+            }
+
+            // Swift posts the presentation update, then releases the inference gate on its worker
+            // queue. Do not wait for Android's main thread (or color/overlay work) before accepting
+            // the newest camera pose.
             runOnUiThread {
-                isBrainInferenceRunning.set(false)
-                inlineBrainArCameraController?.onInferenceFinished()
-                if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
+                if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) {
+                    result?.mask?.takeIf { !it.isRecycled }?.recycle()
+                    return@runOnUiThread
+                }
                 if (inlineBrainMode != modeSnapshot || inlineBrainFullVideoEnabled != fullVideoSnapshot) {
                     LogUtil.d(
                         TAG,
                         "Inline brain: dropping stale result mode=$modeSnapshot current=$inlineBrainMode " +
                             "fullVideo=$fullVideoSnapshot currentFullVideo=$inlineBrainFullVideoEnabled",
                     )
-                    return@runOnUiThread
+                    result?.mask?.takeIf { !it.isRecycled }?.recycle()
+                } else {
+                    applyInlineBrainResult(result)
                 }
-                applyInlineBrainResult(result)
             }
+
+            // Keep the gate closed only when transferring the single newest deferred frame. There
+            // is no FIFO; this mirrors processPendingLatestSegmentationFrameIfNeeded in Swift.
+            val pendingNext = takePendingLatestInlineBrainFrame(generation)
+            if (pendingNext != null) {
+                submitInlineBrainInference(pendingNext.bitmap, generation)
+            } else {
+                isBrainInferenceRunning.set(false)
+                inlineBrainArCameraController?.onInferenceFinished()
+            }
+        }
+
+        val manager = furnitureFitManager
+        if (manager == null) {
+            bitmap.recycle()
+            if (brainSessionGeneration.get() == generation) {
+                isBrainInferenceRunning.set(false)
+                inlineBrainArCameraController?.onInferenceFinished()
+            }
+            return
         }
         when {
             fullVideoSnapshot && modeSnapshot == InlineBrainMode.IDENTIFY ->
-                furnitureFitManager?.detectWithDetectionsAsync(bitmap, requireClusters = true, callback = callback)
+                manager.detectWithDetectionsOnInferenceThreadAsync(bitmap, requireClusters = true, callback = callback)
             fullVideoSnapshot && modeSnapshot == InlineBrainMode.SEGMENT_SELECTED ->
-                furnitureFitManager?.segmentSelectedInstancesAsync(bitmap, selectedPinsSnapshot, callback)
+                manager.segmentSelectedInstancesOnInferenceThreadAsync(bitmap, selectedPinsSnapshot, callback)
             else ->
-                furnitureFitManager?.segmentWithDetectionsAsync(bitmap, callback)
+                manager.segmentWithDetectionsOnInferenceThreadAsync(bitmap, callback)
         }
+    }
+
+    /** Same mode policy as Swift `shouldKeepLatestDroppedCameraFrame` for RTMDet. */
+    private fun shouldKeepLatestDroppedInlineBrainFrame(): Boolean {
+        return inlineBrainFullVideoEnabled &&
+            (inlineBrainMode == InlineBrainMode.IDENTIFY ||
+                inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED)
+    }
+
+    /**
+     * Copies and replaces one newest dropped CameraX frame. Default RTMDet segmentation and the
+     * ARCore path continue dropping every busy frame exactly as Swift does.
+     */
+    private fun retainLatestDroppedInlineBrainFrame(imageProxy: androidx.camera.core.ImageProxy, generation: Int) {
+        if (!shouldKeepLatestDroppedInlineBrainFrame()) return
+        val rawBitmap = imageProxy.toBitmapSafe() ?: return
+        val (orientedBitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
+        if (orientedBitmap !== rawBitmap) rawBitmap.recycle()
+
+        if (
+            !brainAcceptingUpdates ||
+            brainSessionGeneration.get() != generation ||
+            !shouldKeepLatestDroppedInlineBrainFrame()
+        ) {
+            orientedBitmap.recycle()
+            return
+        }
+
+        pendingLatestInlineBrainFrame
+            .getAndSet(PendingInlineBrainFrame(orientedBitmap, generation))
+            ?.bitmap
+            ?.takeIf { !it.isRecycled }
+            ?.recycle()
+    }
+
+    private fun takePendingLatestInlineBrainFrame(generation: Int): PendingInlineBrainFrame? {
+        val pending = pendingLatestInlineBrainFrame.getAndSet(null) ?: return null
+        if (
+            pending.generation != generation ||
+            !brainAcceptingUpdates ||
+            brainSessionGeneration.get() != generation ||
+            !shouldKeepLatestDroppedInlineBrainFrame()
+        ) {
+            pending.bitmap.takeIf { !it.isRecycled }?.recycle()
+            return null
+        }
+        return pending
+    }
+
+    private fun clearPendingLatestInlineBrainFrame() {
+        pendingLatestInlineBrainFrame
+            .getAndSet(null)
+            ?.bitmap
+            ?.takeIf { !it.isRecycled }
+            ?.recycle()
     }
 
     private fun applyInlineBrainResult(result: SegmentationResult?) {
         hideBrainProgress()
         val mask = result?.mask
         val detections = result?.detections ?: emptyList()
+        if (
+            result != null &&
+            inlineBrainFullVideoEnabled &&
+            (detections.isNotEmpty() || inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED)
+        ) {
+            refreshInlineBrainPinsFromCandidates(detections)
+        }
         val primaryDetection = result?.primaryDetection ?: detections.firstOrNull()
         if (mask != null) {
             if (!inlineBrainFirstMaskLogged) {
@@ -1652,6 +1850,7 @@ class GLBRoomActivity : AppCompatActivity() {
                         frameAlignedOverlay = true,
                         sourceWidth = result?.sourceWidth ?: 640,
                         sourceHeight = result?.sourceHeight ?: 640,
+                        primaryDetection = primaryDetection,
                     )
                     brainDetectionOverlayView.setDetectionBoxVisibility(true)
                     brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
@@ -1665,6 +1864,7 @@ class GLBRoomActivity : AppCompatActivity() {
                         frameAlignedOverlay = true,
                         sourceWidth = result?.sourceWidth ?: mask?.width ?: 640,
                         sourceHeight = result?.sourceHeight ?: mask?.height ?: 640,
+                        primaryDetection = primaryDetection,
                     )
                     brainDetectionOverlayView.setDetectionBoxVisibility(false)
                     brainDetectionOverlayView.setIdentifySelectionState(false, inlineBrainSelectedPins)
@@ -1680,6 +1880,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 1f,
                 null,
                 roomHeight,
+                primaryDetection = primaryDetection,
             )
         }
         LogUtil.i(
@@ -1695,11 +1896,14 @@ class GLBRoomActivity : AppCompatActivity() {
         LogUtil.d(TAG, "Inline brain: stop")
         brainSessionGeneration.incrementAndGet()
         brainAcceptingUpdates = false
+        clearPendingLatestInlineBrainFrame()
+        furnitureFitManager?.rotateInferenceQueueForNewSession()
         isBrainInferenceRunning.set(false)
         inlineBrainThermalCadence.stop()
         inlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
         inlineBrainFullVideoEnabled = false
         inlineBrainSelectedPins = emptyList()
+        inlineBrainPinMissingFrameCounts.clear()
         inlineBrainHasSegmentedFurniture = false
         inlineBrainFurnitureColor = null
         inlineBrainFurnitureLabel = null
@@ -2561,6 +2765,7 @@ class GLBRoomActivity : AppCompatActivity() {
         releaseInlineBrainArCamera()
         furnitureFitManager?.close()
         furnitureFitManager = null
+        releaseFurnitureFitResourcesForViewerIfNeeded()
         cameraExecutor.shutdown()
         glbViewerCacheDir?.deleteRecursively()
         glbViewerCacheDir = null
