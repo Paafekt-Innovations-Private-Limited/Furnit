@@ -20,10 +20,10 @@
     </style>
   </defs>
 
-  <text x="32" y="40" class="title">RTMDet segmentation — iOS room viewers (Swift / Core ML)</text>
-  <text x="32" y="60" class="sub">Inline brain on room viewers. Android GLBRoomActivity mirrors the floating controls and viewfinder flow. ★ = ANE/GPU, ☆ = CPU.</text>
+  <text x="32" y="40" class="title">RTMDet segmentation — iOS room viewers (Swift / LiteRT Metal)</text>
+  <text x="32" y="60" class="sub">Android-equivalent FP16 graph; four clamps use Metal-supported max/min. Full Metal audit requires cpuNodes=0. ★ = Metal GPU, ☆ = Swift CPU.</text>
 
-  <rect x="560" y="74" width="14" height="14" rx="3" class="ane"/><text x="580" y="86" class="legtxt">Core ML (ANE/GPU)</text>
+  <rect x="560" y="74" width="14" height="14" rx="3" class="ane"/><text x="580" y="86" class="legtxt">LiteRT Metal GPU</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Swift CPU</text>
   <rect x="32" y="74" width="14" height="14" rx="3" class="ui"/><text x="52" y="86" class="legtxt">UI / mode control</text>
 
@@ -46,17 +46,17 @@
 
   <g><rect x="250" y="410" width="420" height="52" rx="12" class="cpu"/>
     <text x="460" y="432" text-anchor="middle" class="bt">Preprocess</text>
-    <text x="460" y="450" text-anchor="middle" class="bs">resize 640² · Core ML image input preferred · BGR norm in graph</text></g>
+    <text x="460" y="450" text-anchor="middle" class="bs">stretch 640² · float32 NHWC · raw BGR 0…255 · normalization in graph</text></g>
   <path class="edge" d="M460,462 L460,496" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="496" width="420" height="52" rx="12" class="ane"/>
-    <text x="460" y="518" text-anchor="middle" class="bt">★ Core ML predict — RTMDet-Ins</text>
-    <text x="460" y="536" text-anchor="middle" class="bs">RTMDetImageInference · computeUnits .cpuAndNeuralEngine</text></g>
+    <text x="460" y="518" text-anchor="middle" class="bt">★ LiteRT 2.17 Metal — RTMDet-Ins-m FP16</text>
+    <text x="460" y="536" text-anchor="middle" class="bs">dedicated thread · audited full Metal plan · zero CPU nodes · no runtime fallback</text></g>
   <path class="edge" d="M460,548 L460,582" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="582" width="420" height="52" rx="12" class="data"/>
     <text x="460" y="604" text-anchor="middle" class="bt">Raw heads + mask_feat</text>
-    <text x="460" y="622" text-anchor="middle" class="bs">cls / bbox / kernel × {80,40,20} · mask prototypes</text></g>
+    <text x="460" y="622" text-anchor="middle" class="bs">persistent NHWC→NCHW copy · cls / bbox / kernel × {80,40,20} · mask prototypes</text></g>
   <path class="edge" d="M460,634 L460,668" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="668" width="420" height="52" rx="12" class="cpu"/>

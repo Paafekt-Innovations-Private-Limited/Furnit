@@ -1,16 +1,31 @@
 # FurnitureFit Segmentation Pipeline
 
-Real-time furniture segmentation using **RTMDet-Ins-m** (Core ML raw-head export, typically **640×640** input) with instance segmentation masks.
+Real-time furniture segmentation using **RTMDet-Ins-m** (shared Android/iOS FP16 math
+and tensor contract, **640×640** input) with instance segmentation masks. iOS ships a
+semantically identical Metal graph variant whose four clamp operators are expressed as
+supported max/min pairs.
 
 ## Architecture Overview
 
 ```
-Camera/Still Frame → Core ML image input → RTMDet raw heads → Confidence-first NMS →
+Camera/Still Frame → raw BGR NHWC → LiteRT Metal → RTMDet raw heads → Confidence-first NMS →
 Mask-head planes → Mask-affinity grouping → Pixel-level cutout union → Overlay gesture/display
 ```
 
 Current implementation notes:
 
+- `RTMDetModelService` owns one `RTMDetLiteRuntime` shared by live Furniture Fit,
+  Settings image scan, and room-generation object anchoring. It requires the LiteRT
+  2.17.0 Metal delegate and has no Core ML or CPU runtime fallback.
+- The iOS Metal graph is shipped as the `RTMDetModel` on-demand resource and is
+  reproducibly derived from the pinned Android payload. Swift writes raw `0...255` BGR
+  into the graph's float32 NHWC input allocation. After
+  each Metal invocation it uses LiteRT's tensor-copy API and the same physical
+  NHWC-to-NCHW conversion as Android. The reusable contiguous buffers avoid per-frame
+  output allocation and remove the former custom-stride view over delegate memory.
+  Runtime creation, warm-up, invoke, and teardown stay on one dedicated thread. Metal
+  uses Android-parity precision/quantization options; a post-delegation audit requires
+  zero CPU nodes, so this remains GPU-only with no silent partial execution.
 - `RTMDetImageInference` owns raw-head decoding (`cls/bbox/kernel` at 80/40/20 plus `mask_feat`), confidence-first class-aware NMS, per-instance mask building, mask-affinity grouping, and cached mask rebuilds for live selection.
 - `SettingsFurnitureFitImageScanView` uses the same uncapped RTMDet still-image path as the live flow: `maxDetectionCount: nil`, no fixed detection cap, fused instance masks, and pixel-level RGBA union.
 - `FurnitureFitContainerView` displays the cutout in `maskImageView`; pinch/pan transforms are applied through `userPinchScale`, `userPanOffset`, and `FurnitureFitOverlayScaling.resolvedTransform`.
@@ -247,12 +262,14 @@ if (m <= 0.0f) { ... }
 ## Pipeline Stages
 
 ### STAGE 1: Input / Preprocess
-- Current RTMDet Core ML export accepts an image input when available; BGR mean/std normalization is pushed into the model graph.
-- Legacy multi-array fallback still supports BGRA → NCHW normalization in Swift.
+- Stretch the camera/still frame to 640×640.
+- Write float32 NHWC raw BGR values directly into LiteRT's input tensor; normalization
+  remains inside the Android-equivalent graph.
 
 ### STAGE 2: Inference
-- Run RTMDet model (`RTMDetImageInference.modelInputSize` / Core ML image constraint)
-- Output: detection tensor + prototype masks
+- Run RTMDet on its dedicated worker with the mandatory LiteRT iOS Metal delegate.
+- Reject model loading unless the audited execution plan reports `cpuNodes=0`.
+- Output: named raw classification, bbox, dynamic-kernel, and mask-feature tensors.
 
 ### STAGE 3: Parse Outputs
 - Extract bounding boxes, confidence scores, class IDs, mask coefficients

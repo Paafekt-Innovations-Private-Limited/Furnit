@@ -284,3 +284,9 @@ android/calibration_image_sample_data_*.npy
 
 # Local script tooling caches (e.g. KTX binaries for export_bundled_usdz_to_glb.py)
 scripts/.tools/
+
+# LiteRT iOS port (wip/litert-ios): source and headers are tracked, the large
+# binaries are not. The xcframework binaries re-download from Google, and the
+# fp16 tflite already ships in android/rtmdet_models/src/main/assets/.
+Vendor/**/*.framework/TensorFlowLiteC
+Vendor/**/*.framework/TensorFlowLiteCMetal

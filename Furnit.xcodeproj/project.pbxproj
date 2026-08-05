@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
+		61LR00012F4A000000000001 /* TensorFlowLiteC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 61LR00032F4A000000000003 /* TensorFlowLiteC.xcframework */; };
+		61LR00022F4A000000000002 /* TensorFlowLiteCMetal.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 61LR00042F4A000000000004 /* TensorFlowLiteCMetal.xcframework */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
 		61MS00052F01000000000003 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00042F01000000000003 /* SplatIO */; };
 		61WV00022F01000000000002 /* Furnit/Resources/WebViewVendor in Resources */ = {isa = PBXBuildFile; fileRef = 61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */; };
@@ -27,6 +29,8 @@
 /* Begin PBXFileReference section */
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		61A62FAD2F24C31500FE755A /* FurnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		61LR00032F4A000000000003 /* TensorFlowLiteC.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = TensorFlowLiteC.xcframework; sourceTree = "<group>"; };
+		61LR00042F4A000000000004 /* TensorFlowLiteCMetal.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = TensorFlowLiteCMetal.xcframework; sourceTree = "<group>"; };
 		61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Furnit/Resources/WebViewVendor; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -34,7 +38,7 @@
 		616C17B12F27CD5A00A10214 /* Exceptions for "Furnit" folder in "Furnit" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			assetTagsByRelativePath = {
-				"Models/RTMDet/rtmdet-ins-m.mlpackage" = (RTMDetModel, );
+				"Models/RTMDet/rtmdet-ins-m-raw-fp16.tflite" = (RTMDetModel, );
 			};
 			membershipExceptions = (
 				CHANGELOG.md,
@@ -45,6 +49,7 @@
 				docs/README.md,
 				Info.plist,
 				Models/RTMDet/README.md,
+				"Models/RTMDet/rtmdet-ins-m.mlpackage",
 				test_images/alchair.jpeg,
 				Views/FurnitureFit/README.md,
 			);
@@ -75,6 +80,8 @@
 			files = (
 				61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */,
 				61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */,
+				61LR00012F4A000000000001 /* TensorFlowLiteC.xcframework in Frameworks */,
+				61LR00022F4A000000000002 /* TensorFlowLiteCMetal.xcframework in Frameworks */,
 				61MS00012F01000000000001 /* MetalSplatter in Frameworks */,
 				61MS00052F01000000000003 /* SplatIO in Frameworks */,
 			);
@@ -95,6 +102,7 @@
 			children = (
 				045F5BDB2E6D302900C5585D /* Furnit */,
 				61A62FAE2F24C31500FE755A /* FurnitTests */,
+				61LR00052F4A000000000005 /* LiteRT */,
 				045F5BDA2E6D302900C5585D /* Products */,
 				61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */,
 			);
@@ -108,6 +116,16 @@
 			);
 			name = Products;
 			sourceTree = "<group>";
+		};
+		61LR00052F4A000000000005 /* LiteRT */ = {
+			isa = PBXGroup;
+			children = (
+				61LR00032F4A000000000003 /* TensorFlowLiteC.xcframework */,
+				61LR00042F4A000000000004 /* TensorFlowLiteCMetal.xcframework */,
+			);
+			name = LiteRT;
+			path = Vendor/LiteRT;
+			sourceTree = SOURCE_ROOT;
 		};
 /* End PBXGroup section */
 
@@ -332,7 +350,7 @@
 					"-DACCELERATE_NEW_LAPACK",
 					"-DACCELERATE_LAPACK_ILP64",
 				);
-				"OTHER_SWIFT_FLAGS[arch=*]" = "-Xcc -DACCELERATE_NEW_LAPACK";
+				"OTHER_SWIFT_FLAGS[arch=*]" = "-Xcc -DACCELERATE_NEW_LAPACK -Xcc -Wno-incomplete-umbrella";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
@@ -398,7 +416,7 @@
 					"-DACCELERATE_NEW_LAPACK",
 					"-DACCELERATE_LAPACK_ILP64",
 				);
-				"OTHER_SWIFT_FLAGS[arch=*]" = "-Xcc -DACCELERATE_NEW_LAPACK";
+				"OTHER_SWIFT_FLAGS[arch=*]" = "-Xcc -DACCELERATE_NEW_LAPACK -Xcc -Wno-incomplete-umbrella";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -446,7 +464,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LM_FILTER_WARNINGS = YES;
 				MARKETING_VERSION = 1.2;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -496,7 +519,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LM_FILTER_WARNINGS = YES;
 				MARKETING_VERSION = 1.2;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

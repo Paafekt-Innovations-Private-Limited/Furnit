@@ -1,11 +1,8 @@
 import Foundation
-import CoreML
 
-/// Developer-facing loader for RTMDet-Ins-m Core ML experiments.
-///
-/// This intentionally does not replace the existing RTMDet runtime yet.
-/// It only supports the still-image validation path until output parsing
-/// and mask quality are proven on device.
+/// Owns the single RTMDet-Ins-m LiteRT interpreter used by still-image, live-camera,
+/// and room-measurement segmentation. The interpreter requires the Metal delegate;
+/// there is deliberately no CPU or Core ML fallback.
 @MainActor
 final class RTMDetModelService: ObservableObject {
 
@@ -13,7 +10,7 @@ final class RTMDetModelService: ObservableObject {
 
     private static let rtmdetModelTag = "RTMDetModel"
 
-    @Published var model: MLModel?
+    @Published var model: RTMDetLiteRuntime?
     @Published var isLoadingModel = false
     @Published var isDownloadingResources = false
     @Published var downloadProgress: Double = 0.0
@@ -25,22 +22,6 @@ final class RTMDetModelService: ObservableObject {
     private var progressObservation: NSKeyValueObservation?
 
     private init() {}
-
-    private static let bundledCandidates: [(name: String, ext: String)] = [
-        ("rtmdet-ins-m", "mlmodelc"),
-        ("rtmdet-ins-m", "mlpackage"),
-        ("rtmdet_ins_m", "mlmodelc"),
-        ("rtmdet_ins_m", "mlpackage"),
-        ("rtmdet-ins-m-coreml", "mlmodelc"),
-        ("rtmdet-ins-m-coreml", "mlpackage"),
-    ]
-
-    private static let computeUnitFallbacks: [MLComputeUnits] = [
-        .cpuAndNeuralEngine,
-        .cpuAndGPU,
-        .all,
-        .cpuOnly,
-    ]
 
     private static let bundledSubdirectories: [String?] = [
         nil,
@@ -55,19 +36,35 @@ final class RTMDetModelService: ObservableObject {
         }
     }
 
+    /// Returns the shared runtime, waiting for an in-flight ODR/model load when necessary.
+    func modelForInference() async -> RTMDetLiteRuntime? {
+        if let model { return model }
+
+        if !isLoadingModel {
+            await loadModel()
+        } else {
+            while isLoadingModel {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+        return model
+    }
+
     func releaseResources() {
         progressObservation?.invalidate()
         progressObservation = nil
+        // Destroy the interpreter before relinquishing its on-demand model file.
+        // LiteRT may keep the FlatBuffer memory-mapped for the interpreter lifetime.
+        model = nil
         resourceRequest?.endAccessingResources()
         resourceRequest = nil
-        model = nil
         isLoadingModel = false
         isDownloadingResources = false
         downloadProgress = 0.0
         resourcesAvailable = false
         statusMessage = ""
         loadErrorMessage = nil
-        logDebug("RTMDet-Ins-m released model + ODR resources")
+        logDebug("RTMDet-Ins-m released LiteRT Metal runtime + ODR resources")
     }
 
     private func loadModel() async {
@@ -80,46 +77,40 @@ final class RTMDetModelService: ObservableObject {
             isLoadingModel = false
         }
 
-        var failures: [String] = []
-
         await ensureODRReadyIfNeeded()
 
-        for computeUnits in Self.computeUnitFallbacks {
-            let config = MLModelConfiguration()
-            config.computeUnits = computeUnits
+        var failures: [String] = []
+        for subdirectory in Self.bundledSubdirectories {
+            guard let url = Bundle.main.url(
+                forResource: RTMDetLiteRuntime.modelName,
+                withExtension: RTMDetLiteRuntime.modelExtension,
+                subdirectory: subdirectory
+            ) else {
+                continue
+            }
 
-            for subdirectory in Self.bundledSubdirectories {
-                for (name, ext) in Self.bundledCandidates {
-                    guard let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: subdirectory) else {
-                        continue
-                    }
-                    do {
-                        let loadURL: URL
-                        if ext == "mlpackage" {
-                            loadURL = try await MLModel.compileModel(at: url)
-                        } else {
-                            loadURL = url
-                        }
-                        let loadedModel = try await Task.detached(priority: .userInitiated) {
-                            try MLModel(contentsOf: loadURL, configuration: config)
-                        }.value
-                        model = loadedModel
-                        let location = subdirectory ?? "<bundle-root>"
-                        statusMessage = "RTMDet-Ins-m ready (\(computeUnits.debugName), \(location))"
-                        logDebug("RTMDet-Ins-m loaded with computeUnits=\(computeUnits.debugName) location=\(location)")
-                        loadErrorMessage = nil
-                        return
-                    } catch {
-                        let location = subdirectory ?? "<bundle-root>"
-                        failures.append("\(name).\(ext) @ \(location) / \(computeUnits.debugName): \(error.localizedDescription)")
-                    }
-                }
+            do {
+                let loadedModel = try await Task.detached(priority: .userInitiated) {
+                    try RTMDetLiteRuntime(modelURL: url)
+                }.value
+                model = loadedModel
+                let location = subdirectory ?? "<bundle-root>"
+                statusMessage = "RTMDet-Ins-m ready (LiteRT Metal \(loadedModel.runtimeVersion), \(location))"
+                logDebug(
+                    "RTMDet-Ins-m loaded with verified full LiteRT Metal delegation "
+                        + "\(loadedModel.delegationSummary) location=\(location)"
+                )
+                loadErrorMessage = nil
+                return
+            } catch {
+                let location = subdirectory ?? "<bundle-root>"
+                failures.append("\(url.lastPathComponent) @ \(location): \(error.localizedDescription)")
             }
         }
 
         statusMessage = "RTMDet-Ins-m model not available"
         loadErrorMessage = failures.isEmpty
-            ? "Add a bundled Core ML model named rtmdet-ins-m.mlpackage or rtmdet-ins-m.mlmodelc to the iOS target, preferably under Furnit/Models/RTMDet/."
+            ? "The on-demand rtmdet-ins-m-raw-fp16.tflite model could not be found."
             : failures.joined(separator: "\n")
     }
 
@@ -180,30 +171,12 @@ final class RTMDetModelService: ObservableObject {
     }
 
     private func hasBundledModelURL() -> Bool {
-        for subdirectory in Self.bundledSubdirectories {
-            for (name, ext) in Self.bundledCandidates {
-                if Bundle.main.url(forResource: name, withExtension: ext, subdirectory: subdirectory) != nil {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-}
-
-private extension MLComputeUnits {
-    var debugName: String {
-        switch self {
-        case .all:
-            return "all"
-        case .cpuAndNeuralEngine:
-            return "cpuAndNeuralEngine"
-        case .cpuAndGPU:
-            return "cpuAndGPU"
-        case .cpuOnly:
-            return "cpuOnly"
-        @unknown default:
-            return "unknown"
+        Self.bundledSubdirectories.contains { subdirectory in
+            Bundle.main.url(
+                forResource: RTMDetLiteRuntime.modelName,
+                withExtension: RTMDetLiteRuntime.modelExtension,
+                subdirectory: subdirectory
+            ) != nil
         }
     }
 }

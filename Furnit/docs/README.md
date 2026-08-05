@@ -19,8 +19,9 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance segmentation
   ("brain") in room viewers: top controls expose ruler/pinch/tap helpers, brain default
   auto-segments primary, **text.viewfinder** toggles full-video identify/segment modes, transparent
-  cutouts composite over the 3D room, and Core ML raw-head decode → confidence-first NMS →
-  mask affinity → pixel-union cutout.
+  cutouts composite over the 3D room, and the Android-equivalent FP16 TFLite graph runs through
+  LiteRT's mandatory fully audited Metal delegate (`cpuNodes=0`) → raw-head decode →
+  confidence-first NMS → mask affinity → pixel-union cutout.
 
 Room generation (default AI path): **instant preview (no ML)** then **GeoCalib + Depth Anything +
 RTMDet object anchor → USDZ on first save**. Swift entry points: `SinglePhotoRoomViewer.swift`
@@ -31,7 +32,17 @@ RTMDet object anchor → USDZ on first save**. Swift entry points: `SinglePhotoR
 Photo orientation follows the displayed pixel dimensions after EXIF rotation, including normalized
 `.up` images. The custom 0.5× capture stays landscape on either device side, applies the same
 AVFoundation rotation coordination to its preview and encoded still, and keeps the shutter
-bottom-center inside the safe area.
+bottom-center inside the safe area. It prefers Apple's virtual triple/dual-wide camera at its
+widest native field of view, requests the largest supported still dimensions and `.quality`
+processing, and enables virtual-device fusion so Apple can apply its multi-frame quality/noise
+reduction instead of passing a noisier physical ultra-wide frame directly. Standard capture is
+unchanged.
+
+Depth Anything photo-room USDZ meshes preserve the source photograph's aspect ratio; inferred
+W×H×D remains separate authoritative measurement metadata and does not stretch the display plane.
+Preview and saved-room surfaces use constant, non-emissive rendering without fallback/environment
+lighting, preserving the photograph's original brightness. When its camera sidecar is available,
+the saved viewer also corrects the X scale of older stretched photo-room USDZ files at load time.
 
 ## Room viewer smoke test
 
@@ -48,12 +59,14 @@ Useful Xcode console filter: `FurnitureFit`, `BRAIN FLOW`, `RTMDet`.
 
 ## Settings licenses and attributions
 
-`LicensesView` in `Furnit/Views/ContentView.swift` exposes two bundled UTF-8 resources
+`LicensesView` in `Furnit/Views/ContentView.swift` exposes three bundled UTF-8 resources
 without requiring network access:
 
 - `Furnit/Licenses/APACHE-2.0.txt` — complete Apache License 2.0 text.
 - `Furnit/Licenses/THIRD_PARTY_NOTICES.txt` — shipped model/dataset attribution and
   notices for Paafekt's Core ML, ONNX, and LiteRT/TFLite format conversions.
+- `Furnit/Licenses/LITERT-LICENSE.txt` — complete LiteRT/TensorFlow Lite 2.17.0
+  combined license and attribution text for the C runtime and Metal delegate.
 
 The notice names the exact Depth Anything V2 Metric Indoor Small variant. All 14 iOS
 localizations provide the `licenses.viewNotices` link label. The current diligence and
@@ -61,8 +74,8 @@ remaining Hypersim lawyer question live in
 [`../../docs/MODEL_LICENSE_AUDIT.md`](../../docs/MODEL_LICENSE_AUDIT.md).
 
 ## Docs here
-- [`mask-head-accel.md`](mask-head-accel.md) — the RTMDet mask-head matmul: problem statement,
-  reviewer guidance (profile first, then `cblas_sgemm`), and the per-stage timing instrumentation.
+- [`mask-head-accel.md`](mask-head-accel.md) — historical Core ML mask-head optimization
+  record; it is not the production LiteRT runtime guide.
 - `Furnit/Views/FurnitureFit/README.md` — RTMDet/FurnitureFit pipeline, room-viewer brain flow,
   Settings scan diagnostic path, mask affinity grouping, pixel-level mask union, and overlay gesture ownership.
 

@@ -133,11 +133,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sampleQueue = DispatchQueue(label: "com.furnit.sample", qos: .userInitiated)
     private let captureSessionControlQueue = DispatchQueue(label: "com.furnit.capture.control", qos: .userInitiated)
-    private var coreMLInferenceQueueGeneration: UInt = 0
-    private var coreMLInferenceQueue = DispatchQueue(label: "com.furnit.coreml.inference.0", qos: .userInitiated)
-    private var coreMLInferenceBackoffUntil: Date?
-    private let coreMLInferenceWarningSeconds: TimeInterval = 2.0
-    private let coreMLInferenceTimeoutSeconds: TimeInterval = 12.0
 
     // MARK: Camera Path
     private let arSession = ARSession()
@@ -499,13 +494,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     // MARK: Model & State
-    private var mlModel: MLModel?
+    private var mlModel: RTMDetLiteRuntime?
     private var hasSuppliedModel = false
-    private var suppliedModelIsRTMDet = false
     private var currentModelIsRTMDet: Bool {
-        if suppliedModelIsRTMDet { return true }
-        guard let model = mlModel else { return false }
-        return isRTMDetInstanceSegmentationModel(model)
+        mlModel != nil
     }
     private static let rtmDetCOCOClassNames: [Int: String] = [
         0: "person",
@@ -2257,12 +2249,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     // MARK: - Public
-    func setModel(_ model: MLModel?) {
-        let isRTMDetModel = model.map(isRTMDetInstanceSegmentationModel) ?? false
+    func setModel(_ model: RTMDetLiteRuntime?) {
+        let isRTMDetModel = model != nil
         hasSuppliedModel = model != nil
-        frameLock.lock()
-        suppliedModelIsRTMDet = isRTMDetModel
-        frameLock.unlock()
         if isRTMDetModel {
             pendingFrameLock.lock()
             pendingLatestSegmentationFrame = nil
@@ -2279,10 +2268,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 self.pendingLatestSegmentationFrame = nil
                 self.pendingFrameLock.unlock()
             }
-            if let model = model {
-                let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
-                let outputNames = model.modelDescription.outputDescriptionsByName.keys
-                logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
+            if let model {
+                logDebug(
+                    "🧠 [FurnitureFit] LiteRT Metal runtime \(model.runtimeVersion) set; " +
+                    "input=\(model.inputWidth)x\(model.inputHeight) raw BGR NHWC"
+                )
             }
             self.updateVideoIdentificationPresentation()
         }
@@ -2381,7 +2371,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             Thread.sleep(forTimeInterval: 0.05)
         }
         guard mlModel != nil else {
-            logDebug("🖼️ oneImageRun: no Core ML model after wait — abort")
+            logDebug("🖼️ oneImageRun: no RTMDet LiteRT runtime after wait — abort")
             oneImageRunFinished = true
             DispatchQueue.main.async { [weak self] in
                 self?.setProgress(1.0, text: "One-image: no model")
@@ -2486,28 +2476,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         isProcessing = false
         preferImmediateNextInference = false
         frameLock.unlock()
-        // Rotate the CoreML inference queue and clear watchdog backoff so any in-flight
-        // session-N `model.prediction` closure cannot block session-(N+1) frames when it
-        // eventually completes on the abandoned queue. Without this, stop→start can leave
-        // the shared inference queue backed up with stale work and only the first frame
-        // of the next session gets through before subsequent frames sit behind the relic.
-        //
-        // Serialize the write onto `detectionQueue` to match the existing timeout-path
-        // rotate (line ~3342), which writes `coreMLInferenceQueue` from the same queue
-        // that reads it inside `performCoreMLPredictionWithWatchdog`. Using the same
-        // serialization avoids a data race on the property.
-        detectionQueue.async { [weak self] in
-            guard let self else { return }
-            self.coreMLInferenceBackoffUntil = nil
-            self.coreMLInferenceQueueGeneration &+= 1
-            self.coreMLInferenceQueue = DispatchQueue(
-                label: "com.furnit.coreml.inference.\(self.coreMLInferenceQueueGeneration)",
-                qos: .userInitiated
-            )
-            if self.debugMode {
-                logDebug("🔄 stop(): rotated coreMLInferenceQueue → gen=\(self.coreMLInferenceQueueGeneration), cleared backoff")
-            }
-        }
         lastARHeavyWorkFinishCAC = 0
         // Synchronous reset: if UI/flags were only cleared in `main.async`, the next `startIfNeeded()` could run first and keep stale state.
         hasFirstDetection = false
@@ -2923,77 +2891,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Floor-contact size in **meters** from the primary bbox using a non-AR depth estimate from the object's floor contact.
     private typealias PrimaryBboxMetersResult = (size: FurnitureSceneSize, pipeline: String, distanceMeters: Float?)
-
-    /// ONNX-style pipeline using Core ML ``mlModel``. The legacy 1280 package
-    /// (`legacy seg model`) expects letterbox; the newer
-    /// `_seg_o2m` package keeps the Android-parity stretch path.
-    private func performCoreMLPredictionWithWatchdog(
-        model: MLModel,
-        inputProvider: MLFeatureProvider,
-        startedAt: Date
-    ) -> MLFeatureProvider? {
-        let semaphore = DispatchSemaphore(value: 0)
-        let inferenceQueue = coreMLInferenceQueue
-        var outputProvider: MLFeatureProvider?
-        var predictionError: Error?
-
-        let warningWorkItem = DispatchWorkItem { [weak self] in
-            guard let self, self.debugMode else { return }
-            logDebug(
-                "⚠️ ONNX-STYLE Core ML inference still running after " +
-                "\(String(format: "%.2f", Date().timeIntervalSince(startedAt) * 1000)) ms"
-            )
-            logMemory("DURING ONNX-STYLE Core ML INFERENCE")
-        }
-        DispatchQueue.global(qos: .utility).asyncAfter(
-            deadline: .now() + coreMLInferenceWarningSeconds,
-            execute: warningWorkItem
-        )
-
-        inferenceQueue.async {
-            defer { semaphore.signal() }
-            do {
-                outputProvider = try model.prediction(from: inputProvider)
-            } catch {
-                predictionError = error
-            }
-        }
-
-        let waitResult = semaphore.wait(timeout: .now() + coreMLInferenceTimeoutSeconds)
-        warningWorkItem.cancel()
-
-        if debugMode {
-            let resultLabel = (waitResult == .success) ? "success" : "TIMED_OUT"
-            logDebug("🔓 coreml semaphore returned: \(resultLabel) after \(String(format: "%.2f", Date().timeIntervalSince(startedAt) * 1000)) ms")
-        }
-
-        switch waitResult {
-        case .success:
-            if let predictionError {
-                if debugMode {
-                    logDebug("❌ ONNX-STYLE Core ML STAGE 2 FAILED: Model inference error: \(predictionError)")
-                }
-                return nil
-            }
-            coreMLInferenceBackoffUntil = nil
-            return outputProvider
-        case .timedOut:
-            if debugMode {
-                logDebug(
-                    "❌ ONNX-STYLE Core ML STAGE 2 TIMED OUT after " +
-                    "\(String(format: "%.2f", coreMLInferenceTimeoutSeconds * 1000)) ms; rotating inference queue"
-                )
-                logMemory("ONNX-STYLE Core ML INFERENCE TIMEOUT")
-            }
-            coreMLInferenceQueueGeneration += 1
-            coreMLInferenceQueue = DispatchQueue(
-                label: "com.furnit.coreml.inference.\(coreMLInferenceQueueGeneration)",
-                qos: .userInitiated
-            )
-            coreMLInferenceBackoffUntil = Date().addingTimeInterval(1.5)
-            return nil
-        }
-    }
 
     /// Shared postprocess after stretch + inference: detection list, NMS, primary selection, and Android-style bbox-limited proto mask (``FurnitureFitOnnxStylePipeline``).
     private func onnxStyleExpandedPrimaryForMaskBuild(_ primary: FurnitureFitDetection, onnxSide: Int) -> FurnitureFitDetection {
@@ -4171,17 +4068,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
     }
 
-    private func isRTMDetInstanceSegmentationModel(_ model: MLModel) -> Bool {
-        let outputs = model.modelDescription.outputDescriptionsByName
-        if outputs["dets"] != nil && outputs["masks"] != nil {
-            return true
-        }
-        return outputs["cls_80"] != nil
-            && outputs["bbox_80"] != nil
-            && outputs["kernel_80"] != nil
-            && outputs["mask_feat"] != nil
-    }
-
     private struct RTMDetMaskQualityStats {
         let pixelCount: Int
         let bounds: CGRect
@@ -4523,7 +4409,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func processFrameRTMDetLive(
         processBuffer: CVPixelBuffer,
-        model: MLModel,
+        model: RTMDetLiteRuntime,
         arDepthSnapshot: FurnitureFitARDepthSnapshot?,
         frameStart: Date
     ) {

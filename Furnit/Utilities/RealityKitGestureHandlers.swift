@@ -32,7 +32,19 @@ class RealityKitGestureHandlers: NSObject {
     // Accumulated rotation state to prevent flickering and maintain smooth rotation
     private var accumulatedYaw: Float = 0.0    // Horizontal rotation around Y-axis
     private var accumulatedPitch: Float = 0.0  // Vertical rotation around X-axis
-    
+
+    // Orbit state: single-finger drag swings the camera around the room rather than
+    // rotating it in place. Rotating in place reads as a flat pan on the single-plane
+    // Depth Anything photo rooms, because the camera immediately looks past the plane.
+    /// World-space point the viewer framed the room around, published by ``RealityKitView``.
+    private var orbitTarget: SIMD3<Float>?
+    /// Pivot and radius captured at gesture start so the swing never snaps on first movement.
+    private var activeOrbitPivot: SIMD3<Float> = .zero
+    private var activeOrbitRadius: Float = 0
+    private let minimumOrbitRadius: Float = 0.35
+    private let fallbackOrbitRadius: Float = 3.0
+
+
     // Note: Using total translation from gesture start instead of cumulative tracking for smoother rotation
     
     // Pan gesture configuration
@@ -76,6 +88,15 @@ class RealityKitGestureHandlers: NSObject {
         initializeRotationFromCamera()
     }
 
+    /// Set the world-space point single-finger drag should swing the camera around.
+    /// Passing `nil` falls back to a fixed radius ahead of the camera.
+    func setOrbitTarget(_ target: SIMD3<Float>?) {
+        orbitTarget = target
+        // The viewer only republishes this after it has moved the camera, so the
+        // accumulated angles must be re-derived from the new pose at the same time.
+        initializeRotationFromCamera()
+    }
+
     /// Initialize accumulated yaw/pitch from camera's current look direction
     /// This ensures rotation gestures work correctly for cameras with non-zero initial orientation
     /// Uses direct look direction calculation to avoid quaternion decomposition mismatches
@@ -93,10 +114,12 @@ class RealityKitGestureHandlers: NSObject {
 
         // Calculate pitch from the vertical component
         // pitch = 0 means looking horizontal
-        // Positive pitch means looking down
+        // Positive pitch means looking up, matching the sign of the pitch quaternion
+        // applied in `handlePanGesture`. Deriving the opposite sign here would flip the
+        // camera vertically on the first drag after any programmatic reframe or D-pad step.
         // Using the length of horizontal component for proper angle calculation
         let horizontalLength = sqrt(forward.x * forward.x + forward.z * forward.z)
-        let pitch = atan2(-forward.y, horizontalLength)
+        let pitch = atan2(forward.y, horizontalLength)
 
         accumulatedYaw = yaw
         accumulatedPitch = pitch
@@ -328,7 +351,26 @@ class RealityKitGestureHandlers: NSObject {
         }
     }
 
-    // Handle pan gesture with intuitive controls: drag to look around (horizontal + vertical rotation)
+    /// Capture the swing pivot and radius at gesture start. The pivot is placed along the
+    /// camera's *current* forward direction at the room's distance, so the first movement
+    /// continues from exactly where the camera already is instead of snapping onto the
+    /// orbit sphere.
+    private func beginOrbit(from cameraAnchor: AnchorEntity) {
+        let position = cameraAnchor.transform.translation
+        let forward = cameraAnchor.transform.rotation.act(SIMD3<Float>(0, 0, -1))
+
+        let radius: Float
+        if let orbitTarget {
+            radius = max(simd_length(orbitTarget - position), minimumOrbitRadius)
+        } else {
+            radius = fallbackOrbitRadius
+        }
+
+        activeOrbitRadius = radius
+        activeOrbitPivot = position + forward * radius
+    }
+
+    // Handle pan gesture with intuitive controls: drag to swing the camera around the room
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
         logDebug("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
         guard let arView = arView, let cameraAnchor = cameraAnchor else {
@@ -345,6 +387,7 @@ class RealityKitGestureHandlers: NSObject {
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = gesture.location(in: arView)
             lastPanTranslation = translation
+            beginOrbit(from: cameraAnchor)
 
         case .changed:
             logDebug("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
@@ -374,14 +417,21 @@ class RealityKitGestureHandlers: NSObject {
             // Combine rotations: apply pitch first, then yaw (no roll component to prevent tilting)
             let combinedRotation = yawRotation * pitchRotation
 
-            // Create new transform with accumulated rotation, preserving position
+            // Swing the camera around the pivot instead of spinning it in place: place it one
+            // orbit radius back along the new forward direction, so the room stays framed.
+            let newForward = combinedRotation.act(SIMD3<Float>(0, 0, -1))
+            var orbitPosition = activeOrbitPivot - newForward * activeOrbitRadius
+            if let boundaryManager = boundaryManager {
+                orbitPosition = boundaryManager.constrainCameraPosition(orbitPosition)
+            }
+
             var newTransform = Transform()
-            newTransform.translation = initialCameraTransform.translation  // Lock position
+            newTransform.translation = orbitPosition
             newTransform.rotation = combinedRotation  // Apply accumulated rotation (no roll/tilt)
             newTransform.scale = initialCameraTransform.scale
             cameraAnchor.transform = newTransform
 
-            logDebug("📷 Accumulated rotation: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch)")
+            logDebug("📷 Orbit: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch), radius=\(activeOrbitRadius)")
 
             // Update last translation for next incremental calculation
             lastPanTranslation = translation

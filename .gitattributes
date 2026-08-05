@@ -1,3 +1,6 @@
 *.pt filter=lfs diff=lfs merge=lfs -text
 *.mlpackage/** filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
+Furnit/Models/RTMDet/*.tflite filter=lfs diff=lfs merge=lfs -text
+Vendor/LiteRT/**/*.framework/TensorFlowLiteC filter=lfs diff=lfs merge=lfs -text
+Vendor/LiteRT/**/*.framework/TensorFlowLiteCMetal filter=lfs diff=lfs merge=lfs -text

@@ -476,6 +476,7 @@ struct GLBRoomView: View {
                 fullVideoToolbarHelperOverlay
             }
             glbRoomCalibrationGateOverlay
+            cameraButtonsOverlay
             glbImmersiveChromeOverlay
             PaafektViewerOnboardingLayer(
                 isReady: !isLoading,
@@ -1499,61 +1500,8 @@ struct GLBRoomView: View {
         scheduleRoomDimensionsHintAutoHide(seconds: 3)
     }
 
-    private var cameraDPadCluster: some View {
-        HStack(spacing: 8) {
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            VStack(spacing: 8) {
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-            }
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
     private var cameraButtonsOverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 10) {
-                cameraDPadCluster
-                    .padding(.leading, 12)
-                    .padding(.top, 12)
-                if photoOrientation == .landscape {
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .zIndex(102)
+        PaafektViewerCameraDPadOverlay(photoOrientation: photoOrientation)
     }
 
     // MARK: - RTMDet model loaded via RTMDetModelService

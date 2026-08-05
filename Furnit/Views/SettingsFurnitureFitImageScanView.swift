@@ -1,6 +1,5 @@
 import SwiftUI
 import PhotosUI
-@preconcurrency import CoreML
 
 @MainActor
 struct SettingsFurnitureFitImageScanView: View {
@@ -146,7 +145,7 @@ struct SettingsFurnitureFitImageScanView: View {
 private struct RTMDetStillImageOverlay: View {
     let image: UIImage
     let scanRequestID: UUID
-    let mlModel: MLModel?
+    let mlModel: RTMDetLiteRuntime?
 
     private static let confidenceThreshold: Float = 0.30
     private static let classBlacklist = FurnitureFitClassBlacklist()

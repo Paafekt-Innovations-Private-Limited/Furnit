@@ -1,16 +1,19 @@
-# iOS Furniture Fit — RTMDet Core ML Pipeline
+# iOS Furniture Fit — RTMDet LiteRT Metal Pipeline
 
 This document summarizes the current iOS Furniture Fit segmentation path. The implementation uses
-**RTMDet-Ins-m** through Core ML and keeps the Android-style helper name
+Android's **RTMDet-Ins-m FP16 TFLite math and tensor contract** through an iOS-specific,
+Metal-compatible graph variant and LiteRT's iOS Metal delegate. The variant only replaces four
+`RELU_0_TO_1` clamps with equivalent max/min pairs. It keeps the Android-style helper name
 `FurnitureFitOnnxStylePipeline` only for historical parity with older preprocessing/mask code.
-There is no ONNX Runtime dependency in the iOS app.
+There is no ONNX Runtime dependency and no Core ML/CPU fallback for RTMDet in the iOS app.
 
 ## Primary Sources
 
 | Piece | Location |
 |------|----------|
 | Model loading / ODR | `Furnit/Services/OnDevice/RTMDetModelService.swift` |
-| Core ML inference + raw-head postprocess | `Furnit/Services/OnDevice/RTMDetImageInference.swift` |
+| LiteRT C + Metal runtime | `Furnit/Services/OnDevice/RTMDetLiteRuntime.swift` |
+| Input + raw-head postprocess | `Furnit/Services/OnDevice/RTMDetImageInference.swift` |
 | Live room flow, selection, gestures | `Furnit/Views/FurnitureFit/FurnitureFitView.swift` |
 | Android-style mask helpers | `Furnit/Services/OnDevice/FurnitureFitOnnxStylePipeline.swift` |
 | Main in-project doc | `Furnit/Views/FurnitureFit/README.md` |
@@ -22,8 +25,10 @@ There is no ONNX Runtime dependency in the iOS app.
 room viewer brain tap OR Settings image scan
   -> frame gate + thermal cadence
   -> AVCapture live feed (preview on in identifyOnly; hidden in full-video segmentSelected)
-  -> resize to model input
-  -> Core ML image input
+  -> stretch to 640x640
+  -> raw BGR float32 NHWC input
+  -> dedicated LiteRT worker + LiteRT 2.17 Metal delegate
+  -> execution-plan audit (zero CPU nodes required)
   -> RTMDet raw heads
   -> decode candidates
   -> confidence-first class-aware NMS
@@ -50,7 +55,17 @@ helpers, recenter/save, AR, and the viewfinder toggle for full-video identify.
 ## Current Behavior
 
 - RTMDet raw outputs are `cls/bbox/kernel` at 80/40/20 plus `mask_feat`.
-- Core ML image input is preferred; the model graph owns its expected normalization.
+- One shared `RTMDetLiteRuntime` serves live, still-image, and room-anchor inference.
+- The model graph owns normalization; Swift writes raw BGR `0...255` values directly
+  into LiteRT's input allocation.
+- The checked-in iOS graph is built by `scripts/rewrite_rtmdet_ios_metal_graph.py` from
+  the pinned Android source. All ten outputs were bit-identical on the CPU reference
+  check before it was installed.
+- After each Metal-delegated invocation, LiteRT outputs are extracted with
+  `TfLiteTensorCopyToBuffer` into persistent storage and physically converted from
+  NHWC to contiguous NCHW exactly as Android does. The delegate uses Android-parity
+  precision/quantization options and remains mandatory. Creation, warm-up, inference,
+  and destruction stay on one thread; the app rejects any delegated plan with CPU nodes.
 - NMS is confidence-first and class-aware. Area is only a deterministic tie-breaker.
 - Settings image scan uses the same still-image path as the live room flow: uncapped detections,
   fused instance masks, and pixel-level RGBA union.
@@ -68,7 +83,7 @@ helpers, recenter/save, AR, and the viewfinder toggle for full-video identify.
 - Serious thermal state backs off cadence; critical thermal state pauses inference and keeps the
   last displayed boxes.
 - Inference is skipped entirely while independent overlay placement is active.
-- Frame processing is serial with back-pressure: one inference at a time.
+- Frame processing is serial with back-pressure on the dedicated LiteRT worker: one inference at a time.
 - Debug logging surfaces per-stage timings and memory points; see `Furnit/docs/mask-head-accel.md`
   for the mask-head profiling notes.
 

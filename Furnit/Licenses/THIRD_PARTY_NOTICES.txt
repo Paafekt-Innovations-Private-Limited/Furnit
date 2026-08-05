@@ -19,9 +19,9 @@ Model format modifications
   indoor checkpoint to Core ML for iOS and ONNX for Android on-device inference.
 - GeoCalib: Paafekt converted the upstream pinhole CNN weights to Core ML for iOS and
   ONNX for Android; the applications implement the remaining calibration optimization.
-- RTMDet-Ins-m: Paafekt converted the OpenMMLab checkpoint/export to Core ML for iOS
-  and an FP16 LiteRT/TFLite graph for Android. The Android export includes graph
-  adaptations for mobile conversion and the app's documented input/output contract.
+- RTMDet-Ins-m: Paafekt converted the OpenMMLab checkpoint/export to an FP16
+  LiteRT/TFLite graph used by both iOS and Android. The export includes graph
+  adaptations for mobile conversion and the apps' documented input/output contract.
 
 These converted files and export-graph adaptations were changed by Paafekt and are not
 the upstream projects' original distribution files. Upstream authors are not responsible
@@ -29,8 +29,11 @@ for Paafekt's conversions or application integration.
 
 Other open-source components
 - Firebase iOS SDK: Apache License 2.0, Google LLC.
+- TensorFlow Lite/LiteRT 2.17.0 and its iOS Metal delegate: Apache License 2.0,
+  Google LLC. Complete combined license and attribution text is bundled as
+  LITERT-LICENSE.txt.
 - MetalSplatter and spz-swift: MIT License, their respective copyright holders.
 - Three.js r170: MIT License, three.js authors.
 
-Settings > Licenses displays this notice and the Apache license offline and provides
-the remaining project, dataset, and license links.
+Settings > Licenses displays this notice, the Apache license, and the LiteRT license
+and attributions offline, and provides the remaining project, dataset, and license links.

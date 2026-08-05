@@ -215,32 +215,9 @@ enum RTMDetImageInference {
 
     // MARK: - Image helpers (relocated from the removed RTMDet path)
 
-    /// Square side for stretch, read from the Core ML `image` input constraint; defaults to 640.
-    static func modelInputSize(for model: MLModel) -> Int {
-        let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
-        if let imageConstraint = imageInputDesc?.imageConstraint {
-            let w = imageConstraint.pixelsWide
-            let h = imageConstraint.pixelsHigh
-            if w > 0 && h > 0 {
-                return Int(w)
-            }
-            let sc = imageConstraint.sizeConstraint
-            if sc.type == .enumerated {
-                let sizes = sc.enumeratedImageSizes
-                if let best = sizes.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh }) {
-                    return Int(best.pixelsWide)
-                }
-            } else if sc.type == .range {
-                let r = sc.pixelsWideRange
-                let target = 640
-                let lo = Int(r.lowerBound)
-                let hi = Int(r.upperBound)
-                if lo > 0 && hi >= lo {
-                    return min(max(target, lo), hi)
-                }
-            }
-        }
-        return 640
+    /// The Android-parity LiteRT graph has a fixed 640×640 NHWC input contract.
+    static func modelInputSize(for model: RTMDetLiteRuntime) -> Int {
+        model.inputWidth
     }
 
     /// Loads a JPEG/PNG from disk into a BGRA `CVPixelBuffer`.
@@ -372,7 +349,7 @@ enum RTMDetImageInference {
 
     static func runInstanceSegmentation(
         image: UIImage,
-        model: MLModel,
+        model: RTMDetLiteRuntime,
         confidenceThreshold: Float = 0.25,
         classBlacklist: Set<Int> = [],
         allowedClassIndices: Set<Int>? = nil,
@@ -407,7 +384,7 @@ enum RTMDetImageInference {
 
     static func runInstanceSegmentation(
         pixelBuffer sourceBuffer: CVPixelBuffer,
-        model: MLModel,
+        model: RTMDetLiteRuntime,
         confidenceThreshold: Float = 0.25,
         classBlacklist: Set<Int> = [],
         allowedClassIndices: Set<Int>? = nil,
@@ -421,15 +398,12 @@ enum RTMDetImageInference {
         let sourceWidth = CVPixelBufferGetWidth(sourceBuffer)
         let sourceHeight = CVPixelBufferGetHeight(sourceBuffer)
         let modelSide = modelInputSize(for: model)
-        let usesLetterbox = modelSide >= 1280
+        let usesLetterbox = false
 
         // Per-stage timing (cheap Date() marks) to locate the live-frame bottleneck; only the summary
         // string is built/logged in debug.
         let tStageStart = Date()
-        guard let preparedBuffer = usesLetterbox
-            ? resizeLetterboxToSquare(src: sourceBuffer, size: modelSide)
-            : resizeStretchToSquare(src: sourceBuffer, size: modelSide)
-        else {
+        guard let preparedBuffer = resizeStretchToSquare(src: sourceBuffer, size: modelSide) else {
             throw NSError(
                 domain: "RTMDetImageInference",
                 code: 2,
@@ -438,118 +412,51 @@ enum RTMDetImageInference {
         }
         let tResized = Date()
 
-        let inputProvider = try inputProvider(for: preparedBuffer, model: model, collectStats: debug)
-        let tInputBuilt = Date()
-        let output = try model.prediction(from: inputProvider)
-        let tPredicted = Date()
-        let preStageMillis = StageMillis(
-            resize: tResized.timeIntervalSince(tStageStart) * 1000,
-            input: tInputBuilt.timeIntervalSince(tResized) * 1000,
-            predict: tPredicted.timeIntervalSince(tInputBuilt) * 1000
-        )
-
-        let outputArrays = collectMultiArrays(from: output)
-        let outputSummary = outputArrays.map { entry in
-            let shape = entry.array.shape.map(\.intValue).map(String.init).joined(separator: "x")
-            return "\(entry.name): \(shape) \(entry.array.dataType.debugName)"
-        }
-
-        if isRawRTMDetOutput(outputArrays) {
-            return try runRawHeadPostprocess(
-                outputArrays: outputArrays,
-                outputSummary: outputSummary,
-                sourceBuffer: sourceBuffer,
-                sourceWidth: sourceWidth,
-                sourceHeight: sourceHeight,
-                modelSide: modelSide,
-                usesLetterbox: usesLetterbox,
-                confidenceThreshold: confidenceThreshold,
-                classBlacklist: classBlacklist,
-                allowedClassIndices: allowedClassIndices,
-                maxMaskCount: maxMaskCount,
-                maxDetectionCount: maxDetectionCount,
-                buildInstanceMasks: buildInstanceMasks,
-                cacheMaskBuildInputs: cacheMaskBuildInputs,
-                preStageMillis: preStageMillis,
-                debug: debug
-            )
-        }
-
-        guard let boxesArray = pickBoxesArray(from: outputArrays) else {
-            throw NSError(
-                domain: "RTMDetImageInference",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Could not identify a detection boxes output. Outputs: \(outputSummary.joined(separator: ", "))"],
-            )
-        }
-
-        let labelsArray = pickLabelsArray(from: outputArrays, targetCountHint: detectionCount(for: boxesArray))
-        let maskArray = pickMaskArray(from: outputArrays, targetCountHint: detectionCount(for: boxesArray))
-
-        let sortedBoxes = parseBoxes(from: boxesArray, labelsArray: labelsArray, confidenceThreshold: confidenceThreshold)
-            .filter { box in
-                guard let classIdx = box.classIdx else { return true }
-                if let allowedClassIndices, !allowedClassIndices.contains(classIdx) {
-                    return false
+        var tInputBuilt = tResized
+        return try model.invoke(
+            prepareInput: { inputBuffer in
+                try writeRawBGRNHWC(
+                    from: preparedBuffer,
+                    to: inputBuffer,
+                    collectStats: debug
+                )
+                tInputBuilt = Date()
+            },
+            consumeOutputs: { outputArrays in
+                let tPredicted = Date()
+                let preStageMillis = StageMillis(
+                    resize: tResized.timeIntervalSince(tStageStart) * 1000,
+                    input: tInputBuilt.timeIntervalSince(tResized) * 1000,
+                    predict: tPredicted.timeIntervalSince(tInputBuilt) * 1000
+                )
+                let outputSummary = outputArrays.map { entry in
+                    let shape = entry.array.shape.map(\.intValue).map(String.init).joined(separator: "x")
+                    return "\(entry.name): \(shape) \(entry.array.dataType.debugName)"
                 }
-                return !classBlacklist.contains(classIdx)
-            }
-            .sorted { lhs, rhs in
-                if lhs.score == rhs.score {
-                    let lhsArea = (lhs.x2 - lhs.x1) * (lhs.y2 - lhs.y1)
-                    let rhsArea = (rhs.x2 - rhs.x1) * (rhs.y2 - rhs.y1)
-                    return lhsArea > rhsArea
+                guard isRawRTMDetOutput(outputArrays) else {
+                    throw RTMDetLiteRuntimeError.invalidTensor(
+                        "raw RTMDet outputs are incomplete: \(outputSummary.joined(separator: ", "))"
+                    )
                 }
-                return lhs.score > rhs.score
-            }
-        let effectiveLimit = maxDetectionCount ?? 200
-        let boxes = Array(sortedBoxes.prefix(max(1, effectiveLimit)))
-        let mapping = ImageMapping(
-            modelSide: modelSide,
-            sourceWidth: sourceWidth,
-            sourceHeight: sourceHeight,
-            usesLetterbox: usesLetterbox
-        )
-
-        let mappedBoxes = boxes.map { mapBoxToSource(box: $0, mapping: mapping) }
-        let mappedDetections = mappedBoxes.map { mapped in
-            return FurnitureFitDetection(
-                x: (mapped.x1 + mapped.x2) * 0.5,
-                y: (mapped.y1 + mapped.y2) * 0.5,
-                w: max(1, mapped.x2 - mapped.x1),
-                h: max(1, mapped.y2 - mapped.y1),
-                confidence: mapped.score,
-                classIdx: mapped.classIdx ?? -1
-            )
-        }
-
-        let combinedMask = buildCombinedMaskImage(
-            from: maskArray,
-            boxes: mappedBoxes,
-            maxMaskCount: maxMaskCount,
-            mapping: mapping
-        )
-        let instanceMaskImages: [UIImage?]
-        if buildInstanceMasks {
-            instanceMaskImages = mappedBoxes.map { mappedBox in
-                buildCombinedMaskImage(
-                    from: maskArray,
-                    boxes: [mappedBox],
-                    maxMaskCount: 1,
-                    mapping: mapping
+                return try runRawHeadPostprocess(
+                    outputArrays: outputArrays,
+                    outputSummary: outputSummary,
+                    sourceBuffer: sourceBuffer,
+                    sourceWidth: sourceWidth,
+                    sourceHeight: sourceHeight,
+                    modelSide: modelSide,
+                    usesLetterbox: usesLetterbox,
+                    confidenceThreshold: confidenceThreshold,
+                    classBlacklist: classBlacklist,
+                    allowedClassIndices: allowedClassIndices,
+                    maxMaskCount: maxMaskCount,
+                    maxDetectionCount: maxDetectionCount,
+                    buildInstanceMasks: buildInstanceMasks,
+                    cacheMaskBuildInputs: cacheMaskBuildInputs,
+                    preStageMillis: preStageMillis,
+                    debug: debug
                 )
             }
-        } else {
-            instanceMaskImages = []
-        }
-
-        return RTMDetInferenceResult(
-            detections: mappedDetections,
-            overlayMaskImage: combinedMask,
-            instanceMaskImages: instanceMaskImages,
-            maskAffinityGraph: nil,
-            outputSummary: outputSummary,
-            maskBuildCache: nil
         )
     }
 
@@ -597,6 +504,17 @@ enum RTMDetImageInference {
             )
         }
 
+        // A correctly delegated RTMDet head is mutually exclusive at an anchor: it may strongly
+        // prefer one class, but it must not saturate many unrelated COCO classes simultaneously.
+        // The former partial Metal/CPU execution produced exactly that signature (dozens of 1.00
+        // scores and full-frame boxes). Refuse the frame before allocating/building any masks if
+        // the runtime ever returns that impossible pattern again.
+        try validateRawClassHeads([
+            (array: cls80, side: 80),
+            (array: cls40, side: 40),
+            (array: cls20, side: 20),
+        ])
+
         let classIndices: [Int]
         if let allowedClassIndices, !allowedClassIndices.isEmpty {
             classIndices = allowedClassIndices.sorted()
@@ -604,16 +522,6 @@ enum RTMDetImageInference {
             classIndices = Array(0..<80)
         }
 
-        // These probes each sweep all 8,400 grid cells (sigmoid/argmax) only to format debug strings
-        // in `outputSummary`; skip them in production.
-        let rawProbe = debug ? rawDecodeProbe(
-            levels: [
-                (cls: cls80, side: 80),
-                (cls: cls40, side: 40),
-                (cls: cls20, side: 20),
-            ]
-        ) : ""
-        let cls80Probe = debug ? multiArrayReadProbe(name: "cls_80", array: cls80) : ""
         let tDecodeStart = Date()
         let rawCandidates = decodeRawCandidates(
             levels: [
@@ -683,8 +591,7 @@ enum RTMDetImageInference {
                 boxes: mappedBoxes,
                 maxMaskCount: maxMaskCount,
                 sourceBuffer: sourceBuffer,
-                mapping: mapping,
-                debugLabel: debug ? "combined" : nil
+                mapping: mapping
             )
             : nil
         let tCombined = Date()
@@ -702,8 +609,7 @@ enum RTMDetImageInference {
                     boxes: selectedIndices.map { mappedBoxes[$0] },
                     maxMaskCount: selectedIndices.count,
                     sourceBuffer: sourceBuffer,
-                    mapping: mapping,
-                    debugLabel: nil
+                    mapping: mapping
                 )
             }
         } else {
@@ -711,7 +617,9 @@ enum RTMDetImageInference {
         }
         let tInstances = Date()
 
-        // Debug-only summary lines (each sweeps grid cells / mask planes); empty in production.
+        // Keep Debug timing useful without re-reading every tensor and mask only for logging.
+        // Those diagnostic sweeps and their multi-kilobyte console output previously dominated
+        // live-frame latency even after inference itself had completed.
         let debugSummary: [String] = debug
             ? [
                 "stageMillis: resize=\(String(format: "%.1f", preStageMillis.resize)) "
@@ -724,18 +632,8 @@ enum RTMDetImageInference {
                     + "(planes=\(selected.count) buildInstanceMasks=\(buildInstanceMasks))",
                 "rtmdetDims: sourceBuffer=\(sourceWidth)x\(sourceHeight) mapping=\(mapping.sourceWidth)x\(mapping.sourceHeight)",
                 "rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)",
-                "rawSwiftProbe: \(lastInputTensorStats) \(rawProbe)",
-                perClassBestProbe(
-                    levels: [(cls: cls80, side: 80), (cls: cls40, side: 40), (cls: cls20, side: 20)],
-                    classIndices: classIndices
-                ),
-                cls80Probe,
-            ] + rawMaskPlaneStats(rawMaskPlanes, selected: selected)
-                + rawMaskPlaneAlignmentStats(
-                    rawMaskPlanes: rawMaskPlanes,
-                    boxes: mappedBoxes,
-                    mapping: mapping
-                )
+                "rtmdetInput: \(lastInputTensorStats)",
+            ]
             : []
         return RTMDetInferenceResult(
             detections: mappedDetections,
@@ -792,8 +690,7 @@ enum RTMDetImageInference {
             boxes: selectedBoxes,
             maxMaskCount: selectedPlanes.count,
             sourceBuffer: cache.sourceBuffer,
-            mapping: cache.mapping,
-            debugLabel: debug ? "cached" : nil
+            mapping: cache.mapping
         ) else { return nil }
         return RTMDetCachedMaskResult(image: image, affinityGroupIndices: expandedIndices)
     }
@@ -842,190 +739,6 @@ enum RTMDetImageInference {
             total += Int((left[index] & right[index]).nonzeroBitCount)
         }
         return total
-    }
-
-    private static func rawMaskPlaneStats(_ planes: [[Float]?], selected: [RawCandidate]) -> [String] {
-        planes.enumerated().compactMap { index, plane in
-            guard let plane, plane.count == rawMaskSide * rawMaskSide else { return nil }
-            var minValue = Float.greatestFiniteMagnitude
-            var maxValue = -Float.greatestFiniteMagnitude
-            var sum: Double = 0
-            var overThreshold = 0
-            var finiteCount = 0
-
-            for value in plane where value.isFinite {
-                minValue = min(minValue, value)
-                maxValue = max(maxValue, value)
-                sum += Double(value)
-                finiteCount += 1
-                if value > 0.5 {
-                    overThreshold += 1
-                }
-            }
-
-            guard finiteCount > 0 else { return "rawMaskPlane[\(index)] empty" }
-            let mean = sum / Double(finiteCount)
-            let stride = index < selected.count ? selected[index].stride : -1
-            let classIdx = index < selected.count ? selected[index].box.classIdx ?? -1 : -1
-            let score = index < selected.count ? selected[index].box.score : 0
-            return "rawMaskPlane[\(index)] min=\(String(format: "%.4f", minValue)) max=\(String(format: "%.4f", maxValue)) mean=\(String(format: "%.4f", mean)) gt0.5=\(overThreshold)/\(rawMaskSide * rawMaskSide) stride=\(String(format: "%.1f", stride)) cls=\(classIdx) score=\(String(format: "%.3f", score))"
-        }
-    }
-
-    private static func rawMaskPlaneAlignmentStats(
-        rawMaskPlanes: [[Float]?],
-        boxes: [BoxRecord],
-        mapping: ImageMapping
-    ) -> [String] {
-        let count = min(rawMaskPlanes.count, boxes.count)
-        guard count > 0 else { return [] }
-
-        return (0..<count).compactMap { index in
-            guard let plane = rawMaskPlanes[index], plane.count == rawMaskSide * rawMaskSide else { return nil }
-            let box = boxes[index]
-            let sourceX = Int((box.x1 + box.x2) * 0.5)
-            let sourceY = Int(box.y1)
-            let (_, bboxTopMaskRow) = maskSampleCoordinate(
-                sourceX: sourceX,
-                sourceY: sourceY,
-                maskWidth: rawMaskSide,
-                maskHeight: rawMaskSide,
-                mapping: mapping
-            )
-            let (bboxCenterMaskColumn, _) = maskSampleCoordinate(
-                sourceX: sourceX,
-                sourceY: Int((box.y1 + box.y2) * 0.5),
-                maskWidth: rawMaskSide,
-                maskHeight: rawMaskSide,
-                mapping: mapping
-            )
-            let headrestColumnRadius = max(2, rawMaskSide / 40)
-            let headrestColumnRange = max(0, bboxCenterMaskColumn - headrestColumnRadius)...min(rawMaskSide - 1, bboxCenterMaskColumn + headrestColumnRadius)
-            let topRowAtThreshold = firstMaskRow(in: plane, threshold: 0.5)
-            let headrestTopRowAtThreshold = firstMaskRow(in: plane, threshold: 0.5, xRange: headrestColumnRange)
-            let topRowAnySignal = firstMaskRow(in: plane, threshold: 0.05)
-            return "rawMaskPlaneAlign[\(index)] cls=\(box.classIdx ?? -1) score=\(String(format: "%.3f", box.score)) bboxTopSource=\(String(format: "%.1f", box.y1)) bboxTopMaskRow=\(bboxTopMaskRow) headrestCols=\(headrestColumnRange.lowerBound)-\(headrestColumnRange.upperBound) planeTopRow@0.5=\(topRowAtThreshold.map(String.init) ?? "nil") headrestTopRow@0.5=\(headrestTopRowAtThreshold.map(String.init) ?? "nil") planeTopRow@0.05=\(topRowAnySignal.map(String.init) ?? "nil")"
-        }
-    }
-
-    private static func firstMaskRow(in plane: [Float], threshold: Float) -> Int? {
-        firstMaskRow(in: plane, threshold: threshold, xRange: 0..<rawMaskSide)
-    }
-
-    private static func firstMaskRow<R: Sequence>(in plane: [Float], threshold: Float, xRange: R) -> Int? where R.Element == Int {
-        let maskSide = rawMaskSide
-        let columns = Array(xRange)
-        for y in 0..<maskSide {
-            let rowOffset = y * maskSide
-            for x in columns where plane[rowOffset + x].isFinite && plane[rowOffset + x] > threshold {
-                return y
-            }
-        }
-        return nil
-    }
-
-    private static func rawDecodeProbe(levels: [(cls: MLMultiArray, side: Int)]) -> String {
-        var bestScore: Float = -1
-        var bestClass = -1
-        var bestSide = -1
-        var bestX = -1
-        var bestY = -1
-
-        for level in levels {
-            let clsAt = nchwReader(for: level.cls)
-            for classIdx in 0..<80 {
-                for y in 0..<level.side {
-                    for x in 0..<level.side {
-                        let score = sigmoid(clsAt(0, classIdx, y, x))
-                        if score.isFinite, score > bestScore {
-                            bestScore = score
-                            bestClass = classIdx
-                            bestSide = level.side
-                            bestX = x
-                            bestY = y
-                        }
-                    }
-                }
-            }
-        }
-
-        return "globalBest score=\(String(format: "%.4f", bestScore)) class=\(bestClass) head=\(bestSide) xy=(\(bestX),\(bestY))"
-    }
-
-    /// Debug probe: best PRE-THRESHOLD sigmoid score for each allowed furniture class. Answers
-    /// "why isn't X identified?" at a glance — a sub-threshold score (e.g. table=0.340 vs the 0.55
-    /// gate) means lower/relax the threshold; a ~0 score means the model never proposes that class
-    /// for what the camera sees (recognition limit, not a threshold). Pure logging: reads the cls
-    /// heads the decoder already uses; does NOT change decode, filtering, candidates, or outputs.
-    private static func perClassBestProbe(levels: [(cls: MLMultiArray, side: Int)], classIndices: [Int]) -> String {
-        var bestScoreByClass: [Int: Float] = [:]
-        var bestSideByClass: [Int: Int] = [:]
-        for level in levels {
-            let clsAt = nchwReader(for: level.cls)
-            for classIdx in classIndices where classIdx >= 0 && classIdx < 80 {
-                for y in 0..<level.side {
-                    for x in 0..<level.side {
-                        let score = sigmoid(clsAt(0, classIdx, y, x))
-                        if score.isFinite, score > (bestScoreByClass[classIdx] ?? -1) {
-                            bestScoreByClass[classIdx] = score
-                            bestSideByClass[classIdx] = level.side
-                        }
-                    }
-                }
-            }
-        }
-        let parts = classIndices.sorted().map { classIdx -> String in
-            let score = bestScoreByClass[classIdx] ?? 0
-            let head = bestSideByClass[classIdx] ?? -1
-            return "\(furnitureClassName(classIdx))(\(classIdx))=\(String(format: "%.3f", score))@\(head)"
-        }
-        return "perClassBest: " + parts.joined(separator: " ")
-    }
-
-    private static func furnitureClassName(_ classIdx: Int) -> String {
-        let names = [
-            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
-            "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
-            "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
-            "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
-            "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
-            "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-            "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
-            "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
-            "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
-            "toothbrush",
-        ]
-        return names.indices.contains(classIdx) ? names[classIdx] : "cls"
-    }
-
-    private static func multiArrayReadProbe(name: String, array: MLMultiArray) -> String {
-        let shape = array.shape.map(\.intValue).map(String.init).joined(separator: "x")
-        let strides = array.strides.map(\.intValue).map(String.init).joined(separator: "x")
-        let valueAtOffset = floatReader(for: array)
-
-        var fastMin = Float.greatestFiniteMagnitude
-        var fastMax = -Float.greatestFiniteMagnitude
-        var boxedMin = Double.greatestFiniteMagnitude
-        var boxedMax = -Double.greatestFiniteMagnitude
-        let sampleCount = min(array.count, 4096)
-
-        for index in 0..<sampleCount {
-            let fast = valueAtOffset(index)
-            if fast.isFinite {
-                fastMin = min(fastMin, fast)
-                fastMax = max(fastMax, fast)
-            }
-
-            let boxed = array[index].doubleValue
-            if boxed.isFinite {
-                boxedMin = min(boxedMin, boxed)
-                boxedMax = max(boxedMax, boxed)
-            }
-        }
-
-        return "\(name)ReadProbe dtype=\(array.dataType.rawValue) shape=\(shape) strides=\(strides) count=\(array.count) sample=\(sampleCount) fast[min=\(String(format: "%.4f", fastMin)) max=\(String(format: "%.4f", fastMax))] boxed[min=\(String(format: "%.4f", boxedMin)) max=\(String(format: "%.4f", boxedMax))]"
     }
 
     private static func decodeRawCandidates(
@@ -1099,6 +812,58 @@ enum RTMDetImageInference {
 
         let sortedCandidates = candidates.sorted { $0.box.score > $1.box.score }
         return preNMSLimit.map { Array(sortedCandidates.prefix(max(1, $0))) } ?? sortedCandidates
+    }
+
+    private static func validateRawClassHeads(
+        _ levels: [(array: MLMultiArray, side: Int)]
+    ) throws {
+        let classCount = 80
+        let saturationLogit: Float = 8
+        let maximumSaturatedClassesAtOneAnchor = 7
+        let maximumGloballySaturatedClasses = 19
+        var classMaximums = [Float](repeating: -Float.greatestFiniteMagnitude, count: classCount)
+        var nonFiniteCount = 0
+        var worstAnchorSaturatedClassCount = 0
+
+        for level in levels {
+            let valueAt = nchwReader(for: level.array)
+            for y in 0..<level.side {
+                for x in 0..<level.side {
+                    var anchorSaturatedClassCount = 0
+                    for classIndex in 0..<classCount {
+                        let value = valueAt(0, classIndex, y, x)
+                        guard value.isFinite else {
+                            nonFiniteCount += 1
+                            continue
+                        }
+                        classMaximums[classIndex] = max(classMaximums[classIndex], value)
+                        if value >= saturationLogit {
+                            anchorSaturatedClassCount += 1
+                        }
+                    }
+                    worstAnchorSaturatedClassCount = max(
+                        worstAnchorSaturatedClassCount,
+                        anchorSaturatedClassCount
+                    )
+                }
+            }
+        }
+
+        let globallySaturatedClassCount = classMaximums.reduce(into: 0) { count, value in
+            if value >= saturationLogit {
+                count += 1
+            }
+        }
+        guard nonFiniteCount == 0,
+              worstAnchorSaturatedClassCount <= maximumSaturatedClassesAtOneAnchor,
+              globallySaturatedClassCount <= maximumGloballySaturatedClasses else {
+            throw RTMDetLiteRuntimeError.invalidTensor(
+                "implausible class heads; refusing corrupted segmentation "
+                    + "(nonFinite=\(nonFiniteCount), "
+                    + "maxSaturatedClassesAtAnchor=\(worstAnchorSaturatedClassCount), "
+                    + "globallySaturatedClasses=\(globallySaturatedClassCount))"
+            )
+        }
     }
 
     private static func classAwareNMS(_ candidates: [RawCandidate], iouThreshold: Float, limit: Int?) -> [RawCandidate] {
@@ -1364,8 +1129,7 @@ enum RTMDetImageInference {
         boxes: [BoxRecord],
         maxMaskCount: Int,
         sourceBuffer: CVPixelBuffer,
-        mapping: ImageMapping,
-        debugLabel: String?
+        mapping: ImageMapping
     ) -> UIImage? {
         guard !rawMaskPlanes.isEmpty, !boxes.isEmpty else { return nil }
         let sourceWidth = mapping.sourceWidth
@@ -1411,8 +1175,6 @@ enum RTMDetImageInference {
             let yMax = max(0, min(sourceHeight - 1, Int(ceil(box.y2)) + padBottom))
             guard xMax >= xMin, yMax >= yMin else { continue }
 
-            var displayedTopY: Int?
-            var planeTopSourceY: Int?
             for y in yMin...yMax {
                 let sourceRow = base.advanced(by: y * rowBytes).assumingMemoryBound(to: UInt8.self)
                 let ySample = ySamples[y]
@@ -1429,12 +1191,6 @@ enum RTMDetImageInference {
                     let value = upperValue + (lowerValue - upperValue) * ySample.upperWeight
                     let alpha = rawMaskRenderAlpha(for: value)
                     guard alpha > 0 else { continue }
-                    if planeTopSourceY == nil {
-                        planeTopSourceY = y
-                    }
-                    if displayedTopY == nil {
-                        displayedTopY = y
-                    }
                     let dest = (y * sourceWidth + x) * 4
                     let source = x * 4
                     let existingAlpha = rgba[dest + 3]
@@ -1452,16 +1208,6 @@ enum RTMDetImageInference {
                     }
                     rgba[dest + 3] = alpha
                 }
-            }
-            if let debugLabel {
-                print(
-                    "🧪 [RTMDet MASK_CROP \(debugLabel)] index=\(index) "
-                    + "displayedTopY=\(displayedTopY.map(String.init) ?? "nil") "
-                    + "boxY1=\(String(format: "%.1f", box.y1)) "
-                    + "planeTopSourceY=\(planeTopSourceY.map(String.init) ?? "nil") "
-                    + "paddedBounds=(\(xMin),\(yMin),\(xMax),\(yMax)) "
-                    + "pad=(x:\(padX),top:\(padTop),bottom:\(padBottom))"
-                )
             }
         }
 
@@ -1540,69 +1286,35 @@ enum RTMDetImageInference {
         }
     }
 
-    private static func inputProvider(for pixelBuffer: CVPixelBuffer, model: MLModel, collectStats: Bool) throws -> MLFeatureProvider {
-        let imageValue = MLFeatureValue(pixelBuffer: pixelBuffer)
-        if model.modelDescription.inputDescriptionsByName["image"]?.type == .image {
-            if collectStats { lastInputTensorStats = "input=image" }
-            return try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
-        }
-
-        if let firstInputName = model.modelDescription.inputDescriptionsByName.first?.key,
-           model.modelDescription.inputDescriptionsByName[firstInputName]?.type == .image {
-            if collectStats { lastInputTensorStats = "input=image" }
-            return try MLDictionaryFeatureProvider(dictionary: [firstInputName: imageValue])
-        }
-
-        if let multiArrayInput = model.modelDescription.inputDescriptionsByName.first(where: { $0.value.type == .multiArray }) {
-            let inputName = multiArrayInput.key
-            let constraint = multiArrayInput.value.multiArrayConstraint
-            let shape = constraint?.shape.map(\.intValue) ?? []
-            let dataType = constraint?.dataType ?? .float32
-            let array = try rgbNCHWMultiArray(from: pixelBuffer, expectedShape: shape, dataType: dataType, collectStats: collectStats)
-            return try MLDictionaryFeatureProvider(dictionary: [inputName: MLFeatureValue(multiArray: array)])
-        }
-
-        throw NSError(
-            domain: "RTMDetImageInference",
-            code: 4,
-            userInfo: [NSLocalizedDescriptionKey: "Model does not expose a supported image or multi-array input"],
-        )
-    }
-
-    private static func rgbNCHWMultiArray(
+    /// Writes the exact Android RTMDet contract directly into LiteRT's input allocation:
+    /// NHWC float32, BGR channel order, raw 0...255 values. Normalization is part of the graph.
+    private static func writeRawBGRNHWC(
         from pixelBuffer: CVPixelBuffer,
-        expectedShape: [Int],
-        dataType: MLMultiArrayDataType,
+        to output: UnsafeMutableBufferPointer<Float>,
         collectStats: Bool
-    ) throws -> MLMultiArray {
+    ) throws {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        guard width > 0, height > 0 else {
+        guard width == 640, height == 640 else {
             throw NSError(
                 domain: "RTMDetImageInference",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid prepared pixel buffer size"],
+                userInfo: [NSLocalizedDescriptionKey: "Invalid RTMDet input size \(width)x\(height); expected 640x640"],
             )
         }
-
-        let shape = expectedShape.isEmpty ? [1, 3, height, width] : expectedShape
-        guard shape.count == 4, shape[0] == 1, shape[1] == 3, shape[2] == height, shape[3] == width else {
+        guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA else {
             throw NSError(
                 domain: "RTMDetImageInference",
                 code: 6,
-                userInfo: [NSLocalizedDescriptionKey: "Unsupported RTMDet input shape \(shape); expected [1, 3, \(height), \(width)]"],
+                userInfo: [NSLocalizedDescriptionKey: "RTMDet preprocessing expected a BGRA pixel buffer"],
             )
         }
-
-        let arrayDataType: MLMultiArrayDataType = dataType == .float16 ? .float16 : .float32
-        let array = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: arrayDataType)
-        let channelStride = width * height
-        let float32Ptr = arrayDataType == .float32
-            ? array.dataPointer.bindMemory(to: Float.self, capacity: array.count)
-            : nil
-        let float16Ptr = arrayDataType == .float16
-            ? array.dataPointer.bindMemory(to: UInt16.self, capacity: array.count)
-            : nil
+        let expectedCount = width * height * 3
+        guard output.count == expectedCount else {
+            throw RTMDetLiteRuntimeError.invalidTensor(
+                "input element count \(output.count), expected \(expectedCount)"
+            )
+        }
 
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
@@ -1616,69 +1328,32 @@ enum RTMDetImageInference {
         }
 
         let rowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let meanB: Float = 103.53
-        let meanG: Float = 116.28
-        let meanR: Float = 123.675
-        let stdB: Float = 57.375
-        let stdG: Float = 57.12
-        let stdR: Float = 58.395
         var minValue = Float.greatestFiniteMagnitude
         var maxValue = -Float.greatestFiniteMagnitude
         var sumValue: Double = 0
-        var valueCount = 0
 
-        // The min/max/mean tracking exists only to format `lastInputTensorStats` for the debug probe.
-        // Skipping it in production avoids ~1.2M extra branch+arithmetic ops per frame (640×640×3).
         for y in 0..<height {
             let row = base.advanced(by: y * rowBytes).assumingMemoryBound(to: UInt8.self)
             for x in 0..<width {
                 let source = x * 4
-                let dest = y * width + x
+                let destination = (y * width + x) * 3
                 let b = Float(row[source])
                 let g = Float(row[source + 1])
                 let r = Float(row[source + 2])
-                let bNorm = (b - meanB) / stdB
-                let gNorm = (g - meanG) / stdG
-                let rNorm = (r - meanR) / stdR
+                output[destination] = b
+                output[destination + 1] = g
+                output[destination + 2] = r
                 if collectStats {
-                    for value in [bNorm, gNorm, rNorm] {
-                        minValue = min(minValue, value)
-                        maxValue = max(maxValue, value)
-                        sumValue += Double(value)
-                        valueCount += 1
-                    }
+                    minValue = min(minValue, min(b, min(g, r)))
+                    maxValue = max(maxValue, max(b, max(g, r)))
+                    sumValue += Double(b + g + r)
                 }
-                writeNormalizedInputValue(bNorm, offset: dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
-                writeNormalizedInputValue(gNorm, offset: channelStride + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
-                writeNormalizedInputValue(rNorm, offset: channelStride * 2 + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
             }
         }
 
-        if collectStats && valueCount > 0 {
-            let meanValue = sumValue / Double(valueCount)
-            lastInputTensorStats = "input[min=\(String(format: "%.3f", minValue)) max=\(String(format: "%.3f", maxValue)) mean=\(String(format: "%.3f", meanValue))]"
-        }
-
-        return array
-    }
-
-    private static func writeNormalizedInputValue(
-        _ value: Float,
-        offset: Int,
-        float32Ptr: UnsafeMutablePointer<Float>?,
-        float16Ptr: UnsafeMutablePointer<UInt16>?
-    ) {
-        if let float32Ptr {
-            float32Ptr[offset] = value
-        } else if let float16Ptr {
-            float16Ptr[offset] = Float16(value).bitPattern
-        }
-    }
-
-    private static func collectMultiArrays(from output: MLFeatureProvider) -> [(name: String, array: MLMultiArray)] {
-        output.featureNames.sorted().compactMap { name in
-            guard let array = output.featureValue(for: name)?.multiArrayValue else { return nil }
-            return (name, array)
+        if collectStats {
+            let meanValue = sumValue / Double(expectedCount)
+            lastInputTensorStats = "input=raw_bgr_nhwc[min=\(String(format: "%.1f", minValue)) max=\(String(format: "%.1f", maxValue)) mean=\(String(format: "%.1f", meanValue))]"
         }
     }
 

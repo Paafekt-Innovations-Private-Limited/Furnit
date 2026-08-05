@@ -28,10 +28,10 @@ descriptions of the current app.
 | Document | Lifecycle | Purpose |
 |---|---|---|
 | [`../Furnit/docs/README.md`](../Furnit/docs/README.md) | Active index | iOS room/Furniture Fit docs and diagrams |
-| [`../Furnit/docs/mask-head-accel.md`](../Furnit/docs/mask-head-accel.md) | Active reference | RTMDet mask-head performance and profiling |
+| [`../Furnit/docs/mask-head-accel.md`](../Furnit/docs/mask-head-accel.md) | Historical reference | Retired Core ML mask-head optimization record |
 | [`../Furnit/Views/FurnitureFit/README.md`](../Furnit/Views/FurnitureFit/README.md) | Active, code-local | RTMDet/Furniture Fit implementation |
 | [`../Furnit/Models/RTMDet/README.md`](../Furnit/Models/RTMDet/README.md) | Active, code-local | RTMDet model package notes |
-| [`IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md`](IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md) | Active reference | iOS RTMDet Core ML pipeline |
+| [`IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md`](IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md) | Active reference | iOS RTMDet LiteRT Metal pipeline |
 | [`IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md`](IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md) | Active reference | Room/furniture sizing and overlay math |
 | [`RTMDET_IOS_SWIFT_SPIKE.md`](RTMDET_IOS_SWIFT_SPIKE.md) | Active implementation reference | Loader/export expectations and Swift postprocess status |
 | [`ON_DEMAND_RESOURCES.md`](ON_DEMAND_RESOURCES.md) | Active operations | iOS RTMDet ODR and bundled-model behavior |

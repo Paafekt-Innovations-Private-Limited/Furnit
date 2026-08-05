@@ -826,6 +826,11 @@ struct LicensesView: View {
                         title: L10n.Licenses.rtmdetTitle,
                         resourceName: "APACHE-2.0"
                     )
+                    bundledDocumentLink(
+                        L10n.Licenses.viewFullLicense,
+                        title: "LiteRT 2.17.0",
+                        resourceName: "LITERT-LICENSE"
+                    )
                 }
                 .padding(.vertical, 4)
             }

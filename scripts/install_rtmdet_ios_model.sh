@@ -6,7 +6,7 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 DEST_DIR="$REPO_ROOT/Furnit/Models/RTMDet"
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 /absolute/or/relative/path/to/rtmdet-ins-m.mlpackage" >&2
+  echo "Usage: $0 /absolute/or/relative/path/to/rtmdet-ins-m-raw-fp16.tflite" >&2
   exit 64
 fi
 
@@ -18,32 +18,23 @@ if [ ! -e "$SRC_PATH" ]; then
 fi
 
 SRC_BASENAME=$(basename -- "$SRC_PATH")
-
 case "$SRC_BASENAME" in
-  *.mlpackage|*.mlmodelc)
-    ;;
+  *.tflite) ;;
   *)
-    echo "Expected a .mlpackage or .mlmodelc path, got: $SRC_BASENAME" >&2
+    echo "Expected a .tflite path, got: $SRC_BASENAME" >&2
     exit 65
     ;;
 esac
 
 mkdir -p "$DEST_DIR"
-DEST_PATH="$DEST_DIR/$SRC_BASENAME"
+DEST_PATH="$DEST_DIR/rtmdet-ins-m-raw-fp16.tflite"
 
-rm -rf "$DEST_PATH"
-cp -R "$SRC_PATH" "$DEST_PATH"
+cp "$SRC_PATH" "$DEST_PATH"
 
 echo "Installed:"
 echo "  $DEST_PATH"
 echo
 echo "Next:"
-echo "1. Open Xcode."
-echo "2. Ensure $SRC_BASENAME is included in the Furnit app target resources."
-if [ "$SRC_BASENAME" = "rtmdet-ins-m.mlpackage" ]; then
-  echo "3. The standard path/name is already mapped to the RTMDetModel On-Demand Resources tag in Furnit.xcodeproj."
-  echo "4. Run the app, open Settings -> Image scan, and switch backend to RTMDet-Ins-m."
-else
-  echo "3. In the File inspector, add the On-Demand Resources tag: RTMDetModel for this custom filename."
-  echo "4. Run the app, open Settings -> Image scan, and switch backend to RTMDet-Ins-m."
-fi
+echo "1. Confirm the file is tracked with Git LFS."
+echo "2. The canonical path/name is already mapped to the RTMDetModel On-Demand Resources tag."
+echo "3. Build for a physical iOS device; RTMDet requires the LiteRT Metal delegate."
