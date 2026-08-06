@@ -50,7 +50,7 @@ Each model has **three separate licenses that can differ** — check all three; 
 |---------|----------|-----|---------|
 | Yes | Depth Anything V2 Metric Indoor Small | `DepthAnythingV2MetricIndoorSmall.mlpackage` | `depth_anything_v2_metric_indoor_small.onnx` |
 | Yes | GeoCalib Pinhole CNN | `GeoCalibPinholeCNN.mlpackage` | `geocalib_pinhole_cnn.onnx` |
-| Yes | RTMDet-Ins-m | `rtmdet-ins-m.mlpackage` (ODR) | `rtmdet-ins-m-raw-fp16.tflite` |
+| Yes | RTMDet-Ins-m | `rtmdet-ins-m-raw-fp16.tflite` (ODR) | `rtmdet-ins-m-raw-fp16.tflite` |
 | Yes | MetalSplatter 1.0.1 | SPM | — |
 | Yes | spz-swift 2.1.0 | SPM (transitive) | — |
 | Yes | Three.js r170 | WebView GLB/Mesh | WebView GLB |
@@ -66,8 +66,8 @@ Splat rooms: user/imported PLY (`_3dgs.ply`). Renderer = **MetalSplatter (MIT)**
 The version 1.2 source and verified build artifacts provide readable offline notices rather than
 depending only on web links:
 
-- iOS bundles `Furnit/Licenses/APACHE-2.0.txt` and
-  `Furnit/Licenses/THIRD_PARTY_NOTICES.txt`. Settings → Licenses opens both from the app bundle.
+- iOS bundles `Furnit/Licenses/APACHE-2.0.txt`, `LITERT-LICENSE.txt`, and
+  `THIRD_PARTY_NOTICES.txt`. Settings → Licenses opens all three from the app bundle.
 - Android bundles `app/src/main/assets/legal/APACHE-2.0.txt`,
   `LITERT-LICENSE.txt`, and `THIRD_PARTY_NOTICES.txt`. `LicensesActivity` opens them from the APK
   assets without a network connection.
@@ -79,8 +79,9 @@ depending only on web links:
 
 The signed Android bundle was inspected at version 1.2 / code 5 and contained all three legal
 assets plus only the intended Small indoor, GeoCalib pinhole, and RTMDet FP16 model files. The iOS
-device build was inspected and contained both legal documents and the three compiled model
-packages. These checks establish repository/build packaging; store approval or publication state
+device build was inspected and contained all three legal documents, the compiled GeoCalib and
+Depth Anything Metric Indoor Small models, and exactly one RTMDet FP16 TFLite model in its ODR
+asset pack. These checks establish repository/build packaging; store approval or publication state
 is tracked separately in `store-submission-status.md`.
 
 ---

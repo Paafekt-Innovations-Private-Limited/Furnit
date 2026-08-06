@@ -204,6 +204,56 @@ struct RealityKitView: UIViewRepresentable {
         cameraEntity.camera.fieldOfViewInDegrees = 60.0
     }
 
+    /// Correct USDZ files created before the flat-mesh exporter preserved photo aspect. The
+    /// room-specific camera sidecar survives the save copy and records the original pixel size.
+    /// New files already match and therefore receive a scale of approximately 1.
+    private static func restoreDepthAnythingPhotoAspectIfNeeded(
+        _ entity: ModelEntity,
+        modelURL: URL,
+        photoOrientation: PhotoOrientation
+    ) {
+        let cameraMetadata = CameraExifSidecar.load(roomURL: modelURL)
+        guard var pixelWidth = cameraMetadata["imageWidthPx"].map(Float.init),
+              var pixelHeight = cameraMetadata["imageHeightPx"].map(Float.init),
+              pixelWidth > 1,
+              pixelHeight > 1 else {
+            return
+        }
+
+        switch photoOrientation {
+        case .landscape where pixelWidth < pixelHeight,
+             .portrait where pixelWidth > pixelHeight:
+            swap(&pixelWidth, &pixelHeight)
+        default:
+            break
+        }
+
+        let desiredAspect = pixelWidth / pixelHeight
+        let bounds = entity.visualBounds(relativeTo: entity)
+        guard bounds.extents.x > 0.001,
+              bounds.extents.y > 0.001,
+              desiredAspect.isFinite,
+              desiredAspect > 0 else {
+            return
+        }
+        let currentAspect = bounds.extents.x / bounds.extents.y
+        let correction = desiredAspect / currentAspect
+        guard correction.isFinite,
+              correction > 0.5,
+              correction < 2.0,
+              abs(correction - 1) > 0.002 else {
+            return
+        }
+
+        entity.scale.x *= correction
+        logDebug(
+            "📐 [RealityKitView] Restored photo aspect " +
+                "current=\(String(format: "%.4f", currentAspect)) " +
+                "source=\(String(format: "%.4f", desiredAspect)) " +
+                "scaleX=\(String(format: "%.4f", correction))"
+        )
+    }
+
     @discardableResult
     private static func repositionOptimalCamera(
         cameraAnchor: AnchorEntity,
@@ -282,7 +332,14 @@ struct RealityKitView: UIViewRepresentable {
         // ✅ Track current model to detect room changes
         var currentModelID: UUID?
         var boundaryManager: RealityKitBoundaryManager?
-        var cameraLookAtTarget: SIMD3<Float>?
+        /// Point the viewer framed the room around. Publishing it to the gesture handler on
+        /// every change keeps the single-finger orbit swinging around the room and re-syncs
+        /// accumulated yaw/pitch after any programmatic reframe.
+        var cameraLookAtTarget: SIMD3<Float>? {
+            didSet {
+                gestureHandlers?.setOrbitTarget(cameraLookAtTarget)
+            }
+        }
         var lastViewportSize: CGSize = .zero
         private var cameraMoveNotificationTokens: [NSObjectProtocol] = []
         // GLB D-pad parity: moveCamera(±8, 0) at 0.03 m/step; moveCameraUp(±0.2).
@@ -398,6 +455,9 @@ struct RealityKitView: UIViewRepresentable {
 
                 // Pass camera references to gesture handlers for direct camera control
                 gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: anchor)
+                // The look-at target can be resolved before this camera exists; replay it so
+                // the first single-finger drag already orbits the room.
+                gestureHandlers?.setOrbitTarget(cameraLookAtTarget)
                 installCameraMoveObservers()
 
                 logDebug("📷 Custom camera CREATED (position will be set after model loads and bounds calculated)")
@@ -540,6 +600,14 @@ struct RealityKitView: UIViewRepresentable {
                     }
                 }
 
+                if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
+                    Self.restoreDepthAnythingPhotoAspectIfNeeded(
+                        modelEntity,
+                        modelURL: modelURL,
+                        photoOrientation: model.photoOrientation
+                    )
+                }
+
                 // Ensure model has proper materials for visibility
                 ensureModelHasMaterials(modelEntity)
                 if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
@@ -585,7 +653,8 @@ struct RealityKitView: UIViewRepresentable {
                 let lightCount = self.countLights(in: modelEntity)
                 logDebug("   - Total lights found in model: \(lightCount)")
                 
-                if lightCount == 0 {
+                if lightCount == 0,
+                   model.roomCoordinateFrame != .depthAnythingImageDepthMeters {
                     logDebug("⚠️ [RealityKitView.loadModel] WARNING: NO LIGHTS IN SCENE!")
                     logDebug("   - This explains the black screen!")
                     logDebug("   - Adding emergency lighting...")
@@ -611,6 +680,11 @@ struct RealityKitView: UIViewRepresentable {
                     fillLight.position = [2, 1, 2]
                     modelEntity.addChild(fillLight)
                     logDebug("   - ✅ Added emergency fill light at [2, 1, 2]")
+                } else if lightCount == 0 {
+                    // A photo room is authored as an unlit/constant material. Adding fallback
+                    // lights makes its base texture combine with emissive data in older saved
+                    // USDZ files and visibly brightens the original photograph.
+                    logDebug("✅ [RealityKitView.loadModel] Keeping photo room color-faithful without fallback lights")
                 }
                 
                 // Clean up any previous model anchor to avoid state pollution
@@ -859,6 +933,17 @@ struct RealityKitView: UIViewRepresentable {
 
     // Configure rendering quality based on user settings
     private func configureRenderingQuality(arView: ARView, quality: AssetQuality) {
+        if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
+            // The room surface is a photograph, not a relightable 3D material. Preserve source
+            // color independent of the global quality profile or environment-light estimate.
+            arView.renderOptions.insert(.disableAREnvironmentLighting)
+            if #available(iOS 15.0, *) {
+                arView.environment.sceneUnderstanding.options = []
+            }
+            logDebug("🔄 Applied color-faithful photo-room rendering")
+            return
+        }
+
         switch quality {
         case .standard:
             arView.renderOptions.remove(.disableAREnvironmentLighting)

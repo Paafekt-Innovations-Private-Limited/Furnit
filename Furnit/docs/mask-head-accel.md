@@ -1,5 +1,11 @@
 # Problem: un-accelerated mask-head matmul in RTMDet instance segmentation (iOS / Swift)
 
+> **Historical record.** This describes the retired Core ML prototype and its 80×80
+> Swift mask head. Production iOS now runs the shared 160×160-mask FP16 TFLite graph
+> through LiteRT Metal; see `Furnit/Models/RTMDet/README.md` and
+> `Furnit/Views/FurnitureFit/README.md`. Do not use this document as current runtime
+> guidance.
+
 ## Context
 iOS app doing **RTMDet-Ins** instance segmentation on-device via **Core ML**. The model is a
 "raw heads" export: the backbone runs on the **Apple Neural Engine** (loaded preferring

@@ -1066,7 +1066,7 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         let plane = SCNPlane(width: width, height: height)
         let material = SCNMaterial()
         material.diffuse.contents = image
-        material.emission.contents = image
+        material.diffuse.intensity = 1
         material.lightingModel = .constant
         material.isDoubleSided = true
         material.diffuse.wrapS = .clamp
@@ -3181,6 +3181,7 @@ class WideAngleCameraViewController: UIViewController {
     private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     private var previewRotationObservation: NSKeyValueObservation?
     private var captureRotationObservation: NSKeyValueObservation?
+    private var isUsingUltraWideFieldOfView = false
 
     // UI Elements
     private let captureButton = UIButton(type: .system)
@@ -3247,17 +3248,14 @@ class WideAngleCameraViewController: UIViewController {
             )
         }
 
-        // Try to get ultra-wide camera first for wider field of view
-        var device: AVCaptureDevice?
-
-        // Check for ultra-wide camera (0.5x zoom equivalent)
-        if let ultraWide = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) {
-            device = ultraWide
-            logDebug("📷 [WideAngle] Using ultra-wide camera for wide-angle capture")
-        } else if let wideAngle = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
-            device = wideAngle
-            logDebug("📷 [WideAngle] Using wide-angle camera (ultra-wide not available)")
-        }
+        // Prefer Apple's virtual rear camera. At its widest native zoom it still provides the
+        // ultra-wide field of view, while allowing AVFoundation to use constituent-camera fusion
+        // or select a cleaner constituent in difficult indoor light. A physical ultra-wide camera
+        // remains the fallback on devices that do not expose a virtual dual-wide/triple camera.
+        let device = AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
 
         guard let captureDevice = device else {
             logDebug("❌ [WideAngle] No camera available")
@@ -3265,8 +3263,26 @@ class WideAngleCameraViewController: UIViewController {
         }
 
         currentDevice = captureDevice
+        isUsingUltraWideFieldOfView = captureDevice.deviceType == .builtInUltraWideCamera
+            || captureDevice.constituentDevices.contains(where: { $0.deviceType == .builtInUltraWideCamera })
 
         do {
+            try captureDevice.lockForConfiguration()
+            captureDevice.videoZoomFactor = captureDevice.minAvailableVideoZoomFactor
+            captureDevice.unlockForConfiguration()
+
+            let displayZoom: CGFloat
+            if #available(iOS 18.0, *) {
+                displayZoom = captureDevice.videoZoomFactor * captureDevice.displayVideoZoomFactorMultiplier
+            } else {
+                displayZoom = isUsingUltraWideFieldOfView ? 0.5 : 1.0
+            }
+            logDebug(
+                "📷 [WideAngle] device=\(captureDevice.deviceType.rawValue) " +
+                "virtual=\(captureDevice.isVirtualDevice) zoom=\(String(format: "%.2f", captureDevice.videoZoomFactor)) " +
+                "displayZoom=\(String(format: "%.2f", displayZoom))x"
+            )
+
             let input = try AVCaptureDeviceInput(device: captureDevice)
             if captureSession?.canAddInput(input) == true {
                 captureSession?.addInput(input)
@@ -3276,8 +3292,26 @@ class WideAngleCameraViewController: UIViewController {
             if let photoOutput = photoOutput, captureSession?.canAddOutput(photoOutput) == true {
                 captureSession?.addOutput(photoOutput)
 
-                // Configure for high resolution using maxPhotoDimensions (iOS 16+)
-                photoOutput.maxPhotoDimensions = captureDevice.activeFormat.supportedMaxPhotoDimensions.first ?? CMVideoDimensions(width: 4032, height: 3024)
+                // `supportedMaxPhotoDimensions` is not ordered by quality. Select by pixel count
+                // and never invent a fallback size, because AVFoundation requires an exact member
+                // of this active format's supported list.
+                if let largestDimensions = Self.largestPhotoDimensions(
+                    in: captureDevice.activeFormat.supportedMaxPhotoDimensions
+                ) {
+                    photoOutput.maxPhotoDimensions = largestDimensions
+                }
+
+                // Quality priority enables Apple's slower still-photo pipeline, including the
+                // multi-image techniques that reduce indoor noise and preserve detail. Fast-capture
+                // prioritization stays off so it cannot silently trade this quality for throughput.
+                photoOutput.maxPhotoQualityPrioritization = .quality
+                photoOutput.isFastCapturePrioritizationEnabled = false
+
+                logDebug(
+                    "📷 [WideAngle] maxPhoto=\(photoOutput.maxPhotoDimensions.width)x" +
+                    "\(photoOutput.maxPhotoDimensions.height) quality=quality " +
+                    "virtualFusionSupported=\(photoOutput.isVirtualDeviceFusionSupported)"
+                )
             }
 
             previewLayer = AVCaptureVideoPreviewLayer(session: captureSession!)
@@ -3316,8 +3350,7 @@ class WideAngleCameraViewController: UIViewController {
         view.addSubview(guideLabel)
 
         // Zoom indicator
-        let isUltraWide = currentDevice?.deviceType == .builtInUltraWideCamera
-        zoomLabel.text = isUltraWide ? "0.5x Ultra Wide" : "1x Wide"
+        zoomLabel.text = isUsingUltraWideFieldOfView ? "0.5x Ultra Wide" : "1x Wide"
         zoomLabel.textColor = .yellow
         zoomLabel.font = .systemFont(ofSize: 14, weight: .bold)
         zoomLabel.textAlignment = .center
@@ -3457,6 +3490,14 @@ class WideAngleCameraViewController: UIViewController {
         gridOverlay.layer.addSublayer(centerLine)
     }
 
+    static func largestPhotoDimensions(
+        in dimensions: [CMVideoDimensions]
+    ) -> CMVideoDimensions? {
+        dimensions.max { lhs, rhs in
+            Int64(lhs.width) * Int64(lhs.height) < Int64(rhs.width) * Int64(rhs.height)
+        }
+    }
+
     @objc private func capturePhoto() {
         guard let photoOutput = photoOutput else { return }
 
@@ -3467,10 +3508,13 @@ class WideAngleCameraViewController: UIViewController {
         let settings = AVCapturePhotoSettings()
         // Use maxPhotoDimensions from photoOutput (iOS 16+)
         settings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
+        settings.photoQualityPrioritization = .quality
+        settings.isAutoVirtualDeviceFusionEnabled = photoOutput.isVirtualDeviceFusionSupported
 
         // Flash off for wide-angle captures (usually room interiors)
         settings.flashMode = .off
 
+        captureButton.isEnabled = false
         photoOutput.capturePhoto(with: settings, delegate: self)
 
         // Visual feedback
@@ -3510,12 +3554,18 @@ extension WideAngleCameraViewController: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
             logDebug("❌ [WideAngle] Photo capture error: \(error)")
+            DispatchQueue.main.async { [weak self] in
+                self?.captureButton.isEnabled = true
+            }
             return
         }
 
         guard let imageData = photo.fileDataRepresentation(),
               let image = UIImage(data: imageData) else {
             logDebug("❌ [WideAngle] Failed to create image from photo data")
+            DispatchQueue.main.async { [weak self] in
+                self?.captureButton.isEnabled = true
+            }
             return
         }
 

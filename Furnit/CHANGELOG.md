@@ -1,5 +1,29 @@
 # Furnit iOS - Recent Changes
 
+## Unreleased — Wide-Angle Capture Quality and RTMDet Runtime Parity
+
+- Changed only the custom iOS 0.5× room camera: it now prefers Apple's virtual
+  triple/dual-wide camera, selects its widest native field of view and largest
+  supported still dimensions, requests quality-prioritized capture, enables
+  virtual-device fusion, and disables fast-capture prioritization. This lets Apple's
+  multi-frame quality/noise-reduction path reduce ultra-wide grain; standard capture
+  is unchanged.
+- Replaced the iOS RTMDet Core ML runtime with a mathematically equivalent FP16
+  TFLite variant of Android's graph, run through LiteRT 2.17.0 with a mandatory Metal
+  delegate. The iOS variant replaces four unsupported clamp operators with equivalent
+  max/min pairs; all ten reference outputs remain bit-for-bit equal.
+- Added one shared RTMDet runtime for live segmentation, Settings image scan, and
+  first-save room object anchoring; removed the RTMDet Core ML/CPU load fallback and
+  duplicate room-anchor model instance.
+- Matched Android's delegate options and output handling: quantization support and
+  precision-loss mode are enabled, every LiteRT output is extracted into persistent
+  buffers, and NHWC is physically converted to contiguous NCHW. The complete LiteRT
+  lifecycle now stays on one dedicated thread, and model load fails unless a native
+  execution-plan audit reports zero CPU nodes. The expensive tensor/mask diagnostic
+  sweeps were removed from live Debug frames.
+- Kept the RTMDet model behind the existing `RTMDetModel` On-Demand Resource tag and
+  added the complete LiteRT license/attribution document to the offline Licenses UI.
+
 ## 1.2 — Offline Licenses and Attribution (2026-08-05)
 
 - Bumped the iOS application target to marketing version **1.2**, build **87**.

@@ -472,6 +472,72 @@ struct PaafektImmersiveViewerChromeStack<
     }
 }
 
+// MARK: - Camera D-pad (always visible, independent of chrome phase)
+
+/// The four camera-move notification names every room viewer already observes.
+/// RealityKit (`RealityKitView.Coordinator.installCameraMoveObservers`), the Metal
+/// splat renderer, and the WebGL bridge all listen for these, so the buttons stay a
+/// pure UI layer with no per-viewer movement code.
+enum PaafektViewerCameraMoveNotification {
+    static let left = NSNotification.Name("WebGLCameraMoveLeft")
+    static let right = NSNotification.Name("WebGLCameraMoveRight")
+    static let up = NSNotification.Name("WebGLCameraMoveUp")
+    static let down = NSNotification.Name("WebGLCameraMoveDown")
+}
+
+/// Shared up/down/left/right camera cluster. Immersive chrome rests and auto-hides;
+/// this deliberately does not, because stepping the camera is a continuous task that
+/// should never require summoning the toolbar first.
+struct PaafektViewerCameraDPad: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            dPadButton(systemName: "arrow.left", notification: PaafektViewerCameraMoveNotification.left)
+            VStack(spacing: 8) {
+                dPadButton(systemName: "arrow.up", notification: PaafektViewerCameraMoveNotification.up)
+                dPadButton(systemName: "arrow.down", notification: PaafektViewerCameraMoveNotification.down)
+            }
+            dPadButton(systemName: "arrow.right", notification: PaafektViewerCameraMoveNotification.right)
+        }
+    }
+
+    private func dPadButton(systemName: String, notification: NSNotification.Name) -> some View {
+        Button(action: { NotificationCenter.default.post(name: notification, object: nil) }) {
+            Image(systemName: systemName)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Color.black.opacity(0.5)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(systemName))
+    }
+}
+
+/// Top-leading placement wrapper matching the pre-immersive layout the room viewers used.
+struct PaafektViewerCameraDPadOverlay: View {
+    let photoOrientation: PhotoOrientation
+    var hideForCapture: Bool = false
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(alignment: .leading, spacing: 10) {
+                PaafektViewerCameraDPad()
+                    .padding(.leading, 12)
+                    .padding(.top, 12)
+                if photoOrientation == .landscape {
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .opacity(hideForCapture ? 0 : 1)
+        .zIndex(102)
+    }
+}
+
 extension PaafektImmersiveViewerChromeStack where RestingAccessory == EmptyView, PersistentOverlay == EmptyView {
     init(
         chrome: PaafektViewerChromeController,

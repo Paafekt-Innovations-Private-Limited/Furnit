@@ -314,6 +314,7 @@ struct MeshRoomView: View {
                 fullVideoToolbarHelperOverlay
             }
             meshRoomCalibrationGateOverlay
+            PaafektViewerCameraDPadOverlay(photoOrientation: photoOrientation)
             meshImmersiveChromeOverlay
             PaafektViewerOnboardingLayer(
                 isReady: !isLoading,

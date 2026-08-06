@@ -2031,6 +2031,12 @@ struct SplatRoomView: View {
             if showWallCalibration, supportsMetricFurnitureMeasurementUI {
                 wallCalibrationOverlay
             }
+            if !isLoading {
+                PaafektViewerCameraDPadOverlay(
+                    photoOrientation: photoOrientation,
+                    hideForCapture: isCapturingSnapshot
+                )
+            }
             splatImmersiveChromeOverlay
             PaafektViewerOnboardingLayer(
                 isReady: !isLoading,

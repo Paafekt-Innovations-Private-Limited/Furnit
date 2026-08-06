@@ -2,11 +2,13 @@
 
 ## Overview
 
-The app uses Apple's **On-Demand Resources (ODR)** to deliver large CoreML models separately from the initial download. This keeps the App Store / TestFlight binary smaller and downloads models only when the user first needs them.
+The app uses Apple's **On-Demand Resources (ODR)** to deliver the large RTMDet
+TFLite model separately from the initial download. This keeps the App Store /
+TestFlight binary smaller and downloads the model only when first needed.
 
 | Model | File | Size | ODR Tag | Used For |
 |-------|------|------|---------|----------|
-| RTMDet | `rtmdet-ins-m.mlpackage` / `rtmdet-ins-m.mlmodelc` | export-dependent | `RTMDetModel` | Furniture detection + segmentation (FurnitureFit); bump tag only when intentionally breaking ODR cache |
+| RTMDet | `rtmdet-ins-m-raw-fp16.tflite` | ~55 MB source asset | `RTMDetModel` | Furniture detection + segmentation and room object anchor; bump tag only when intentionally breaking ODR cache |
 
 **Bundled in the app (not ODR):**
 
@@ -29,8 +31,9 @@ No separate room-generation ODR tag is used by the active Swift path.
 - **Subsequent uses**: Cached models load instantly
 
 ### Xcode Development
-- Models under `Furnit/Models/` are typically **bundled** in the app (ODR doesn't work locally for dev installs)
-- RTMDet may still use ODR in production builds when not embedded
+- Xcode stages the tagged RTMDet file as an asset pack beside the app for generic
+  device builds; Run/TestFlight/App Store installation controls how that pack is made
+  available on the device.
 - Services skip ODR whenever the model is physically embedded in the app bundle
 
 ## Implementation Details
@@ -51,7 +54,7 @@ Singleton: `RTMDetModelService.shared`
 
 Key properties:
 ```swift
-@Published var model: MLModel?              // nil until loaded
+@Published var model: RTMDetLiteRuntime?    // nil until loaded
 @Published var isLoadingModel: Bool         // true during download + load
 @Published var isDownloadingResources: Bool
 @Published var downloadProgress: Double
@@ -59,10 +62,11 @@ Key properties:
 ```
 
 Key methods:
-- `ensureModelLoaded()` - Call from room view `.onAppear`; triggers ODR download + CoreML load
+- `ensureModelLoaded()` - Call from room view `.onAppear`; triggers ODR download + LiteRT Metal load
+- `modelForInference()` - Wait for and return the shared runtime for room-anchor work
 - `releaseResources()` - Frees disk space and unloads model
 
-Shared by `ModelViewerView`, saved-room viewers, Settings image scan, and the one-shot object-anchor
+One mandatory-Metal interpreter is shared by `ModelViewerView`, saved-room viewers, Settings image scan, and the one-shot object-anchor
 step in room generation (**first save only**; preview skips RTMDet for room measurement).
 
 ### 3. Depth Anything + GeoCalib (bundled)
@@ -100,7 +104,8 @@ ODR can only be fully tested through **TestFlight** or **App Store**. For local 
 | File | Role |
 |------|------|
 | `Furnit.xcodeproj/project.pbxproj` | ODR tags and `ENABLE_ON_DEMAND_RESOURCES` |
-| `RTMDetModelService.swift` | RTMDet ODR download + CoreML loading |
+| `RTMDetModelService.swift` | RTMDet ODR download + shared LiteRT runtime |
+| `RTMDetLiteRuntime.swift` | Dedicated LiteRT worker + mandatory fully audited Metal delegate |
 | `DepthAnythingRoomReconstructor.swift` | Bundled Depth Anything + metric pipeline |
 | `GeoCalibCalibrationService.swift` | Bundled GeoCalib CNN + Swift LM |
 | `SinglePhotoRoomViewer.swift` | Room generation UI |
@@ -113,6 +118,7 @@ When ODR is working correctly for RTMDet:
 RTMDet-Ins-m embedded in app bundle — skipping ODR                 // Dev / bundled
 RTMDet-Ins-m ODR resources available (conditionallyBeginAccessingResources)
 RTMDet-Ins-m ODR download complete
+RTMDet-Ins-m loaded with verified full LiteRT Metal delegation ... cpuNodes=0 ...
 ```
 
 Depth Anything / GeoCalib:

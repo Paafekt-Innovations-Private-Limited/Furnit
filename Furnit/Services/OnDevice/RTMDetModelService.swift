@@ -55,6 +55,22 @@ final class RTMDetModelService: ObservableObject {
         }
     }
 
+    /// Awaitable accessor for callers that cannot proceed without the model — the
+    /// room-generation object anchor runs inside a save pipeline and has nowhere to
+    /// retry. `ensureModelLoaded()` is fire-and-forget and returns before the model
+    /// exists, so it cannot serve that caller.
+    ///
+    /// Loads on demand, and if another task already has a load in flight, waits for
+    /// that one to settle rather than starting a second interpreter.
+    func modelForInference() async -> MLModel? {
+        if let model { return model }
+        await loadModel()
+        while model == nil && isLoadingModel {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return model
+    }
+
     func releaseResources() {
         progressObservation?.invalidate()
         progressObservation = nil

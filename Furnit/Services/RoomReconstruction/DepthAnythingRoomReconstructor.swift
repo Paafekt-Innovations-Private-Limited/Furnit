@@ -122,6 +122,22 @@ final class DepthAnythingRoomReconstructor {
         return result
     }
 
+    /// The flat display mesh is a photographic surface, so its geometry must retain the source
+    /// image aspect ratio. Metric W×H×D remains authoritative metadata for measurements and fit;
+    /// independently applying measured width and height to this plane visibly stretches pixels.
+    static func flatMeshDisplayDimensions(
+        imageWidth: Int,
+        imageHeight: Int,
+        measuredHeightMeters: Float
+    ) -> (width: Float, height: Float) {
+        let safeImageWidth = Float(max(imageWidth, 1))
+        let safeImageHeight = Float(max(imageHeight, 1))
+        let imageAspect = safeImageWidth / safeImageHeight
+        let safeMinimumWidth = max(minimumRoomWidthMeters, 0.05)
+        let displayHeight = max(measuredHeightMeters, safeMinimumWidth / imageAspect)
+        return (width: displayHeight * imageAspect, height: displayHeight)
+    }
+
     private static let depthModelLock = NSLock()
     private static var cachedDepthModel: (model: VNCoreMLModel, name: String)?
     private static var didRequestSharedModelPrewarm = false
@@ -491,12 +507,20 @@ final class DepthAnythingRoomReconstructor {
             "H=\(String(format: "%.3f", measured.height)) " +
             "D=\(String(format: "%.3f", measured.depth)) m"
         )
-        let meshRoomWidthMeters = max(measured.width, Self.minimumRoomWidthMeters)
-        let meshRoomHeightMeters = max(measured.height, Self.minimumRoomWidthMeters * Float(imageHeight) / Float(max(imageWidth, 1)))
+        let meshDisplayDimensions = Self.flatMeshDisplayDimensions(
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            measuredHeightMeters: measured.height
+        )
+        let meshRoomWidthMeters = meshDisplayDimensions.width
+        let meshRoomHeightMeters = meshDisplayDimensions.height
         logDebug(
-            "[DepthAnythingRoom][MeshScale] source=room_extent_dims " +
+            "[DepthAnythingRoom][MeshScale] source=photo_aspect_with_measured_height " +
+            "photo_aspect=\(String(format: "%.4f", Float(imageWidth) / Float(max(imageHeight, 1)))) " +
             "mesh_width_m=\(String(format: "%.4f", meshRoomWidthMeters)) " +
             "mesh_height_m=\(String(format: "%.4f", meshRoomHeightMeters)) " +
+            "measured_width_m=\(String(format: "%.4f", measured.width)) " +
+            "measured_height_m=\(String(format: "%.4f", measured.height)) " +
             "result_dims_source=single_view_width_height_room_extent_depth"
         )
         let measurementEnd = CFAbsoluteTimeGetCurrent()
@@ -834,7 +858,7 @@ final class DepthAnythingRoomReconstructor {
         let geometry = SCNGeometry(sources: [positionSource, colorSource, texcoordSource], elements: elements)
         let material = SCNMaterial()
         material.diffuse.contents = textureImage
-        material.emission.contents = textureImage
+        material.diffuse.intensity = 1
         material.lightingModel = .constant
         material.isDoubleSided = true
         material.diffuse.wrapS = .clamp
@@ -1849,27 +1873,32 @@ final class DepthAnythingRoomReconstructor {
     }
 
     /// RTMDet inference is image-only, so it can run concurrently with GeoCalib and
-    /// Depth Anything. Runs detached to keep CoreML off the cooperative pool.
+    /// Depth Anything. It reuses the app's single LiteRT Metal runtime.
     private static func detectMeasurementObjectRect(
         image: UIImage,
         imageWidth: Int,
         imageHeight: Int
     ) async -> ObjectDetectionRect? {
-        await Task.detached(priority: .userInitiated) {
-            detectMeasurementObjectRectSync(image: image, imageWidth: imageWidth, imageHeight: imageHeight)
+        guard let objectModel = await RTMDetModelService.shared.modelForInference() else {
+            logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=rtmdet_model_not_found")
+            return nil
+        }
+        return await Task.detached(priority: .userInitiated) {
+            detectMeasurementObjectRectSync(
+                image: image,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight,
+                objectModel: objectModel
+            )
         }.value
     }
 
     private static func detectMeasurementObjectRectSync(
         image: UIImage,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        objectModel: MLModel
     ) -> ObjectDetectionRect? {
-        guard let objectModel = loadObjectBBoxModel() else {
-            logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=rtmdet_model_not_found")
-            return nil
-        }
-
         let inference: RTMDetInferenceResult
         do {
             inference = try RTMDetImageInference.runInstanceSegmentation(
@@ -2147,76 +2176,6 @@ final class DepthAnythingRoomReconstructor {
         guard !samples.isEmpty else { return nil }
         samples.sort()
         return (percentile(sorted: samples, fraction: fraction) ?? samples[samples.count / 2], samples.count)
-    }
-
-    private static let objectModelLock = NSLock()
-    private static var cachedObjectModel: MLModel?
-    private static var objectModelLoadAttempted = false
-
-    /// Compiling the RTMDet mlpackage takes seconds — load once per process.
-    private static func loadObjectBBoxModel() -> MLModel? {
-        objectModelLock.lock()
-        if let cachedObjectModel {
-            objectModelLock.unlock()
-            return cachedObjectModel
-        }
-        if objectModelLoadAttempted {
-            objectModelLock.unlock()
-            return nil
-        }
-        objectModelLock.unlock()
-        let loaded = loadObjectBBoxModelUncached()
-        objectModelLock.lock()
-        cachedObjectModel = loaded
-        objectModelLoadAttempted = true
-        objectModelLock.unlock()
-        return loaded
-    }
-
-    private static func loadObjectBBoxModelUncached() -> MLModel? {
-        let candidates: [(name: String, ext: String)] = [
-            ("rtmdet-ins-m", "mlmodelc"),
-            ("rtmdet-ins-m", "mlpackage"),
-            ("rtmdet_ins_m", "mlmodelc"),
-            ("rtmdet_ins_m", "mlpackage"),
-            ("rtmdet-ins-m-coreml", "mlmodelc"),
-            ("rtmdet-ins-m-coreml", "mlpackage"),
-        ]
-        let subdirectories: [String?] = [
-            nil,
-            "Models/RTMDet",
-            "Furnit/Models/RTMDet",
-        ]
-        let computeUnitFallbacks: [MLComputeUnits] = [
-            .cpuAndNeuralEngine,
-            .cpuAndGPU,
-            .all,
-            .cpuOnly,
-        ]
-        for computeUnits in computeUnitFallbacks {
-            let config = MLModelConfiguration()
-            config.computeUnits = computeUnits
-            for subdirectory in subdirectories {
-                for candidate in candidates {
-                    guard let url = Bundle.main.url(
-                        forResource: candidate.name,
-                        withExtension: candidate.ext,
-                        subdirectory: subdirectory
-                    ) else {
-                        continue
-                    }
-                    do {
-                        let loadURL = candidate.ext == "mlpackage"
-                            ? try MLModel.compileModel(at: url)
-                            : url
-                        return try MLModel(contentsOf: loadURL, configuration: config)
-                    } catch {
-                        logDebug("[DepthAnythingRoom][ObjectBBoxDims] rtmdet_load_failed compute=\(computeUnits) file=\(candidate.name).\(candidate.ext) error=\(error.localizedDescription)")
-                    }
-                }
-            }
-        }
-        return nil
     }
 
     private static func measureWallSampleRect(

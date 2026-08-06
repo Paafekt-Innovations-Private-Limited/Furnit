@@ -1,126 +1,110 @@
-# RTMDet iOS Swift Spike
+# RTMDet iOS Runtime
 
-This repo contains the active Swift/Core ML path for `RTMDet-Ins-m` in the iOS app.
+> Historical filename: this is now the active production runtime, not a pending spike.
 
-## What is already wired
+iOS uses the same RTMDet math, signature, and named tensor contract as Android. Its
+`rtmdet-ins-m-raw-fp16.tflite` payload is an iOS-specific Metal-compatible FlatBuffer:
+the source graph's four `RELU_0_TO_1` clamps are represented by equivalent
+`MAXIMUM(x, 0)` + `MINIMUM(x, 1)` pairs. The app runs it with LiteRT/TensorFlow Lite
+2.17.0 and a mandatory Metal delegate. There is no RTMDet Core ML or CPU runtime
+fallback.
 
-- Swift-side RTMDet loader:
-  - `Furnit/Services/OnDevice/RTMDetModelService.swift`
-- Swift-side RTMDet image/live inference adapter:
-  - `Furnit/Services/OnDevice/RTMDetImageInference.swift`
-- Live Furniture Fit overlay:
-  - `Furnit/Views/FurnitureFit/FurnitureFitView.swift`
-- Settings still-image diagnostic:
-  - `Furnit/Views/SettingsFurnitureFitImageScanView.swift`
+## Active implementation
 
-The live room segmentation flow now uses RTMDet raw heads for the Furniture Fit "brain" path. Older
-segmentation docs/scripts may remain for comparison, but the Swift active path is RTMDet.
+| Piece | Location |
+|---|---|
+| LiteRT C interpreter + Metal delegate | `Furnit/Services/OnDevice/RTMDetLiteRuntime.swift` |
+| Shared model/ODR lifecycle | `Furnit/Services/OnDevice/RTMDetModelService.swift` |
+| Input preparation + raw-head decoder | `Furnit/Services/OnDevice/RTMDetImageInference.swift` |
+| Live Furniture Fit | `Furnit/Views/FurnitureFit/FurnitureFitView.swift` |
+| Settings still-image scan | `Furnit/Views/SettingsFurnitureFitImageScanView.swift` |
+| Room-generation object anchor | `Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift` |
 
-## What is still external
+The app owns one `RTMDetLiteRuntime` instance. Live Furniture Fit, Settings image
+scan, and the first-save object anchor serialize inference through that runtime rather
+than loading duplicate model copies.
 
-The actual `RTMDet-Ins-m` Core ML model package is not in this repo.
+## Shipped artifacts
 
-You still need to add one of these bundled model names to the iOS target:
+- Model: `Furnit/Models/RTMDet/rtmdet-ins-m-raw-fp16.tflite`
+- Git LFS SHA-256 of the current model payload:
+  `f13a4bf62e79284ae1b2f872c8ab7288767475fc2864af627c7dd79479bf1757`
+- Reviewed Android source SHA-256:
+  `7edbd6692733d42a70344999aa5815762585c2a785b0e47cead4d786d4fb854d`
+- Reproducible rewrite: `scripts/rewrite_rtmdet_ios_metal_graph.py`
+- ODR tag: `RTMDetModel`
+- Official static runtime frameworks:
+  - `Vendor/LiteRT/TensorFlowLiteC.xcframework`
+  - `Vendor/LiteRT/TensorFlowLiteCMetal.xcframework`
+- Offline license/attribution: `Furnit/Licenses/LITERT-LICENSE.txt`
 
-- `rtmdet-ins-m.mlpackage`
-- `rtmdet-ins-m.mlmodelc`
-- `rtmdet_ins_m.mlpackage`
-- `rtmdet_ins_m.mlmodelc`
-- `rtmdet-ins-m-coreml.mlpackage`
-- `rtmdet-ins-m-coreml.mlmodelc`
+The former `.mlpackage` exports and Core ML verification scripts remain experimental
+history only. The Xcode target excludes the old local RTMDet package, and the loader
+does not search for it.
 
-Recommended in-repo location:
+## Tensor contract
 
-- `Furnit/Models/RTMDet/`
+- Signature: `serving_default`
+- Input: `input`, float32 NHWC `[1, 640, 640, 3]`
+- Pixel contract: raw BGR `0...255`; normalization is inside the graph
+- Preprocess: stretch to 640×640, matching Android
+- Outputs:
+  - `cls_80/40/20`
+  - `bbox_80/40/20`
+  - `kernel_80/40/20`
+  - `mask_feat`
 
-Helper:
+LiteRT stores outputs as NHWC. After each delegated invocation, the runtime uses
+`TfLiteTensorCopyToBuffer` to extract every output into persistent app-owned storage,
+then physically converts it into contiguous NCHW storage exactly as Android does.
+Creation, warm-up, inference, output consumption, and teardown stay on one persistent
+worker thread. The delegate uses Android-parity precision and quantization options.
+After Metal partitioning, a native no-op audit inspects the execution plan; model load
+fails unless every executable node belongs to Metal. Automatic delegate fallback is
+also disabled.
 
-- `scripts/install_rtmdet_ios_model.sh /path/to/rtmdet-ins-m.mlpackage`
+The rewrite was checked against the Android source with a real RTMDet input: all ten
+named CPU-reference output tensors were bit-for-bit equal. A separate runtime guard
+also rejects the impossible saturated-class pattern seen when the old graph was only
+partly delegated, before mask construction can display a corrupted overlay.
 
-The service tries the configured model with a compute-unit fallback chain; test helpers usually force `.cpuOnly` for deterministic host-app unit tests.
+## App smoke checks
 
-1. `.all`
-2. `.cpuAndNeuralEngine`
-3. `.cpuAndGPU`
-4. `.cpuOnly`
+### Settings image scan
 
-## How to test in the iOS app
+1. Install on a physical iPhone.
+2. Open Settings → Image scan.
+3. Pick a furniture photo.
+4. Confirm the console contains `verified full LiteRT Metal delegation` with
+   `cpuNodes=0` and no unsupported-operation warning.
+5. Confirm boxes, fused instance cutouts, and the merged pixel-union mask appear.
 
-### Settings still-image scan
+The Settings path intentionally matches live RTMDet behavior: uncapped post-NMS
+detections, mask-affinity fusion, and no bbox-only clustering or renderer-based mask
+blending.
 
-1. Add the RTMDet Core ML package to the `Furnit` target.
-   Preferred location: `Furnit/Models/RTMDet/`
-2. Launch the app.
-3. Open `Settings` → `Image scan`.
-4. Pick a furniture photo.
+### Room viewer
 
-What you should see:
+1. Open a saved room and tap **brain**.
+2. Confirm `segmentPrimary` produces the primary transparent cutout.
+3. Tap **text.viewfinder** and confirm live cluster boxes.
+4. Select clusters and tap **Segment**; the preview should hide and the cutouts should
+   appear over the 3D room.
 
-- detection boxes over the image
-- fused instance-mask cutouts from `RTMDetImageInference`
-- a merged mask overlay built by pixel-level RGBA union
+### First-save room measurement
 
-The Settings image scan intentionally mirrors the RTMDet live path:
+Create a Photo → 3D room and tap Save. GeoCalib, Depth Anything Metric Indoor Small,
+and the same shared RTMDet runtime execute in the save pipeline; RTMDet is not loaded
+again as a second interpreter.
 
-- `maxDetectionCount: nil` (no artificial cap)
-- fused `instanceMaskImages`
-- no bbox-overlap-only clustering
-- no `UIGraphicsImageRenderer` mask blending
+## Postprocess behavior
 
-### Room viewer full-video smoke test
+- Decode the raw 80/40/20 heads at the configured confidence floor.
+- Apply confidence-first, class-aware NMS.
+- Build dynamic-kernel mask planes from `mask_feat`.
+- Group object pieces with class-agnostic mask affinity.
+- Rebuild selected masks from cached raw data and perform pixel-level RGBA union.
 
-1. Home → **Photo → 3D** → pick photo (preview opens instantly) or open a **saved** AI room → tap **Save** on preview if testing first-save ML.
-2. Tap **brain** (bottom-left). Default `segmentPrimary` should auto-segment one primary item over the 3D room.
-3. Tap **text.viewfinder** while brain is active. Live camera preview + cluster boxes should appear.
-4. Tap two or more clusters, then tap **Segment**. Preview should hide; transparent cutouts should show over the 3D room.
-5. Tap **Stop** to return to live boxes, or brain again to exit.
-
-Relevant room viewers: `ModelViewerView.swift`, `GLBRoomView.swift`, `MeshRoomView.swift`, `SplatRoomView.swift`.
-Console filters: `BRAIN FLOW`, `FurnitureFit`, `RTMDet`.
-
-## Current Swift postprocess behavior
-
-- Raw outputs expected: `cls_80/40/20`, `bbox_80/40/20`, `kernel_80/40/20`, and `mask_feat`.
-- Decoding chooses the best class per grid cell and applies the configured confidence threshold.
-- NMS is class-aware and confidence-first. Area is only a tie-breaker.
-- `mask_feat` is copied into a cache-friendly `RawMaskFeatureMatrix`.
-- Each selected dynamic kernel builds a raw mask plane.
-- `RTMDetMaskAffinityGraph` groups object pieces by mask-level affinity; grouping is class-agnostic.
-- Cached selected-mask rebuilds reuse raw outputs and expand selected indices through the same affinity graph.
-
-## Main-flow overlay gestures
-
-The room viewer beneath Furniture Fit also owns pinch zoom. When a segmented cutout is visible,
-`FurnitureFitContainerView` must keep two-finger touches so pinch scales the segmented cluster
-(`userPinchScale`) rather than zooming the USDZ / GLB / saved PLY room underneath.
-
-Relevant code:
-
-- `FurnitureFitContainerView.handlePinch(_:)`
-- `FurnitureFitContainerView.hitTest(_:with:)`
-- `FurnitureFitOverlayScaling.resolvedTransform(...)`
-
-## Local output inspection
-
-The current local mask verification script is:
-
-- `scripts/verify_rtmdet_coreml_masks.py`
-
-Example:
-
-```bash
-python3 scripts/verify_rtmdet_coreml_masks.py \
-  --model Furnit/Models/RTMDet/rtmdet-ins-m.mlpackage \
-  --images FurnitTests/rtmdet_repeated_chair_frame.jpg
-```
-
-This script runs the raw output contract, decodes boxes/kernels, executes the CondInst mask MLP,
-and fails when the selected chair mask is empty or collapsed.
-
-Use this for export inspection only. The Swift app/test path is the source of truth for current image-input behavior, cache behavior, and overlay compositing.
-
-## Current limits
-
-- Python probes may not match the current in-graph image preprocessing path.
-- A screenshot of the live overlay is not equivalent to the original camera frame; re-scanning the screenshot can legitimately produce different scores/detections.
-- License review still needs to cover the exact checkpoint you export from, not just the OpenMMLab code license.
+See `Furnit/Views/FurnitureFit/README.md`,
+`docs/IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md`, and
+`Furnit/diagrams/rtmdet-swift-flow.svg` for the owning documentation.

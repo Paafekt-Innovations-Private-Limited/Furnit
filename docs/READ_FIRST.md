@@ -59,8 +59,10 @@ the resolved cause.
   first save.
 - The manual boundary path uses `SinglePhotoRoomReconstructor` and
   `SyntheticDepthEstimator`, then opens `MeshRoomView`.
-- Furniture Fit uses RTMDet Core ML, mask-affinity grouping, transparent cutouts, and
-  room-viewer brain/full-video modes.
+- Furniture Fit uses Android's RTMDet FP16 math/tensor contract through the reviewed
+  iOS Metal graph variant and LiteRT's mandatory, fully audited Metal delegate,
+  followed by mask-affinity grouping, transparent cutouts, and room-viewer
+  brain/full-video modes. There is no RTMDet Core ML or CPU fallback.
 
 ### Android
 
@@ -81,8 +83,9 @@ links.
 
 - Version 1.2 source on both platforms exposes a readable third-party notice and the
   complete Apache License 2.0 text offline under Settings → Licenses.
-- Android additionally bundles LiteRT 1.4.2's complete combined license and required
-  Caffe/BSD attribution. `verifyLegalAssets` is a `preBuild` dependency.
+- Both platforms also bundle their LiteRT combined license text, including the
+  required Caffe/BSD attribution. Android's `verifyLegalAssets` is a `preBuild`
+  dependency.
 - Notices identify the exact **Depth Anything V2 Metric Indoor Small** checkpoint and
   Paafekt's Core ML, ONNX, and LiteRT/TFLite model-format conversions.
 - The unresolved Hypersim CC-BY-SA training-data question remains a lawyer-priority

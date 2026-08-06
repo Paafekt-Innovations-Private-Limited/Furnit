@@ -460,6 +460,12 @@ struct ModelViewerView: View {
         ZStack {
             modelViewerRealityAndFurnitureUnderlay
             modelViewerRoomDimensionsHintLayer
+            // Camera D-pad stays visible at rest; `RealityKitView.Coordinator` observes
+            // the four move notifications and nudges the custom non-AR camera.
+            PaafektViewerCameraDPadOverlay(
+                photoOrientation: model.photoOrientation,
+                hideForCapture: isCapturingSnapshot
+            )
             // Full-video task helper stays visible even after chrome auto-hides.
             fullVideoFurnitureTapBubbleOverlay
             if suppressBuiltInTopChrome || immersiveChrome.isSummoned {
@@ -1270,7 +1276,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var mlModel: MLModel?
     var processInterval: Double = 0.07
     /// Minimum detector confidence (0…1) for parsing RTMDet candidates.
-    /// Matches the updated iOS Core ML path (was 0.25).
+    /// Matches the iOS LiteRT Metal path (was 0.25).
     var scoreThreshold: Float = 0.10
     var active: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Room's photo orientation
