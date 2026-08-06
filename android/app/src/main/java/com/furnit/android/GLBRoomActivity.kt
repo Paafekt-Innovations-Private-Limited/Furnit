@@ -124,6 +124,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var loadingOverlay: FrameLayout
     private lateinit var rootLayout: FrameLayout
     private lateinit var bottomControls: FrameLayout
+    private lateinit var cameraDpadOverlay: FrameLayout
     private lateinit var immersiveRestingChrome: FrameLayout
     private lateinit var windowInsetsController: WindowInsetsControllerCompat
     private var immersiveBackButton: View? = null
@@ -346,6 +347,20 @@ class GLBRoomActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.BOTTOM })
+
+        // Top-left camera D-pad, restored for iOS parity (PaafektViewerCameraDPad).
+        // Deliberately NOT part of the immersive resting chrome and never auto-hidden:
+        // iOS keeps it visible at all times because stepping the camera is a continuous
+        // task that should not require summoning the toolbar first. It calls the same JS
+        // entry points iOS drives through its WebGLCameraMove* notifications.
+        cameraDpadOverlay = createCameraDPadOverlay()
+        rootLayout.addView(
+            cameraDpadOverlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
 
         immersiveRestingChrome = createImmersiveRestingChrome()
         rootLayout.addView(
@@ -773,6 +788,9 @@ class GLBRoomActivity : AppCompatActivity() {
     /** Keep back / title / recenter / bottom brain+camera above the WebView and brain overlay. */
     private fun ensureNavigationChromeOnTop() {
         bottomControls.elevation = 37f
+        if (::cameraDpadOverlay.isInitialized) {
+            cameraDpadOverlay.elevation = 39f
+        }
         if (::immersiveRestingChrome.isInitialized) {
             immersiveRestingChrome.elevation = 36f
         }
@@ -780,6 +798,9 @@ class GLBRoomActivity : AppCompatActivity() {
         rootLayout.bringChildToFront(bottomControls)
         if (::immersiveRestingChrome.isInitialized) {
             rootLayout.bringChildToFront(immersiveRestingChrome)
+        }
+        if (::cameraDpadOverlay.isInitialized) {
+            rootLayout.bringChildToFront(cameraDpadOverlay)
         }
         immersivePersistentActions?.container?.let { rootLayout.bringChildToFront(it) }
         if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
@@ -791,6 +812,85 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun createDpadCircleButton(label: String, onClick: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#80000000"))
+            }
+            val size = dpToPx(44)
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    /**
+     * Top-left arrow cluster. Mirrors iOS `PaafektViewerCameraDPad`: left / (up over down) /
+     * right, 44dp circles at 50% black, anchored top-start. The JS calls below are the exact
+     * ones iOS issues from `GLBRoomView.nudgeGLBCamera*`, so both platforms step the camera
+     * by the same amount.
+     */
+    private fun createCameraDPadOverlay(): FrameLayout {
+        val topInset = if (photoOrientation == "landscape") dpToPx(12) else dpToPx(110)
+        return FrameLayout(this).apply {
+            // The overlay fills the screen so the cluster can be positioned inside it, but it
+            // must not swallow drags meant for OrbitControls — only the buttons take touches.
+            isClickable = false
+            isFocusable = false
+
+            val cluster = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            cluster.addView(createDpadCircleButton("←") { nudgeCameraLeft() })
+
+            val verticalPad = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = dpToPx(8)
+                setPadding(pad, 0, pad, 0)
+            }
+            verticalPad.addView(createDpadCircleButton("↑") { nudgeCameraUp() })
+            verticalPad.addView(createDpadCircleButton("↓") { nudgeCameraDown() })
+            cluster.addView(verticalPad)
+
+            cluster.addView(createDpadCircleButton("→") { nudgeCameraRight() })
+
+            addView(
+                cluster,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.START or Gravity.TOP
+                    topMargin = topInset
+                    marginStart = dpToPx(12)
+                },
+            )
+        }
+    }
+
+    private fun nudgeCameraLeft() {
+        webView.evaluateJavascript("if(typeof moveCamera==='function')moveCamera(-8,0);", null)
+    }
+
+    private fun nudgeCameraRight() {
+        webView.evaluateJavascript("if(typeof moveCamera==='function')moveCamera(8,0);", null)
+    }
+
+    private fun nudgeCameraUp() {
+        webView.evaluateJavascript("if(typeof moveCameraUp==='function')moveCameraUp(0.2);", null)
+    }
+
+    private fun nudgeCameraDown() {
+        webView.evaluateJavascript("if(typeof moveCameraUp==='function')moveCameraUp(-0.2);", null)
     }
 
     private fun toggleInlineBrainArAssistedSizing() {
