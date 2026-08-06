@@ -1898,6 +1898,56 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return rankedIndices.isEmpty ? [candidateIndex] : rankedIndices.sorted()
     }
 
+    /// Median depth (metres) inside a cluster's union box, or nil when no usable depth
+    /// exists. Median rather than mean so a few background pixels leaking into the box do
+    /// not drag a near object backwards. Samples on a coarse grid — this runs per cluster
+    /// per frame and does not need every pixel.
+    private func clusterMedianDepth(
+        rect: CGRect,
+        imageWidth: Int,
+        imageHeight: Int,
+        snapshot: FurnitureFitARDepthSnapshot?
+    ) -> Float? {
+        guard let depthMap = snapshot?.depthMap, imageWidth > 0, imageHeight > 0 else { return nil }
+        guard CVPixelBufferGetPixelFormatType(depthMap) == kCVPixelFormatType_DepthFloat32 else { return nil }
+
+        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(depthMap) else { return nil }
+        let depthWidth = CVPixelBufferGetWidth(depthMap)
+        let depthHeight = CVPixelBufferGetHeight(depthMap)
+        let rowBytes = CVPixelBufferGetBytesPerRow(depthMap)
+        guard depthWidth > 0, depthHeight > 0 else { return nil }
+
+        // Detection boxes are in frame-buffer pixels; the depth map is its own resolution.
+        let scaleX = CGFloat(depthWidth) / CGFloat(imageWidth)
+        let scaleY = CGFloat(depthHeight) / CGFloat(imageHeight)
+        let x0 = max(0, Int((rect.minX * scaleX).rounded(.down)))
+        let y0 = max(0, Int((rect.minY * scaleY).rounded(.down)))
+        let x1 = min(depthWidth - 1, Int((rect.maxX * scaleX).rounded(.up)))
+        let y1 = min(depthHeight - 1, Int((rect.maxY * scaleY).rounded(.up)))
+        guard x1 > x0, y1 > y0 else { return nil }
+
+        let stepX = max(1, (x1 - x0) / 16)
+        let stepY = max(1, (y1 - y0) / 16)
+        var samples: [Float] = []
+        samples.reserveCapacity(17 * 17)
+        var y = y0
+        while y <= y1 {
+            let row = base.advanced(by: y * rowBytes).assumingMemoryBound(to: Float32.self)
+            var x = x0
+            while x <= x1 {
+                let value = row[x]
+                if value.isFinite && value > 0 { samples.append(value) }
+                x += stepX
+            }
+            y += stepY
+        }
+        guard samples.count >= 4 else { return nil }
+        samples.sort()
+        return samples[samples.count / 2]
+    }
+
     private func representativeIndex(
         for memberIndices: [Int],
         candidates: [FurnitureFitDetection]
@@ -1975,7 +2025,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         graph: RTMDetMaskAffinityGraph?,
         imageWidth: Int,
         imageHeight: Int,
-        preferCenter: Bool
+        preferCenter: Bool,
+        depthSnapshot: FurnitureFitARDepthSnapshot? = nil
     ) -> (representative: Int, members: [Int])? {
         guard !candidates.isEmpty else { return nil }
         let clusters: [[Int]]
@@ -1989,7 +2040,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             clusters = candidates.indices.map { [$0] }
         }
 
-        let rankedClusters = clusters.compactMap { members -> (representative: Int, members: [Int], confidence: Float, centerDistance: CGFloat, area: CGFloat)? in
+        let rankedClusters = clusters.compactMap { members -> (representative: Int, members: [Int], confidence: Float, centerDistance: CGFloat, area: CGFloat, depth: Float?)? in
             guard let representative = representativeIndex(for: members, candidates: candidates) else { return nil }
             let rect = members.reduce(CGRect.null) { union, idx in
                 idx < candidates.count ? union.union(candidates[idx].boundingBox) : union
@@ -1999,14 +2050,42 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let centerY = CGFloat(max(1, imageHeight)) * 0.5
             let dx = (rect.midX - centerX) / max(centerX, 1)
             let dy = (rect.midY - centerY) / max(centerY, 1)
+
+            // COLLECTIVE confidence, not the single best member's.
+            //
+            // This used to be `candidates[representative].confidence`, so a cluster was
+            // ranked by its strongest piece alone: five consistent parts at ~0.53 lost to
+            // one stray box at 0.60, even though the cluster is far more of the frame and
+            // far more consistently detected. Weighting each member by its own box area
+            // means a large, agreeing group outranks a small confident outlier, while a
+            // cluster carried by one big piece still scores close to that piece.
+            var weightSum: Float = 0
+            var weightedConfidence: Float = 0
+            for idx in members where idx < candidates.count {
+                let member = candidates[idx]
+                let weight = max(Float(member.w * member.h), 1e-6)
+                weightSum += weight
+                weightedConfidence += member.confidence * weight
+            }
+            let collectiveConfidence = weightSum > 0
+                ? weightedConfidence / weightSum
+                : candidates[representative].confidence
+
             return (
                 representative: representative,
                 members: members,
-                confidence: candidates[representative].confidence,
+                confidence: collectiveConfidence,
                 centerDistance: sqrt(dx * dx + dy * dy),
-                area: rect.width * rect.height
+                area: rect.width * rect.height,
+                depth: clusterMedianDepth(rect: rect, imageWidth: imageWidth, imageHeight: imageHeight, snapshot: depthSnapshot)
             )
         }
+
+        // FOREFRONT, measured rather than guessed, when a depth map is available.
+        // Centre-distance and area only correlate with "in front"; depth decides it. When
+        // no depth is present (no LiDAR / AR session) this is nil for every cluster and the
+        // original centre+area proxy is used unchanged.
+        let depthsAvailable = rankedClusters.contains { $0.depth != nil }
         guard !rankedClusters.isEmpty else { return nil }
         if !preferCenter {
             return rankedClusters.max { left, right in
@@ -2025,6 +2104,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let leftEligible = left.confidence >= confidenceFloor
             let rightEligible = right.confidence >= confidenceFloor
             if leftEligible != rightEligible { return !leftEligible && rightEligible }
+            // Nearer cluster wins outright once both clear the confidence floor — that is
+            // what "forefront" means. 10cm guard so depth noise does not flip the choice
+            // frame to frame.
+            if depthsAvailable, leftEligible,
+               let leftDepth = left.depth, let rightDepth = right.depth,
+               abs(leftDepth - rightDepth) > 0.10 {
+                return leftDepth > rightDepth
+            }
             if leftEligible && abs(left.centerDistance - right.centerDistance) > 0.08 {
                 return left.centerDistance > right.centerDistance
             }
@@ -4497,7 +4584,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 graph: result.maskAffinityGraph,
                 imageWidth: bufW,
                 imageHeight: bufH,
-                preferCenter: shouldPreferCenteredLivePrimary
+                preferCenter: shouldPreferCenteredLivePrimary,
+                depthSnapshot: arDepthSnapshot
             )
 
             // Default RTMDet live path: prefer the confident cluster nearest frame center, then
