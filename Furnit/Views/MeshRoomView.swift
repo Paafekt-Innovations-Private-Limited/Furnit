@@ -1798,6 +1798,8 @@ struct MeshWebGLView: UIViewRepresentable {
         let base64Image = imageData.base64EncodedString()
 
         let isPortrait = photoOrientation == .portrait
+        // Settings > Infinite Zoom (defaults true, so read the object not bool(forKey:)).
+        let infiniteZoomEnabled = (UserDefaults.standard.object(forKey: "roomViewer.infiniteZoom") as? Bool) ?? true
         let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
 
         return """
@@ -1935,8 +1937,13 @@ struct MeshWebGLView: UIViewRepresentable {
                 controls.panSpeed = 1.5;        // Fast pan
                 controls.enableZoom = true;
                 controls.enablePan = true;
-                controls.minDistance = 0.3;
-                controls.maxDistance = Math.max(roomWidth, roomDepth) * 1.5;
+                // Settings > Infinite Zoom: lift the dolly clamps, matching the GLB and
+                // Metal splat viewers.
+                const INFINITE_ZOOM_ENABLED = \(infiniteZoomEnabled);
+                controls.minDistance = INFINITE_ZOOM_ENABLED ? 0.05 : 0.3;
+                controls.maxDistance = INFINITE_ZOOM_ENABLED
+                    ? 1000
+                    : Math.max(roomWidth, roomDepth) * 1.5;
                 controls.maxPolarAngle = Math.PI * 0.95;
                 controls.minPolarAngle = Math.PI * 0.05;
 

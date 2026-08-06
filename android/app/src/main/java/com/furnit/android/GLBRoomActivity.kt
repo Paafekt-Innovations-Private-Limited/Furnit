@@ -2231,6 +2231,10 @@ class GLBRoomActivity : AppCompatActivity() {
         // @AppStorage("roomViewer.oscillation") and the original 4fd456a8 behaviour.
         val autoOrbitEnabled = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
             .getBoolean("auto_orbit_enabled", false)
+        // Settings > Infinite Zoom. Default ON, matching iOS
+        // @AppStorage("roomViewer.infiniteZoom").
+        val infiniteZoomEnabled = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
+            .getBoolean("infinite_zoom_enabled", true)
 
         // Three.js GLB viewer matching iOS GLBRoomView exactly
         return """
@@ -2315,8 +2319,11 @@ class GLBRoomActivity : AppCompatActivity() {
         controls.enableZoom = true;
         controls.enablePan = true;
         controls.panSpeed = 1.5;
-        controls.minDistance = 0.5;
-        controls.maxDistance = 20;
+        // Settings > Infinite Zoom: lift the dolly clamps instead of the room-sized
+        // default. Mirrors the Metal splat viewer, which widens 0.5..3.0 to 0.1..50.
+        const INFINITE_ZOOM_ENABLED = $infiniteZoomEnabled;
+        controls.minDistance = INFINITE_ZOOM_ENABLED ? 0.05 : 0.5;
+        controls.maxDistance = INFINITE_ZOOM_ENABLED ? 1000 : 20;
         controls.touches = {
             ONE: THREE.TOUCH.ROTATE,
             TWO: THREE.TOUCH.DOLLY_PAN
@@ -2469,7 +2476,9 @@ class GLBRoomActivity : AppCompatActivity() {
             initialControlsTarget = controls.target.clone();
 
             const roomWidth = boxWorld.max.x - boxWorld.min.x;
-            controls.maxDistance = Math.max(roomWidth, depth) * 2.0;
+            // Framing recomputes a room-relative cap; leave it alone when the user asked
+            // for infinite zoom, or the setting is silently undone a frame later.
+            if (!INFINITE_ZOOM_ENABLED) controls.maxDistance = Math.max(roomWidth, depth) * 2.0;
             roomBoundsForClamping = {
                 minX: boxWorld.min.x + 0.05,
                 maxX: boxWorld.max.x - 0.05,

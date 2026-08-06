@@ -124,6 +124,16 @@ class SettingsActivity : AppCompatActivity() {
                     prefs.edit().putBoolean("auto_orbit_enabled", isChecked).apply()
                 },
             )
+            addView(
+                PaafektScreenViews.createToggleRow(
+                    this@SettingsActivity,
+                    getString(R.string.settings_infinite_zoom),
+                    getString(R.string.settings_infinite_zoom_description),
+                    prefs.getBoolean("infinite_zoom_enabled", true),
+                ) { isChecked ->
+                    prefs.edit().putBoolean("infinite_zoom_enabled", isChecked).apply()
+                },
+            )
         }
     }
 

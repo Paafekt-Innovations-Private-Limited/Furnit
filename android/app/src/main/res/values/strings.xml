@@ -116,6 +116,8 @@
     <string name="settings_credits">Credits</string>
     <string name="settings_auto_orbit">Auto Orbit</string>
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
+    <string name="settings_infinite_zoom">Infinite Zoom</string>
+    <string name="settings_infinite_zoom_description">Zoom in and out without limits</string>
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
     <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="settings_image_scan">Image Scan</string>

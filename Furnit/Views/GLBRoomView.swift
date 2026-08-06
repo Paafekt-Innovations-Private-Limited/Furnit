@@ -1719,6 +1719,9 @@ struct GLBWebGLView: UIViewRepresentable {
         // this is the HTML generator, and the original injected the flag at generation time
         // too, so the viewer picks the setting up when the room is opened.
         let autoOrbitEnabled = UserDefaults.standard.bool(forKey: "roomViewer.oscillation")
+        // Settings > Infinite Zoom. Defaults to true, so read the object and fall back
+        // rather than using bool(forKey:), which returns false for an unset key.
+        let infiniteZoomEnabled = (UserDefaults.standard.object(forKey: "roomViewer.infiniteZoom") as? Bool) ?? true
         let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
         return """
         <!DOCTYPE html>
@@ -1789,8 +1792,11 @@ struct GLBWebGLView: UIViewRepresentable {
                 controls.enableZoom = true;
                 controls.enablePan = true;
                 controls.panSpeed = 1.5;
-                controls.minDistance = 0.5;
-                controls.maxDistance = 20;
+                // Settings > Infinite Zoom: lift the dolly clamps. Mirrors the Metal splat
+                // viewer, which widens 0.5..3.0 to 0.1..50 for the same setting.
+                const INFINITE_ZOOM_ENABLED = \(infiniteZoomEnabled);
+                controls.minDistance = INFINITE_ZOOM_ENABLED ? 0.05 : 0.5;
+                controls.maxDistance = INFINITE_ZOOM_ENABLED ? 1000 : 20;
                 controls.touches = {
                     ONE: THREE.TOUCH.ROTATE,
                     TWO: THREE.TOUCH.DOLLY_PAN
@@ -1989,7 +1995,8 @@ struct GLBWebGLView: UIViewRepresentable {
                             initialTarget.set(0, eyeHeight, targetZ);
                             camera.position.copy(initialCameraPos);
                             controls.target.copy(initialTarget);
-                            controls.maxDistance = Math.max(roomWidth, roomDepth) * 2.0;
+                            // Do not re-clamp when the user asked for infinite zoom.
+                            if (!INFINITE_ZOOM_ENABLED) controls.maxDistance = Math.max(roomWidth, roomDepth) * 2.0;
                             controls.update();
                             console.log('[GLBViewer] Room scaled by factor:', scaleFactor);
                         }
