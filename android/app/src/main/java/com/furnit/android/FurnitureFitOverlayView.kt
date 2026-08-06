@@ -33,7 +33,6 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var inputSize = 640 // Model input size
     private var sourceFrameWidth = 640
     private var sourceFrameHeight = 640
-    private var lastPrimaryLabel: String? = null
     private var hitTestPixels: IntArray? = null
     private var hitTestWidth = 0
     private var hitTestHeight = 0
@@ -503,17 +502,19 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         return copy
     }
 
-    private fun maybeResetTransformForPrimaryDetection(primary: DetectionResult?) {
-        val newPrimaryLabel = primary?.label
-        if (newPrimaryLabel != null && newPrimaryLabel != lastPrimaryLabel) {
-            furnitureScale = 1.0f
-            translateX = 0f
-            translateY = 0f
-        }
-        if (newPrimaryLabel != null) {
-            lastPrimaryLabel = newPrimaryLabel
-        }
-    }
+    // Deliberately no per-frame transform reset.
+    //
+    // This used to clear furnitureScale/translate whenever the primary detection's LABEL
+    // differed from the previous frame's. But the primary is re-ranked every frame by
+    // FurnitureFitManager.primaryDetectionScore() over confidence/area/geometry, so its
+    // label flips whenever two candidates score closely or the class prediction wobbles
+    // (chair<->couch). The user's pinch was being wiped mid-session by ordinary detection
+    // churn, on a frame they did nothing.
+    //
+    // A user transform now survives until the user themselves changes subject, via the
+    // explicit resetTransform() calls in SinglePhotoRoomActivity and SettingsImageScanActivity.
+    // This matches iOS, where pinchScale lives on the overlay ITEM (FurnitureFitView
+    // overlayItems[index].pinchScale) and per-frame detection churn cannot clear it.
 
     private fun computeVerticalClampFactor(totalScaleX: Float): Float {
         val displayedHeight = displayedFurnitureHeightMeters
@@ -546,7 +547,6 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     fun setDetections(dets: List<DetectionResult>, modelInputSize: Int = 640) {
-        maybeResetTransformForPrimaryDetection(dets.firstOrNull())
         detections = dets
         primaryDetection = dets.firstOrNull()
         detectionClusters = emptyList()
@@ -600,7 +600,6 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         sourceHeight: Int = mask?.height ?: modelInputSize,
         primaryDetection: DetectionResult? = dets.firstOrNull(),
     ) {
-        maybeResetTransformForPrimaryDetection(primaryDetection)
         replaceMaskBitmap(mask)
         detections = dets
         this.primaryDetection = primaryDetection
