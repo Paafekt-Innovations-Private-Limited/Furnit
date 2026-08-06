@@ -953,10 +953,22 @@ class RealityKitObjectPlacementManager: ObservableObject {
         let rotationSensitivity: Float = 0.01
         let rotationAngle = Float(translation.x) * rotationSensitivity
 
-        // Apply rotation around Y-axis (vertical axis) to the selected object
+        // Apply rotation around Y-axis (vertical axis) to the selected object.
+        //
+        // This composes onto the LIVE rotation every gesture frame, so the quaternion is
+        // multiplied hundreds of times per drag. Unit quaternions live on S^3, and
+        // repeated float multiplication walks off that manifold: |q| drifts from 1 and
+        // the entity picks up a progressive skew/scale that never resets. Renormalising
+        // after each composition puts it back on S^3.
+        //
+        // The cleaner pattern is 30 lines away in RealityKitGestureHandlers.handleRotation,
+        // which captures the transform at .began and composes a single quaternion from the
+        // accumulated angle each frame -- no drift possible because nothing accumulates in
+        // the quaternion itself. Worth adopting here when this gesture gains begin/end
+        // state; until then, normalise.
         let currentRotation = selectedObject.entity.transform.rotation
         let yAxisRotation = simd_quatf(angle: rotationAngle, axis: SIMD3<Float>(0, 1, 0))
-        let newRotation = yAxisRotation * currentRotation
+        let newRotation = simd_normalize(yAxisRotation * currentRotation)
 
         // Update the object's rotation
         selectedObject.entity.transform.rotation = newRotation
