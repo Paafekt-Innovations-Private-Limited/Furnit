@@ -519,19 +519,22 @@ struct PaafektViewerCameraDPadOverlay: View {
     var hideForCapture: Bool = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        // Top-TRAILING: the back chevron owns the top-leading corner, and the D-pad was
+        // landing on top of it. Kept below the toolbar row so it clears the persistent
+        // actions that also sit top-trailing.
+        ZStack(alignment: .topTrailing) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .trailing, spacing: 10) {
                 PaafektViewerCameraDPad()
-                    .padding(.leading, 12)
-                    .padding(.top, 12)
+                    .padding(.trailing, 12)
+                    .padding(.top, photoOrientation == .landscape ? 12 : 72)
                 if photoOrientation == .landscape {
                     Spacer(minLength: 0)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .opacity(hideForCapture ? 0 : 1)
         .zIndex(102)

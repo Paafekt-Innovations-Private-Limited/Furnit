@@ -869,9 +869,11 @@ class GLBRoomActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
-                    gravity = Gravity.START or Gravity.TOP
+                    // Top-END, not START: the back button owns the top-start corner and the
+                    // D-pad was overlapping it. Matches iOS PaafektViewerCameraDPadOverlay.
+                    gravity = Gravity.END or Gravity.TOP
                     topMargin = topInset
-                    marginStart = dpToPx(12)
+                    marginEnd = dpToPx(12)
                 },
             )
         }
