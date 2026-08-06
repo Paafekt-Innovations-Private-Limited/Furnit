@@ -1715,6 +1715,10 @@ struct GLBWebGLView: UIViewRepresentable {
     private func generateGLBViewerHTML(glbData: Data) -> String {
         let base64GLB = glbData.base64EncodedString()
         let isPortrait = photoOrientation == .portrait
+        // Settings > Auto-Orbit. Read straight from UserDefaults rather than @AppStorage:
+        // this is the HTML generator, and the original injected the flag at generation time
+        // too, so the viewer picks the setting up when the room is opened.
+        let autoOrbitEnabled = UserDefaults.standard.bool(forKey: "roomViewer.oscillation")
         let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
         return """
         <!DOCTYPE html>
@@ -1792,8 +1796,80 @@ struct GLBWebGLView: UIViewRepresentable {
                     TWO: THREE.TOUCH.DOLLY_PAN
                 };
 
-                // D-pad parity (removed from UI): walk on XZ, vertical Y — also via two-finger pan above.
+                // --- Auto-Orbit (Settings > Auto-Orbit) -----------------------------
+                // Restored from 4fd456a8; lost when the WebGL splat viewer became
+                // MetalSplatter in 71cba782, which left the toggle wired to nothing.
+                // Original constants: speed 0.35, amplitude PI/6 (+/-30 degrees),
+                // portrait arcs, landscape sweeps, 30fps throttle, default OFF.
+                const AUTO_ORBIT_ENABLED = \(autoOrbitEnabled);
+                const AUTO_ORBIT_IS_PORTRAIT = \(isPortrait);
+                const AUTO_ORBIT_SPEED = 0.35;
+                const AUTO_ORBIT_AMPLITUDE = Math.PI / 6;
+                const AUTO_ORBIT_IDLE_DELAY_MS = 2000;
+                const AUTO_ORBIT_FRAME_MS = 1000 / 30;
+
+                let autoOrbitTime = 0;
+                let autoOrbitRadius = 0;
+                let autoOrbitBaseAngle = 0;
+                let autoOrbitOrigin = null;
+                let autoOrbitLastFrameMs = 0;
+                let userInteracting = false;
+                let lastInteractionMs = Date.now();
+
+                function noteAutoOrbitInteraction() {
+                    lastInteractionMs = Date.now();
+                    autoOrbitOrigin = null;
+                }
+                controls.addEventListener('start', function () {
+                    userInteracting = true;
+                    noteAutoOrbitInteraction();
+                });
+                controls.addEventListener('end', function () {
+                    userInteracting = false;
+                    noteAutoOrbitInteraction();
+                });
+
+                function beginAutoOrbitFromCurrentCamera() {
+                    const t = controls.target;
+                    const dx = camera.position.x - t.x;
+                    const dz = camera.position.z - t.z;
+                    autoOrbitRadius = Math.sqrt(dx * dx + dz * dz);
+                    autoOrbitBaseAngle = Math.atan2(dx, dz);
+                    autoOrbitOrigin = { x: camera.position.x, z: camera.position.z };
+                    autoOrbitTime = 0;
+                }
+
+                function stepAutoOrbit(nowMs) {
+                    if (!AUTO_ORBIT_ENABLED || userInteracting) return false;
+                    if (nowMs - lastInteractionMs < AUTO_ORBIT_IDLE_DELAY_MS) return false;
+                    if (nowMs - autoOrbitLastFrameMs < AUTO_ORBIT_FRAME_MS) return false;
+
+                    if (autoOrbitOrigin === null) beginAutoOrbitFromCurrentCamera();
+                    if (autoOrbitRadius <= 0.1) return false;
+
+                    const dt = (nowMs - autoOrbitLastFrameMs) / 1000;
+                    autoOrbitLastFrameMs = nowMs;
+                    autoOrbitTime += Math.min(dt, 0.1);
+
+                    const t = controls.target;
+                    if (AUTO_ORBIT_IS_PORTRAIT) {
+                        const angle = autoOrbitBaseAngle
+                            + AUTO_ORBIT_AMPLITUDE * Math.sin(autoOrbitTime * AUTO_ORBIT_SPEED);
+                        camera.position.x = t.x + autoOrbitRadius * Math.sin(angle);
+                        camera.position.z = t.z + autoOrbitRadius * Math.cos(angle);
+                    } else {
+                        const sweep = autoOrbitRadius * 0.3
+                            * Math.sin(autoOrbitTime * AUTO_ORBIT_SPEED);
+                        camera.position.x = autoOrbitOrigin.x + sweep;
+                        camera.position.z = autoOrbitOrigin.z;
+                    }
+                    camera.lookAt(t);
+                    return true;
+                }
+
+                // D-pad parity: walk on XZ, vertical Y — also via two-finger pan above.
                 window.moveCamera = function(dx, dy) {
+                    noteAutoOrbitInteraction();
                     const moveSpeed = 0.03;
                     let newX = camera.position.x + dx * moveSpeed;
                     let newZ = camera.position.z + dy * moveSpeed;
@@ -1815,6 +1891,7 @@ struct GLBWebGLView: UIViewRepresentable {
                 };
 
                 window.moveCameraUp = function(dy) {
+                    noteAutoOrbitInteraction();
                     if (typeof dy !== 'number' || !isFinite(dy)) return;
                     camera.position.y += dy;
                     controls.target.y += dy;
@@ -1828,6 +1905,7 @@ struct GLBWebGLView: UIViewRepresentable {
 
                 // Listen for orbit commands from Swift (touch drag)
                 window.orbitCamera = function(deltaX, deltaY) {
+                    noteAutoOrbitInteraction();
                     const spherical = new THREE.Spherical();
                     const offset = new THREE.Vector3();
                     offset.copy(camera.position).sub(controls.target);
@@ -1928,6 +2006,7 @@ struct GLBWebGLView: UIViewRepresentable {
 
                         // Recenter function
                         window.recenterCamera = function() {
+                    noteAutoOrbitInteraction();
                             camera.position.copy(initialCameraPos);
                             controls.target.copy(initialTarget);
                             controls.update();
@@ -1963,6 +2042,7 @@ struct GLBWebGLView: UIViewRepresentable {
                 // Animation loop
                 function animate() {
                     requestAnimationFrame(animate);
+                    stepAutoOrbit(Date.now());
                     controls.update();
                     renderer.render(scene, camera);
                 }
