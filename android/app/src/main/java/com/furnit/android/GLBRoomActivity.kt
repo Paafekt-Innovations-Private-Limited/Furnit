@@ -2225,6 +2225,10 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun generateWebGLHTML(): String {
         val isPortrait = photoOrientation == "portrait"
+        // Settings > Auto Orbit (settings_auto_orbit). Default OFF, matching iOS
+        // @AppStorage("roomViewer.oscillation") and the original 4fd456a8 behaviour.
+        val autoOrbitEnabled = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
+            .getBoolean("auto_orbit_enabled", false)
 
         // Three.js GLB viewer matching iOS GLBRoomView exactly
         return """
@@ -2316,7 +2320,81 @@ class GLBRoomActivity : AppCompatActivity() {
             TWO: THREE.TOUCH.DOLLY_PAN
         };
 
-        // D-pad removed from UI; moveCamera still used if needed — two-finger pan covers walk-through.
+        // --- Auto Orbit (Settings > Auto Orbit) -------------------------------------
+        // Restored from 4fd456a8; the implementation was lost when the WebGL splat viewer
+        // was replaced by MetalSplatter in 71cba782, leaving the toggle wired to nothing.
+        // Same constants as the original: speed 0.35, amplitude PI/6 (+/-30 degrees),
+        // portrait sweeps a circular arc, landscape sweeps horizontally, 30fps throttle.
+        const AUTO_ORBIT_ENABLED = $autoOrbitEnabled;
+        const AUTO_ORBIT_IS_PORTRAIT = $isPortrait;
+        const AUTO_ORBIT_SPEED = 0.35;
+        const AUTO_ORBIT_AMPLITUDE = Math.PI / 6;
+        const AUTO_ORBIT_IDLE_DELAY_MS = 2000;
+        const AUTO_ORBIT_FRAME_MS = 1000 / 30;
+
+        let autoOrbitTime = 0;
+        let autoOrbitRadius = 0;
+        let autoOrbitBaseAngle = 0;
+        let autoOrbitOrigin = null;
+        let autoOrbitLastFrameMs = 0;
+        let userInteracting = false;
+        let lastInteractionMs = Date.now();
+
+        // Any camera change counts as interaction: pinch, drag, and the D-pad nudges all
+        // move the camera, and none of them should fight an idle animation.
+        function noteAutoOrbitInteraction() {
+            lastInteractionMs = Date.now();
+            autoOrbitOrigin = null;
+        }
+        controls.addEventListener('start', function () {
+            userInteracting = true;
+            noteAutoOrbitInteraction();
+        });
+        controls.addEventListener('end', function () {
+            userInteracting = false;
+            noteAutoOrbitInteraction();
+        });
+
+        // Capture the orbit basis when idling begins, so the sweep starts from wherever the
+        // user left the camera rather than snapping to the initial framing.
+        function beginAutoOrbitFromCurrentCamera() {
+            const t = controls.target;
+            const dx = camera.position.x - t.x;
+            const dz = camera.position.z - t.z;
+            autoOrbitRadius = Math.sqrt(dx * dx + dz * dz);
+            autoOrbitBaseAngle = Math.atan2(dx, dz);
+            autoOrbitOrigin = { x: camera.position.x, z: camera.position.z };
+            autoOrbitTime = 0;
+        }
+
+        function stepAutoOrbit(nowMs) {
+            if (!AUTO_ORBIT_ENABLED || userInteracting) return false;
+            if (nowMs - lastInteractionMs < AUTO_ORBIT_IDLE_DELAY_MS) return false;
+            if (nowMs - autoOrbitLastFrameMs < AUTO_ORBIT_FRAME_MS) return false;
+
+            if (autoOrbitOrigin === null) beginAutoOrbitFromCurrentCamera();
+            if (autoOrbitRadius <= 0.1) return false;
+
+            const dt = (nowMs - autoOrbitLastFrameMs) / 1000;
+            autoOrbitLastFrameMs = nowMs;
+            autoOrbitTime += Math.min(dt, 0.1);
+
+            const t = controls.target;
+            if (AUTO_ORBIT_IS_PORTRAIT) {
+                const angle = autoOrbitBaseAngle
+                    + AUTO_ORBIT_AMPLITUDE * Math.sin(autoOrbitTime * AUTO_ORBIT_SPEED);
+                camera.position.x = t.x + autoOrbitRadius * Math.sin(angle);
+                camera.position.z = t.z + autoOrbitRadius * Math.cos(angle);
+            } else {
+                const sweep = autoOrbitRadius * 0.3
+                    * Math.sin(autoOrbitTime * AUTO_ORBIT_SPEED);
+                camera.position.x = autoOrbitOrigin.x + sweep;
+                camera.position.z = autoOrbitOrigin.z;
+            }
+            camera.lookAt(t);
+            return true;
+        }
+
         let initialCameraPosition = null;
         let initialControlsTarget = null;
         let roomBoundsForClamping = null;
@@ -2448,6 +2526,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // D-pad / Splat parity: walk on XZ, vertical Y (same as iOS GLBRoomView).
         window.moveCamera = function(dx, dy) {
+            noteAutoOrbitInteraction();
             const moveSpeed = 0.03;
             let newX = camera.position.x + dx * moveSpeed;
             let newZ = camera.position.z + dy * moveSpeed;
@@ -2469,6 +2548,7 @@ class GLBRoomActivity : AppCompatActivity() {
         };
 
         window.moveCameraUp = function(dy) {
+            noteAutoOrbitInteraction();
             if (typeof dy !== 'number' || !isFinite(dy)) return;
             camera.position.y += dy;
             controls.target.y += dy;
@@ -2484,6 +2564,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // Camera orbit function (called from Android)
         window.orbitCamera = function(deltaX, deltaY) {
+            noteAutoOrbitInteraction();
             const rotateSpeed = 0.012;  // Matching iOS
             const spherical = new THREE.Spherical();
             const offset = new THREE.Vector3();
@@ -2501,6 +2582,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // Recenter function
         window.recenterCamera = function() {
+            noteAutoOrbitInteraction();
             if (isFlatPhotoMesh) {
                 applyFlatPhotoCamera();
                 console.log('[GLBViewer] Flat photo camera recentered');
@@ -2600,6 +2682,7 @@ class GLBRoomActivity : AppCompatActivity() {
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
+            stepAutoOrbit(Date.now());
             controls.update();
             renderer.render(scene, camera);
         }
