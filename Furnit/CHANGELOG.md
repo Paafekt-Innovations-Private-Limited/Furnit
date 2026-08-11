@@ -1,6 +1,6 @@
 # Furnit iOS - Recent Changes
 
-## Unreleased — Wide-Angle Capture Quality and RTMDet Runtime Parity
+## Unreleased — Wide-Angle Capture Quality and Detection Vocabulary
 
 - Changed only the custom iOS 0.5× room camera: it now prefers Apple's virtual
   triple/dual-wide camera, selects its widest native field of view and largest
@@ -8,21 +8,20 @@
   virtual-device fusion, and disables fast-capture prioritization. This lets Apple's
   multi-frame quality/noise-reduction path reduce ultra-wide grain; standard capture
   is unchanged.
-- Replaced the iOS RTMDet Core ML runtime with a mathematically equivalent FP16
-  TFLite variant of Android's graph, run through LiteRT 2.17.0 with a mandatory Metal
-  delegate. The iOS variant replaces four unsupported clamp operators with equivalent
-  max/min pairs; all ten reference outputs remain bit-for-bit equal.
-- Added one shared RTMDet runtime for live segmentation, Settings image scan, and
-  first-save room object anchoring; removed the RTMDet Core ML/CPU load fallback and
-  duplicate room-anchor model instance.
-- Matched Android's delegate options and output handling: quantization support and
-  precision-loss mode are enabled, every LiteRT output is extracted into persistent
-  buffers, and NHWC is physically converted to contiguous NCHW. The complete LiteRT
-  lifecycle now stays on one dedicated thread, and model load fails unless a native
-  execution-plan audit reports zero CPU nodes. The expensive tensor/mask diagnostic
-  sweeps were removed from live Debug frames.
-- Kept the RTMDet model behind the existing `RTMDetModel` On-Demand Resource tag and
-  added the complete LiteRT license/attribution document to the offline Licenses UI.
+- Cleared the Furniture Fit class blacklist on both platforms. All 80 COCO classes are
+  now detectable; previously 68 were suppressed, leaving only 12 furniture classes.
+- Added one shared RTMDet model for live segmentation, Settings image scan, and
+  first-save room object anchoring, removing the duplicate room-anchor model instance.
+  `RTMDetModelService.modelForInference()` loads on demand and waits on an in-flight
+  load rather than starting a second interpreter.
+- **Reverted before release:** a port of the iOS RTMDet runtime from Core ML to an FP16
+  TFLite variant of Android's graph via LiteRT 2.17.0 with a mandatory Metal delegate.
+  Full Metal delegation was achieved, but FP16 execution on Metal corrupted the class
+  heads on every frame while the identical model and preprocessed bytes decoded
+  correctly on a CPU interpreter. **iOS remains on Core ML (`rtmdet-ins-m.mlpackage`,
+  `RTMDetModel` ODR tag); Android keeps its LiteRT/TFLite GPU path.** The two platforms
+  intentionally no longer share a runtime. Work preserved on `wip/litert-ios`.
+- No LiteRT license document ships on iOS, since iOS does not bundle LiteRT.
 
 ## 1.2 — Offline Licenses and Attribution (2026-08-05)
 

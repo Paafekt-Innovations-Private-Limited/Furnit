@@ -1873,7 +1873,7 @@ final class DepthAnythingRoomReconstructor {
     }
 
     /// RTMDet inference is image-only, so it can run concurrently with GeoCalib and
-    /// Depth Anything. It reuses the app's single LiteRT Metal runtime.
+    /// Depth Anything. It reuses the app's single shared Core ML `MLModel`.
     private static func detectMeasurementObjectRect(
         image: UIImage,
         imageWidth: Int,

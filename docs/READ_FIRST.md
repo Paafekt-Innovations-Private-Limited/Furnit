@@ -59,10 +59,16 @@ the resolved cause.
   first save.
 - The manual boundary path uses `SinglePhotoRoomReconstructor` and
   `SyntheticDepthEstimator`, then opens `MeshRoomView`.
-- Furniture Fit uses Android's RTMDet FP16 math/tensor contract through the reviewed
-  iOS Metal graph variant and LiteRT's mandatory, fully audited Metal delegate,
-  followed by mask-affinity grouping, transparent cutouts, and room-viewer
-  brain/full-video modes. There is no RTMDet Core ML or CPU fallback.
+- Furniture Fit runs RTMDet-Ins-m as **Core ML** (`rtmdet-ins-m.mlpackage`, `RTMDetModel`
+  ODR tag) through `RTMDetModelService` + `RTMDetImageInference`, followed by
+  mask-affinity grouping, transparent cutouts, and room-viewer brain/full-video modes.
+- **iOS and Android deliberately do not share an RTMDet runtime.** iOS is Core ML;
+  Android is LiteRT/TFLite. A port of iOS to LiteRT with a mandatory Metal delegate was
+  attempted and reverted in `52533590`: full Metal delegation was achieved, but FP16
+  execution on Metal corrupted the class heads on every frame, while the same model and
+  the same preprocessed bytes decoded correctly on a CPU interpreter. Do not re-derive
+  this as a preprocessing, tensor-layout or partial-delegation bug — all three were ruled
+  out. The abandoned port is preserved on `wip/litert-ios`.
 
 ### Android
 
@@ -83,11 +89,12 @@ links.
 
 - Version 1.2 source on both platforms exposes a readable third-party notice and the
   complete Apache License 2.0 text offline under Settings → Licenses.
-- Both platforms also bundle their LiteRT combined license text, including the
-  required Caffe/BSD attribution. Android's `verifyLegalAssets` is a `preBuild`
-  dependency.
+- **Android only** bundles the LiteRT combined license text, including the required
+  Caffe/BSD attribution, because only Android ships LiteRT. Android's
+  `verifyLegalAssets` is a `preBuild` dependency. iOS bundles no LiteRT license text.
 - Notices identify the exact **Depth Anything V2 Metric Indoor Small** checkpoint and
-  Paafekt's Core ML, ONNX, and LiteRT/TFLite model-format conversions.
+  Paafekt's Core ML, ONNX, and LiteRT/TFLite model-format conversions. RTMDet-Ins-m is
+  disclosed as Core ML on iOS and LiteRT/TFLite on Android.
 - The unresolved Hypersim CC-BY-SA training-data question remains a lawyer-priority
   tail risk; packaging attribution does not decide that interpretation. See
   [`MODEL_LICENSE_AUDIT.md`](MODEL_LICENSE_AUDIT.md).

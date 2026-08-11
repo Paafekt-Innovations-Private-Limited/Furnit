@@ -1276,7 +1276,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var mlModel: MLModel?
     var processInterval: Double = 0.07
     /// Minimum detector confidence (0…1) for parsing RTMDet candidates.
-    /// Matches the iOS LiteRT Metal path (was 0.25).
+    /// Matches the iOS Core ML path (was 0.25).
     var scoreThreshold: Float = 0.10
     var active: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Room's photo orientation

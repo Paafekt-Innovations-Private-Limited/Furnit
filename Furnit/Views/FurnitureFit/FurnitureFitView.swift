@@ -2452,7 +2452,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             Thread.sleep(forTimeInterval: 0.05)
         }
         guard mlModel != nil else {
-            logDebug("🖼️ oneImageRun: no RTMDet LiteRT runtime after wait — abort")
+            logDebug("🖼️ oneImageRun: no RTMDet Core ML model after wait — abort")
             oneImageRunFinished = true
             DispatchQueue.main.async { [weak self] in
                 self?.setProgress(1.0, text: "One-image: no model")
