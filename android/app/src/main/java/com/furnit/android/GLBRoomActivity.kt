@@ -2513,9 +2513,9 @@ class GLBRoomActivity : AppCompatActivity() {
             console.log('[GLBViewer] Navigation mode:', navigationMode);
         }
 
-        // OrbitControls owns gestures outside. Inside, disable it and implement a true walk/look
-        // camera: one pointer changes yaw/pitch without translating the eye; two pointers strafe,
-        // lift and walk. This avoids an interior drag swinging the camera around the front wall.
+        // OrbitControls owns gestures outside. Inside, one pointer changes yaw/pitch without
+        // translating the eye. Two pointers move volumetric rooms, but only change projection
+        // zoom for single-photo depth rooms so their authored image rays remain aligned.
         renderer.domElement.addEventListener('pointerdown', (event) => {
             if (navigationMode !== 'firstPerson' && navigationMode !== 'photoDepth') return;
             event.preventDefault();
@@ -2537,11 +2537,8 @@ class GLBRoomActivity : AppCompatActivity() {
                 interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
                 interiorEuler.y -= (event.clientX - previousPoint.x) * 0.005;
                 interiorEuler.x -= (event.clientY - previousPoint.y) * 0.005;
-                const pitchLimit = navigationMode === 'photoDepth' ? 0.25 : Math.PI / 2 - 0.05;
+                const pitchLimit = Math.PI / 2 - 0.05;
                 interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x, -pitchLimit, pitchLimit);
-                if (navigationMode === 'photoDepth') {
-                    interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -0.35, 0.35);
-                }
                 interiorEuler.z = 0;
                 camera.quaternion.setFromEuler(interiorEuler);
             } else if (points.length === 2 && previousInteriorCentroid) {
@@ -2565,8 +2562,8 @@ class GLBRoomActivity : AppCompatActivity() {
                             updatePhotoProjection();
                         }
                     }
-                    // Preserve the capture optical center. Dolly/strafe separates points that
-                    // originated on the same image ray and exposes duplicate backing-photo traces.
+                    // A projective depth mesh is only valid from its authored optical center.
+                    // Zoom changes projection while keeping foreground and background aligned.
                     previousInteriorCentroid = centroid;
                     previousInteriorDistance = distance;
                     syncFirstPersonTarget();
@@ -2821,11 +2818,8 @@ class GLBRoomActivity : AppCompatActivity() {
             if (navigationMode === 'firstPerson' || navigationMode === 'photoDepth') {
                 interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
                 interiorEuler.y -= deltaX * 0.012;
-                const pitchLimit = navigationMode === 'photoDepth' ? 0.25 : Math.PI / 2 - 0.05;
+                const pitchLimit = Math.PI / 2 - 0.05;
                 interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x - deltaY * 0.012, -pitchLimit, pitchLimit);
-                if (navigationMode === 'photoDepth') {
-                    interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -0.35, 0.35);
-                }
                 interiorEuler.z = 0;
                 camera.quaternion.setFromEuler(interiorEuler);
                 syncFirstPersonTarget();

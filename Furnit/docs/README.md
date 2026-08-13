@@ -47,7 +47,11 @@ metadata. The saved viewer uses one-finger pan and field-of-view pinch zoom with
 plane. Projection metadata version 3 marks this contract. Older projective and legacy flat USDZ files
 remain readable; the sidecar-based X-aspect correction still applies only to legacy flat files.
 
-The current saved-room correction is awaiting device visual confirmation as of 2026-08-13.
+Older projective saved rooms keep the authored optical center while pinch changes field of view.
+Their drag and D-pad look controls now permit unrestricted yaw and near-vertical pitch without camera
+translation. This look-range change is an unconfirmed candidate as of 2026-08-14: it was requested
+for push without a compile or final device visual confirmation, so foreground alignment and gray-trace
+removal must still be checked manually.
 
 ## Room viewer smoke test
 

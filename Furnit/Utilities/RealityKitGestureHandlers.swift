@@ -34,8 +34,6 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     // Accumulated rotation state to prevent flickering and maintain smooth rotation
     private var accumulatedYaw: Float = 0.0    // Horizontal rotation around Y-axis
     private var accumulatedPitch: Float = 0.0  // Vertical rotation around X-axis
-    private var capturedFrustumCenterYaw: Float?
-    private var capturedFrustumCenterPitch: Float?
     /// The one camera origin from which a single-photo depth surface was authored. Unlike a
     /// volumetric room, this surface has no valid translated viewpoints: moving the eye exposes
     /// geometry that the source photograph never observed.
@@ -44,7 +42,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
 
     // Exterior inspection orbits around the framed model. Once the camera is within a genuine
     // room volume, single-finger drag becomes first-person yaw/pitch and keeps the eye fixed.
-    // Single-photo depth surfaces turn in place only within their captured camera frustum.
+    // Single-photo depth surfaces turn in place while preserving their authored optical center.
     /// World-space point the viewer framed the room around, published by ``RealityKitView``.
     private var orbitTarget: SIMD3<Float>?
     /// Pivot and radius captured at gesture start so the swing never snaps on first movement.
@@ -127,15 +125,11 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
               let cameraAnchor else {
             return false
         }
-        let centerYaw = capturedFrustumCenterYaw ?? accumulatedYaw
-        let centerPitch = capturedFrustumCenterPitch ?? accumulatedPitch
-        accumulatedYaw = max(
-            centerYaw - 0.35,
-            min(centerYaw + 0.35, accumulatedYaw + yawDelta)
-        )
+        accumulatedYaw += yawDelta
+        let maxPitch = Float.pi / 2.0 - 0.05
         accumulatedPitch = max(
-            centerPitch - 0.25,
-            min(centerPitch + 0.25, accumulatedPitch + pitchDelta)
+            -maxPitch,
+            min(maxPitch, accumulatedPitch + pitchDelta)
         )
         var transform = cameraAnchor.transform
         transform.translation = opticalCenter
@@ -181,13 +175,6 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
 
         accumulatedYaw = yaw
         accumulatedPitch = pitch
-        if capturedPhotoOpticalCenter != nil {
-            capturedFrustumCenterYaw = yaw
-            capturedFrustumCenterPitch = pitch
-        } else {
-            capturedFrustumCenterYaw = nil
-            capturedFrustumCenterPitch = nil
-        }
 
         logDebug("📷 Initialized rotation from look direction:")
         logDebug("   Forward: (\(forward.x), \(forward.y), \(forward.z))")
@@ -512,13 +499,12 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             accumulatedYaw += -deltaYaw  // Negative for natural direction
             accumulatedPitch += -deltaPitch // Negative for natural direction
 
-            // Apply pitch limits to prevent over-rotation and tilting (45 degrees up/down max)
+            // Prevent vertical inversion. Captured rooms allow near-vertical looking; normal
+            // room navigation retains its tighter 45-degree pitch limit.
             let usesCapturedPhotoFrustum = capturedPhotoOpticalCenter != nil
             if usesCapturedPhotoFrustum {
-                let centerYaw = capturedFrustumCenterYaw ?? accumulatedYaw
-                let centerPitch = capturedFrustumCenterPitch ?? accumulatedPitch
-                accumulatedYaw = max(centerYaw - 0.35, min(centerYaw + 0.35, accumulatedYaw))
-                accumulatedPitch = max(centerPitch - 0.25, min(centerPitch + 0.25, accumulatedPitch))
+                let maxPitch = Float.pi / 2.0 - 0.05
+                accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
             } else {
                 let maxPitch = Float.pi / 4.0
                 accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))

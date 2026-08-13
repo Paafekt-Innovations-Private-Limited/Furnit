@@ -28,7 +28,7 @@ For Android Studio device testing, set **Run > Edit Configurations > app > Deplo
 7. Confirm `GLBRoomActivity` uses floating top controls (back, ruler/pinch/tap helpers, recenter/save, AR), not a full-width band.
 8. Save the room.
 9. Confirm the saved room appears in the home room list and opens in `GLBRoomActivity` as a projective depth surface.
-10. Recenter, pinch in/out, and turn within the captured frustum. Confirm foreground objects do not stretch or leave duplicate photo traces.
+10. Recenter, pinch in/out, rotate through the full horizontal range, and look nearly straight up/down. Confirm the eye remains at the authored optical center and foreground objects do not move out of place, stretch, or leave duplicate gray/photo traces. This candidate still requires manual device confirmation as of 2026-08-14.
 
 ## GLB Room Full-Video Segmentation Smoke Test
 

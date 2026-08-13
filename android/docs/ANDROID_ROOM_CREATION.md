@@ -12,7 +12,7 @@
 8. Metadata is written beside the GLB, including room dimensions, depth, photo orientation, and preview state.
 9. Save reuses the metric measurement result to pinhole-unproject calibrated depth and writes a projective `photo_room_depth` GLB. Depth-discontinuity triangles are omitted, with a calibrated far-photo backing layer filling those openings.
 10. The completed folder is promoted to `files/rooms` transactionally; a failed depth export removes the incomplete saved folder.
-11. Saved rooms open through `GLBRoomActivity`, which restores the authored vertical field of view and capture optical center. Pinch changes field of view rather than translating the camera, preventing foreground and backing-photo traces.
+11. Saved rooms open through `GLBRoomActivity`, which restores the authored vertical field of view and capture optical center. Pinch changes field of view rather than translating the camera. Drag and D-pad look controls rotate at that fixed optical center with unrestricted yaw and near-vertical pitch, so navigation does not separate foreground depth from the backing photo.
 
 Manual setup still uses boundary-based texture crops and `GlbGenerator.generateGlb` (five-plane cuboid).
 
@@ -22,7 +22,7 @@ The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid pl
 
 `GLBRoomActivity` detects thin preview meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid. Saved `photo_room_depth` meshes use their authored projection metadata. Volumetric/manual rooms switch from exterior orbit to turn-in-place navigation once the camera is inside; the Auto Orbit setting controls only the idle animation.
 
-The saved projective-room interaction is build-validated on Android; final device visual confirmation of the current zoom/turn behavior is still pending as of 2026-08-13.
+The expanded saved projective-room look range is an unconfirmed candidate as of 2026-08-14. It was pushed at the user's request without a compile or final device visual confirmation; do not treat the chair/fan alignment and gray-trace issue as resolved until manual testing confirms it.
 
 The room viewer top controls mirror Swift: floating back, center ruler/pinch/tap helpers, recenter/save,
 and AR resize. The Android viewer no longer uses a full-width top band.
@@ -71,6 +71,7 @@ progress continues, and the generated room opens. For wide capture, verify the l
 capture-quality back camera and the saved JPEG dimensions are not from a low-resolution auxiliary
 sensor. Also confirm that portrait and landscape EXIF inputs remain upright, the picker appears
 before generation work, and the preview remains a sharp flat photo without dragged crops or an added
-perspective tilt. After Save, reopen the projective room, recenter, pinch in/out, and turn within the
-limited captured frustum; foreground objects must not stretch or leave duplicate traces. Confirm the
+perspective tilt. After Save, reopen the projective room, recenter, pinch in/out, rotate through the
+full horizontal range, and look nearly straight up/down; foreground objects must remain aligned and
+must not stretch or leave duplicate gray/photo traces. Confirm the
 top controls remain floating rather than a full-width band.
