@@ -11,6 +11,7 @@ import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
 import com.furnit.android.RoomDefaults
 import com.furnit.android.roomreconstruction.DepthAnythingRoomMeasurementPipeline
+import com.furnit.android.roomreconstruction.DepthMeshData
 import com.furnit.android.roomreconstruction.RoomMeasurementConstants
 import com.furnit.android.utils.LogUtil
 import java.io.File
@@ -38,6 +39,7 @@ object DepthAnythingRoomMeasurer {
         val measured: Boolean,
         val source: String,
         val focalSource: String = "unknown",
+        val depthMesh: DepthMeshData? = null,
     ) {
         fun toRoomDimensions(): SinglePhotoRoomReconstructor.RoomDimensions {
             return SinglePhotoRoomReconstructor.RoomDimensions(
@@ -82,6 +84,7 @@ object DepthAnythingRoomMeasurer {
                 measured = pipelineResult.measured,
                 source = pipelineResult.source,
                 focalSource = pipelineResult.focalSource,
+                depthMesh = pipelineResult.depthMesh,
             )
         } catch (error: Exception) {
             LogUtil.e(TAG, "Room measurement failed", error)
@@ -97,15 +100,19 @@ object DepthAnythingRoomMeasurer {
         imageUri: Uri? = null,
         cameraMetadata: Map<String, Double>? = null,
     ): Result {
-        val decodedBitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
-            ?: return fallback("decode_failed")
-        val bitmap = applyExifOrientation(decodedBitmap, imageFile)
+        val bitmap = decodeOrientedBitmap(imageFile) ?: return fallback("decode_failed")
         return try {
             measure(context, bitmap, imageUri, cameraMetadata)
         } finally {
-            if (bitmap !== decodedBitmap) bitmap.recycle()
-            decodedBitmap.recycle()
+            bitmap.recycle()
         }
+    }
+
+    internal fun decodeOrientedBitmap(imageFile: File): Bitmap? {
+        val decoded = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath) ?: return null
+        val oriented = applyExifOrientation(decoded, imageFile)
+        if (oriented !== decoded) decoded.recycle()
+        return oriented
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, imageFile: File): Bitmap {

@@ -78,8 +78,8 @@ Per-release checklist:
 - The method picker is displayed immediately after image selection; a quality-bounded, EXIF-normalized bitmap decode and AI generation continue off the UI thread.
 - `PhotoRoomGenerationService` owns the AI room-generation job lifecycle.
 - `SinglePhotoRoomReconstructor` writes the textured GLB room output.
-- `GlbGenerator.generateFlatPhotoGlb` builds the **AI default**: one full-photo textured plane (Swift parity, avoids dragged/stretched cuboid crops).
-- AI flat-photo GLBs embed the full-photo texture as JPEG quality 95 to preserve room-photo detail while keeping preview/save practical.
+- `GlbGenerator.generateFlatPhotoGlb` builds the immediate **AI preview**: one full-photo textured plane (Swift parity, avoids dragged/stretched cuboid crops).
+- On Save, `GlbGenerator.generateDepthPhotoGlb` pinhole-unprojects the calibrated metric depth and embeds the full-photo texture as JPEG quality 95. It cuts triangles across depth discontinuities and adds a projected far-photo backing layer.
 - `GlbGenerator.generateGlb` builds the **manual default**: floor, ceiling, and wall planes with cropped photo textures.
 - `RoomGenerationAssets` records the packaged Swift-parity asset contract.
 - Generated preview folders are promoted into `files/rooms/` only when the user saves the room.
@@ -142,7 +142,7 @@ Implementation notes:
 
 ## 3D Viewer
 
-Android room outputs are GLB files. `GLBRoomActivity` displays saved and preview rooms with the WebView/Three.js viewer and hosts the furniture segmentation overlay in the same screen.
+Android room outputs are GLB files. `GLBRoomActivity` displays saved and preview rooms with the WebView/Three.js viewer and hosts the furniture segmentation overlay in the same screen. Exterior views orbit, while volumetric interiors turn in place. Saved single-photo depth GLBs restore their authored capture lens and optical center; pinch zoom changes field of view instead of moving the camera through the surface. This projective-room behavior is build-validated and awaits final Android device visual confirmation as of 2026-08-13.
 
 Bundled sample room assets live in `app/src/main/assets/bundled_rooms/`.
 

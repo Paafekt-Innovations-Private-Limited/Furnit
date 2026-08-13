@@ -61,8 +61,6 @@ final class DepthAnythingRoomReconstructor {
     private let outputDirectory: URL?
     private let wallMargin: Float
 
-    /// Matches `scripts/depthanything_measure_room.py --flat-mesh` (photo on a flat plane).
-    private static let usesFlatMesh = true
     private static let minimumRoomWidthMeters: Float = 2.0
     private static let fallbackFocal35mmEquivalent: Float = 28.0
     private static let objectBBoxConfidenceThreshold: Float = 0.30
@@ -115,17 +113,10 @@ final class DepthAnythingRoomReconstructor {
         self.model = loaded.model
     }
 
-    private static func timedStage<T>(_ label: String, _ work: () async throws -> T) async rethrows -> T {
-        let start = CFAbsoluteTimeGetCurrent()
-        let result = try await work()
-        logDebug(String(format: "[DepthAnythingRoom][Timing] %@ %.0f ms", label, (CFAbsoluteTimeGetCurrent() - start) * 1000))
-        return result
-    }
-
-    /// The flat display mesh is a photographic surface, so its geometry must retain the source
-    /// image aspect ratio. Metric W×H×D remains authoritative metadata for measurements and fit;
-    /// independently applying measured width and height to this plane visibly stretches pixels.
-    static func flatMeshDisplayDimensions(
+    /// The textured depth surface must retain the photograph's pixel aspect ratio. Measured
+    /// W×H×D remains authoritative metadata; using measured width and height independently for
+    /// the image grid would geometrically stretch every source pixel.
+    static func depthMeshDisplayDimensions(
         imageWidth: Int,
         imageHeight: Int,
         measuredHeightMeters: Float
@@ -136,6 +127,13 @@ final class DepthAnythingRoomReconstructor {
         let safeMinimumWidth = max(minimumRoomWidthMeters, 0.05)
         let displayHeight = max(measuredHeightMeters, safeMinimumWidth / imageAspect)
         return (width: displayHeight * imageAspect, height: displayHeight)
+    }
+
+    private static func timedStage<T>(_ label: String, _ work: () async throws -> T) async rethrows -> T {
+        let start = CFAbsoluteTimeGetCurrent()
+        let result = try await work()
+        logDebug(String(format: "[DepthAnythingRoom][Timing] %@ %.0f ms", label, (CFAbsoluteTimeGetCurrent() - start) * 1000))
+        return result
     }
 
     private static let depthModelLock = NSLock()
@@ -507,30 +505,34 @@ final class DepthAnythingRoomReconstructor {
             "H=\(String(format: "%.3f", measured.height)) " +
             "D=\(String(format: "%.3f", measured.depth)) m"
         )
-        let meshDisplayDimensions = Self.flatMeshDisplayDimensions(
+        let meshDisplayDimensions = Self.depthMeshDisplayDimensions(
             imageWidth: imageWidth,
             imageHeight: imageHeight,
             measuredHeightMeters: measured.height
         )
-        let meshRoomWidthMeters = meshDisplayDimensions.width
-        let meshRoomHeightMeters = meshDisplayDimensions.height
         logDebug(
-            "[DepthAnythingRoom][MeshScale] source=photo_aspect_with_measured_height " +
+            "[DepthAnythingRoom][MeshScale] source=calibrated_depth_photo_aspect " +
             "photo_aspect=\(String(format: "%.4f", Float(imageWidth) / Float(max(imageHeight, 1)))) " +
-            "mesh_width_m=\(String(format: "%.4f", meshRoomWidthMeters)) " +
-            "mesh_height_m=\(String(format: "%.4f", meshRoomHeightMeters)) " +
-            "measured_width_m=\(String(format: "%.4f", measured.width)) " +
-            "measured_height_m=\(String(format: "%.4f", measured.height)) " +
-            "result_dims_source=single_view_width_height_room_extent_depth"
+            "mesh_width_m=\(String(format: "%.4f", meshDisplayDimensions.width)) " +
+            "mesh_height_m=\(String(format: "%.4f", meshDisplayDimensions.height)) " +
+            "measured_depth_m=\(String(format: "%.4f", measured.depth))"
         )
         let measurementEnd = CFAbsoluteTimeGetCurrent()
         reportProgress(0.72)
-        let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(calibratedDepthMap) : calibratedDepthMap
-        let mesh = try buildMesh(
+        let meshFocalXPixels = focalPx
+        let meshFocalYPixels = focalPx
+        let meshVerticalFovDegrees = 2.0 * atan(
+            Float(imageHeight) * 0.5 / meshFocalYPixels
+        ) * 180.0 / .pi
+        enrichedCalibrationMetadata["depthMeshProjectionVersion"] = 1
+        enrichedCalibrationMetadata["depthMeshFocalLengthXPx"] = Double(meshFocalXPixels)
+        enrichedCalibrationMetadata["depthMeshFocalLengthYPx"] = Double(meshFocalYPixels)
+        enrichedCalibrationMetadata["depthMeshVerticalFovDegrees"] = Double(meshVerticalFovDegrees)
+        let mesh = try buildPerspectiveMesh(
             image: workingImage,
-            depthMap: meshDepthMap,
-            roomWidthMeters: meshRoomWidthMeters,
-            roomHeightMeters: meshRoomHeightMeters
+            depthMap: calibratedDepthMap,
+            focalXPixels: meshFocalXPixels,
+            focalYPixels: meshFocalYPixels
         )
         let meshEnd = CFAbsoluteTimeGetCurrent()
         reportProgress(0.85)
@@ -606,6 +608,49 @@ final class DepthAnythingRoomReconstructor {
         roomWidthMeters: Float,
         roomHeightMeters: Float
     ) throws -> MDLMesh {
+        try buildMesh(
+            image: image,
+            depthMap: depthMap,
+            projection: .displayPlane(
+                widthMeters: roomWidthMeters,
+                heightMeters: roomHeightMeters
+            )
+        )
+    }
+
+    /// Authors the saved surface in the calibrated capture-camera coordinate system. Rendering
+    /// it again from the origin with the matching focal length reprojects every vertex to its
+    /// source pixel, even though vertices have different metric depths.
+    func buildPerspectiveMesh(
+        image: UIImage,
+        depthMap: [[Float]],
+        focalXPixels: Float,
+        focalYPixels: Float
+    ) throws -> MDLMesh {
+        guard focalXPixels.isFinite, focalYPixels.isFinite,
+              focalXPixels > 1, focalYPixels > 1 else {
+            throw DepthAnythingRoomError.invalidDepthOutput
+        }
+        return try buildMesh(
+            image: image,
+            depthMap: depthMap,
+            projection: .pinhole(
+                focalXPixels: focalXPixels,
+                focalYPixels: focalYPixels
+            )
+        )
+    }
+
+    private enum MeshProjection {
+        case displayPlane(widthMeters: Float, heightMeters: Float)
+        case pinhole(focalXPixels: Float, focalYPixels: Float)
+    }
+
+    private func buildMesh(
+        image: UIImage,
+        depthMap: [[Float]],
+        projection: MeshProjection
+    ) throws -> MDLMesh {
         let fixedImage = image.fixedOrientation()
         let raster = try DepthAnythingRasterImage(image: fixedImage)
         let imageWidth = raster.width
@@ -633,9 +678,8 @@ final class DepthAnythingRoomReconstructor {
         var vertexData = Data()
         vertexData.reserveCapacity(rowCount * columnCount * DepthAnythingVertex.byteStride)
         var vertexCount = 0
+        var backingVertexStart: UInt32?
 
-        let pixelScaleX = roomWidthMeters / Float(imageWidth)
-        let pixelScaleY = roomHeightMeters / Float(imageHeight)
         let centerX = Float(imageWidth) / 2.0
         let centerY = Float(imageHeight) / 2.0
 
@@ -644,9 +688,19 @@ final class DepthAnythingRoomReconstructor {
                 let depth = depthMap[row][column]
                 guard depth.isFinite, depth > 0 else { continue }
 
-                let x = -(Float(column) - centerX) * pixelScaleX
-                let y = (Float(row) - centerY) * pixelScaleY
-                let z = -(depthMax - depth)
+                let x: Float
+                let y: Float
+                let z: Float
+                switch projection {
+                case let .displayPlane(widthMeters, heightMeters):
+                    x = -(Float(column) - centerX) * widthMeters / Float(imageWidth)
+                    y = (Float(row) - centerY) * heightMeters / Float(imageHeight)
+                    z = -(depthMax - depth)
+                case let .pinhole(focalXPixels, focalYPixels):
+                    x = -(Float(column) - centerX) * depth / focalXPixels
+                    y = (Float(row) - centerY) * depth / focalYPixels
+                    z = depth
+                }
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
                 let v = 1.0 - Float(row) / Float(max(imageHeight - 1, 1))
@@ -660,6 +714,34 @@ final class DepthAnythingRoomReconstructor {
                 vertexData.appendFloat32LE(u)
                 vertexData.appendFloat32LE(v)
                 vertexIndices[sampledRowIndex * columnCount + sampledColumnIndex] = Int32(vertexCount)
+                vertexCount += 1
+            }
+        }
+
+        if case let .pinhole(focalXPixels, focalYPixels) = projection {
+            // Do not bridge a foreground/background depth jump with a long triangle: that is the
+            // source of stretched texture wedges. A second projected photo layer behind the far
+            // depth fills the deliberate openings without changing the capture-view reprojection.
+            let backingDepth = depthMax + 0.02
+            backingVertexStart = UInt32(vertexCount)
+            let corners: [(column: Int, row: Int, u: Float, v: Float)] = [
+                (0, 0, 0, 1),
+                (imageWidth - 1, 0, 1, 1),
+                (imageWidth - 1, imageHeight - 1, 1, 0),
+                (0, imageHeight - 1, 0, 0),
+            ]
+            for corner in corners {
+                let x = -(Float(corner.column) - centerX) * backingDepth / focalXPixels
+                let y = (Float(corner.row) - centerY) * backingDepth / focalYPixels
+                let color = raster.color(x: corner.column, y: corner.row).floatRGB
+                vertexData.appendFloat32LE(x)
+                vertexData.appendFloat32LE(y)
+                vertexData.appendFloat32LE(backingDepth)
+                vertexData.appendFloat32LE(color.x)
+                vertexData.appendFloat32LE(color.y)
+                vertexData.appendFloat32LE(color.z)
+                vertexData.appendFloat32LE(corner.u)
+                vertexData.appendFloat32LE(corner.v)
                 vertexCount += 1
             }
         }
@@ -714,6 +796,16 @@ final class DepthAnythingRoomReconstructor {
                 indexData.appendUInt32LE(UInt32(v01))
                 indexCount += 6
             }
+        }
+
+        if let backingVertexStart {
+            indexData.appendUInt32LE(backingVertexStart)
+            indexData.appendUInt32LE(backingVertexStart + 1)
+            indexData.appendUInt32LE(backingVertexStart + 2)
+            indexData.appendUInt32LE(backingVertexStart)
+            indexData.appendUInt32LE(backingVertexStart + 2)
+            indexData.appendUInt32LE(backingVertexStart + 3)
+            indexCount += 6
         }
 
         guard indexCount >= 3 else {
@@ -797,7 +889,7 @@ final class DepthAnythingRoomReconstructor {
         throw DepthAnythingRoomError.exportFailed(exportErrors.joined(separator: "; "))
     }
 
-    private static func makeSceneKitScene(from mesh: MDLMesh, textureImage: UIImage) throws -> SCNScene {
+    static func makeSceneKitScene(from mesh: MDLMesh, textureImage: UIImage) throws -> SCNScene {
         guard let vertexBuffer = mesh.vertexBuffers.first else {
             throw DepthAnythingRoomError.emptyMesh
         }
@@ -1192,23 +1284,6 @@ final class DepthAnythingRoomReconstructor {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss_SSS"
         return formatter.string(from: Date())
-    }
-
-    private static func flattenDepthForMesh(_ depthMap: [[Float]]) -> [[Float]] {
-        var validDepths: [Float] = []
-        validDepths.reserveCapacity(depthMap.count * max(depthMap.first?.count ?? 0, 0))
-        for row in depthMap {
-            for depth in row where depth.isFinite && depth > 0 {
-                validDepths.append(depth)
-            }
-        }
-        guard !validDepths.isEmpty else { return depthMap }
-        let planeDepth = median(validDepths)
-        return depthMap.map { row in
-            row.map { depth in
-                depth.isFinite && depth > 0 ? planeDepth : depth
-            }
-        }
     }
 
     private static func measureWall(

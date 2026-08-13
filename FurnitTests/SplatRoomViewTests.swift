@@ -57,8 +57,8 @@ final class SplatRoomViewTests: XCTestCase {
         XCTAssertEqual(PhotoOrientation.detect(from: portraitViaExif), .portrait)
     }
 
-    func testDepthAnythingFlatMeshPreservesLandscapePhotoAspect() {
-        let dimensions = DepthAnythingRoomReconstructor.flatMeshDisplayDimensions(
+    func testDepthAnythingDepthMeshPreservesLandscapePhotoAspect() {
+        let dimensions = DepthAnythingRoomReconstructor.depthMeshDisplayDimensions(
             imageWidth: 1600,
             imageHeight: 900,
             measuredHeightMeters: 2.7
@@ -68,8 +68,8 @@ final class SplatRoomViewTests: XCTestCase {
         XCTAssertEqual(dimensions.width / dimensions.height, 1600.0 / 900.0, accuracy: 0.0001)
     }
 
-    func testDepthAnythingFlatMeshPreservesPortraitAspectAndMinimumWidth() {
-        let dimensions = DepthAnythingRoomReconstructor.flatMeshDisplayDimensions(
+    func testDepthAnythingDepthMeshPreservesPortraitAspectAndMinimumWidth() {
+        let dimensions = DepthAnythingRoomReconstructor.depthMeshDisplayDimensions(
             imageWidth: 900,
             imageHeight: 1600,
             measuredHeightMeters: 2.4

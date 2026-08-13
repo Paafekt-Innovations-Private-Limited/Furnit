@@ -108,6 +108,7 @@ class RealityKitBoundaryManager {
     
     // Room boundary properties
     private var roomBounds: (min: SIMD3<Float>, max: SIMD3<Float>)?
+    private(set) var usesCapturedPhotoFrustum = false
     /// Padding from walls when constraining camera (allow navigating close to walls; was 0.5)
     private let boundaryPadding: Float = 0.15
     
@@ -117,6 +118,25 @@ class RealityKitBoundaryManager {
     // ✅ NEW: Public accessor for bounds (used by camera positioning)
     var bounds: (min: SIMD3<Float>, max: SIMD3<Float>)? {
         return roomBounds
+    }
+
+    /// True only for geometry with a real three-dimensional interior. Depth Anything's immediate
+    /// photo preview is a near-zero-depth plane and must retain exterior inspection controls.
+    var hasNavigableInterior: Bool {
+        guard let bounds = roomBounds else { return false }
+        let size = bounds.max - bounds.min
+        return !usesCapturedPhotoFrustum &&
+            size.x > boundaryPadding * 2 &&
+            size.y > boundaryPadding * 2 &&
+            size.z > boundaryPadding * 2
+    }
+
+    func setUsesCapturedPhotoFrustum(_ enabled: Bool) {
+        usesCapturedPhotoFrustum = enabled
+    }
+
+    func isInsideNavigableInterior(_ position: SIMD3<Float>) -> Bool {
+        hasNavigableInterior && isPositionWithinBounds(position)
     }
     
     init(arView: ARView) {
@@ -232,12 +252,12 @@ class RealityKitBoundaryManager {
 
         // Zero-thickness flat photo plane (Depth Anything --flat-mesh): keep camera on the −Z
         // photographer side; the default min/max Z clamp breaks when min.z ≈ max.z.
-        if depthZ < boundaryPadding * 2 {
+        if usesCapturedPhotoFrustum || depthZ < boundaryPadding * 2 {
             let minConstraint = bounds.min + SIMD3<Float>(boundaryPadding, 0, boundaryPadding)
             let maxConstraint = bounds.max - SIMD3<Float>(boundaryPadding, 0, boundaryPadding)
             constrainedPosition.x = max(minConstraint.x, min(maxConstraint.x, position.x))
             constrainedPosition.y = max(bounds.min.y + 0.5, min(bounds.max.y + 2.0, position.y))
-            let maxCameraZ = planeZ - 0.05
+            let maxCameraZ = (usesCapturedPhotoFrustum ? bounds.min.z : planeZ) - 0.05
             if position.z > maxCameraZ {
                 constrainedPosition.z = maxCameraZ
             } else {
@@ -475,14 +495,14 @@ class RealityKitBoundaryManager {
         inferencePlaneWidthMeters: Float? = nil,
         inferencePlaneHeightMeters: Float? = nil
     ) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
-        if roomCoordinateFrame == .depthAnythingImageDepthMeters {
+        if roomCoordinateFrame == .depthAnythingImageDepthMeters && !hasNavigableInterior {
             return getCameraForDepthAnythingImagePlane(
                 photoOrientation: photoOrientation,
                 inferencePlaneWidthMeters: inferencePlaneWidthMeters,
                 inferencePlaneHeightMeters: inferencePlaneHeightMeters
             )
         }
-        if roomCoordinateFrame.usesFrontFacingRealityKitCamera {
+        if roomCoordinateFrame.usesFrontFacingRealityKitCamera && !hasNavigableInterior {
             return getCameraAtFrontCenter()
         }
         return getCameraAtBackCenter()

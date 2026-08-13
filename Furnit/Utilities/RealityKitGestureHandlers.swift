@@ -3,7 +3,7 @@ import UIKit
 
 // RealityKit-based gesture handlers to replace SceneKit gesture handlers
 // Inherits from NSObject for Objective-C gesture recognizer target-action compatibility
-class RealityKitGestureHandlers: NSObject {
+class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     weak var arView: ARView?
     private var boundaryManager: RealityKitBoundaryManager?
 
@@ -27,20 +27,25 @@ class RealityKitGestureHandlers: NSObject {
     private var initialCameraTransform: Transform = Transform.identity
     private var lastPanTranslation: CGPoint = .zero
     private var lastPositionPanTranslation: CGPoint = .zero  // For smooth two-finger position movement
+    private var lastPinchScale: CGFloat = 1
+    private var capturedFrustumPinchStartFieldOfView: Float = 60
     private var initialTouchPoint: CGPoint?
 
     // Accumulated rotation state to prevent flickering and maintain smooth rotation
     private var accumulatedYaw: Float = 0.0    // Horizontal rotation around Y-axis
     private var accumulatedPitch: Float = 0.0  // Vertical rotation around X-axis
+    private var capturedFrustumCenterYaw: Float?
+    private var capturedFrustumCenterPitch: Float?
 
-    // Orbit state: single-finger drag swings the camera around the room rather than
-    // rotating it in place. Rotating in place reads as a flat pan on the single-plane
-    // Depth Anything photo rooms, because the camera immediately looks past the plane.
+    // Exterior inspection orbits around the framed model. Once the camera is within a genuine
+    // room volume, single-finger drag becomes first-person yaw/pitch and keeps the eye fixed.
+    // Single-photo depth surfaces turn in place only within their captured camera frustum.
     /// World-space point the viewer framed the room around, published by ``RealityKitView``.
     private var orbitTarget: SIMD3<Float>?
     /// Pivot and radius captured at gesture start so the swing never snaps on first movement.
     private var activeOrbitPivot: SIMD3<Float> = .zero
     private var activeOrbitRadius: Float = 0
+    private var activeRotationTurnsInPlace = false
     private let minimumOrbitRadius: Float = 0.35
     private let fallbackOrbitRadius: Float = 3.0
 
@@ -88,6 +93,33 @@ class RealityKitGestureHandlers: NSObject {
         initializeRotationFromCamera()
     }
 
+    /// Captured single-photo rooms cannot translate away from their authored optical center.
+    /// Reinterpret the D-pad as bounded look controls so every navigation path preserves the
+    /// pinhole reprojection, not only touch gestures.
+    @discardableResult
+    func nudgeCapturedPhotoView(yawDelta: Float, pitchDelta: Float) -> Bool {
+        guard boundaryManager?.usesCapturedPhotoFrustum == true,
+              let cameraAnchor else {
+            return false
+        }
+        let centerYaw = capturedFrustumCenterYaw ?? accumulatedYaw
+        let centerPitch = capturedFrustumCenterPitch ?? accumulatedPitch
+        accumulatedYaw = max(
+            centerYaw - 0.35,
+            min(centerYaw + 0.35, accumulatedYaw + yawDelta)
+        )
+        accumulatedPitch = max(
+            centerPitch - 0.25,
+            min(centerPitch + 0.25, accumulatedPitch + pitchDelta)
+        )
+        var transform = cameraAnchor.transform
+        let yawRotation = simd_quatf(angle: accumulatedYaw, axis: SIMD3<Float>(0, 1, 0))
+        let pitchRotation = simd_quatf(angle: accumulatedPitch, axis: SIMD3<Float>(1, 0, 0))
+        transform.rotation = yawRotation * pitchRotation
+        cameraAnchor.transform = transform
+        return true
+    }
+
     /// Set the world-space point single-finger drag should swing the camera around.
     /// Passing `nil` falls back to a fixed radius ahead of the camera.
     func setOrbitTarget(_ target: SIMD3<Float>?) {
@@ -123,6 +155,13 @@ class RealityKitGestureHandlers: NSObject {
 
         accumulatedYaw = yaw
         accumulatedPitch = pitch
+        if boundaryManager?.usesCapturedPhotoFrustum == true {
+            capturedFrustumCenterYaw = yaw
+            capturedFrustumCenterPitch = pitch
+        } else {
+            capturedFrustumCenterYaw = nil
+            capturedFrustumCenterPitch = nil
+        }
 
         logDebug("📷 Initialized rotation from look direction:")
         logDebug("   Forward: (\(forward.x), \(forward.y), \(forward.z))")
@@ -139,6 +178,7 @@ class RealityKitGestureHandlers: NSObject {
         singlePanGesture?.maximumNumberOfTouches = 1
         singlePanGesture?.minimumNumberOfTouches = 1
         if let singlePan = singlePanGesture {
+            singlePan.delegate = self
             arView.addGestureRecognizer(singlePan)
         }
         
@@ -147,12 +187,14 @@ class RealityKitGestureHandlers: NSObject {
         doublePanGesture?.minimumNumberOfTouches = 2
         doublePanGesture?.maximumNumberOfTouches = 2
         if let doublePan = doublePanGesture {
+            doublePan.delegate = self
             arView.addGestureRecognizer(doublePan)
         }
 
         // Pinch gesture for zoom
         pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
         if let pinch = pinchGesture {
+            pinch.delegate = self
             arView.addGestureRecognizer(pinch)
         }
 
@@ -200,6 +242,14 @@ class RealityKitGestureHandlers: NSObject {
         objectManipulationPanGesture?.isEnabled = false
 
         logDebug("🎯 Gesture priorities configured - object manipulation initially disabled")
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        let pair = [gestureRecognizer, otherGestureRecognizer]
+        return pair.contains { $0 === pinchGesture } && pair.contains { $0 === doublePanGesture }
     }
 
     // MARK: - Object Manipulation Gesture Handlers
@@ -370,7 +420,7 @@ class RealityKitGestureHandlers: NSObject {
         activeOrbitPivot = position + forward * radius
     }
 
-    // Handle pan gesture with intuitive controls: drag to swing the camera around the room
+    // Handle pan gesture with geometry-derived navigation: orbit outside, turn in place inside.
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
         logDebug("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
         guard let arView = arView, let cameraAnchor = cameraAnchor else {
@@ -387,7 +437,12 @@ class RealityKitGestureHandlers: NSObject {
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = gesture.location(in: arView)
             lastPanTranslation = translation
-            beginOrbit(from: cameraAnchor)
+            activeRotationTurnsInPlace = boundaryManager?
+                .isInsideNavigableInterior(cameraAnchor.transform.translation) == true ||
+                boundaryManager?.usesCapturedPhotoFrustum == true
+            if !activeRotationTurnsInPlace {
+                beginOrbit(from: cameraAnchor)
+            }
 
         case .changed:
             logDebug("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
@@ -407,8 +462,16 @@ class RealityKitGestureHandlers: NSObject {
             accumulatedPitch += -deltaPitch // Negative for natural direction
 
             // Apply pitch limits to prevent over-rotation and tilting (45 degrees up/down max)
-            let maxPitch: Float = Float.pi / 4.0 // 45 degrees
-            accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
+            let usesCapturedPhotoFrustum = boundaryManager?.usesCapturedPhotoFrustum == true
+            if usesCapturedPhotoFrustum {
+                let centerYaw = capturedFrustumCenterYaw ?? accumulatedYaw
+                let centerPitch = capturedFrustumCenterPitch ?? accumulatedPitch
+                accumulatedYaw = max(centerYaw - 0.35, min(centerYaw + 0.35, accumulatedYaw))
+                accumulatedPitch = max(centerPitch - 0.25, min(centerPitch + 0.25, accumulatedPitch))
+            } else {
+                let maxPitch = Float.pi / 4.0
+                accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
+            }
 
             // Create rotation quaternions from accumulated values (prevents tilting by only using yaw and pitch)
             let yawRotation = simd_quatf(angle: accumulatedYaw, axis: SIMD3<Float>(0, 1, 0))     // Horizontal only
@@ -417,21 +480,26 @@ class RealityKitGestureHandlers: NSObject {
             // Combine rotations: apply pitch first, then yaw (no roll component to prevent tilting)
             let combinedRotation = yawRotation * pitchRotation
 
-            // Swing the camera around the pivot instead of spinning it in place: place it one
-            // orbit radius back along the new forward direction, so the room stays framed.
-            let newForward = combinedRotation.act(SIMD3<Float>(0, 0, -1))
-            var orbitPosition = activeOrbitPivot - newForward * activeOrbitRadius
-            if let boundaryManager = boundaryManager {
-                orbitPosition = boundaryManager.constrainCameraPosition(orbitPosition)
-            }
-
             var newTransform = Transform()
-            newTransform.translation = orbitPosition
+            if activeRotationTurnsInPlace {
+                newTransform.translation = initialCameraTransform.translation
+            } else {
+                // Exterior inspection keeps the room framed by swinging around its pivot.
+                let newForward = combinedRotation.act(SIMD3<Float>(0, 0, -1))
+                var orbitPosition = activeOrbitPivot - newForward * activeOrbitRadius
+                if let boundaryManager = boundaryManager {
+                    orbitPosition = boundaryManager.constrainCameraPosition(orbitPosition)
+                }
+                newTransform.translation = orbitPosition
+            }
             newTransform.rotation = combinedRotation  // Apply accumulated rotation (no roll/tilt)
             newTransform.scale = initialCameraTransform.scale
             cameraAnchor.transform = newTransform
 
-            logDebug("📷 Orbit: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch), radius=\(activeOrbitRadius)")
+            logDebug(
+                "📷 \(activeRotationTurnsInPlace ? "First person" : "Orbit"): " +
+                    "Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch), radius=\(activeOrbitRadius)"
+            )
 
             // Update last translation for next incremental calculation
             lastPanTranslation = translation
@@ -455,6 +523,16 @@ class RealityKitGestureHandlers: NSObject {
             return
         }
         logDebug("✅ Two-finger pan proceeding with cameraAnchor")
+
+        if boundaryManager?.usesCapturedPhotoFrustum == true {
+            // The saved single-photo surface is defined around one optical center. Translation
+            // makes foreground depth separate from its far-photo backing and creates duplicates.
+            if gesture.state == .ended || gesture.state == .cancelled {
+                initialTouchPoint = nil
+                lastPositionPanTranslation = .zero
+            }
+            return
+        }
 
         let translation = gesture.translation(in: arView)
 
@@ -523,11 +601,27 @@ class RealityKitGestureHandlers: NSObject {
         switch gesture.state {
         case .began:
             initialCameraTransform = cameraAnchor.transform
+            lastPinchScale = 1
+            if boundaryManager?.usesCapturedPhotoFrustum == true,
+               let cameraEntity {
+                capturedFrustumPinchStartFieldOfView = cameraEntity.camera.fieldOfViewInDegrees
+            }
             
         case .changed:
-            // Calculate zoom factor (scale change from initial)
-            let scale = gesture.scale
-            let zoomFactor = (scale - 1.0) * 2.5 // 5x faster zoom (was 0.5)
+            if boundaryManager?.usesCapturedPhotoFrustum == true,
+               let cameraEntity {
+                let scale = max(Float(gesture.scale), 0.01)
+                let initialHalfFov = capturedFrustumPinchStartFieldOfView * .pi / 360
+                let zoomedFieldOfView = 2 * atan(tan(initialHalfFov) / scale) * 180 / .pi
+                cameraEntity.camera.fieldOfViewInDegrees = min(max(zoomedFieldOfView, 12), 120)
+                lastPinchScale = gesture.scale
+                return
+            }
+            // Apply only this event's scale delta so a simultaneous two-finger pan can compose
+            // with pinch instead of each recognizer restoring its own gesture-start transform.
+            let safePreviousScale = max(lastPinchScale, 0.001)
+            let scaleDelta = gesture.scale / safePreviousScale
+            let zoomFactor = (scaleDelta - 1.0) * 2.5
             
             // Get camera's current transform for directional reference
             let cameraTransform = cameraAnchor.transform
@@ -541,7 +635,7 @@ class RealityKitGestureHandlers: NSObject {
             
             // Camera moves forward/backward for zoom effect
             let cameraMovement = forward * Float(zoomFactor)
-            var newPosition = initialCameraTransform.translation + cameraMovement
+            var newPosition = cameraTransform.translation + cameraMovement
             
             // Apply boundary constraints
             if let boundaryManager = boundaryManager {
@@ -549,12 +643,14 @@ class RealityKitGestureHandlers: NSObject {
             }
             
             // Apply the new camera position
-            var newTransform = initialCameraTransform
+            var newTransform = cameraTransform
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
+            lastPinchScale = gesture.scale
 
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
+            lastPinchScale = 1
             
         default:
             break

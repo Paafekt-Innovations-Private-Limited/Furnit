@@ -55,8 +55,8 @@ the resolved cause.
 
 - Swift/SwiftUI/UIKit app under [`../Furnit/`](../Furnit/).
 - Default Photo → 3D is two-phase: an immediate flat-photo preview, then GeoCalib +
-  Depth Anything V2 Metric Indoor + RTMDet measurement and textured USDZ export on
-  first save.
+  Depth Anything V2 Metric Indoor + RTMDet measurement and a calibrated projective
+  depth-surface USDZ export on first save.
 - The manual boundary path uses `SinglePhotoRoomReconstructor` and
   `SyntheticDepthEstimator`, then opens `MeshRoomView`.
 - Furniture Fit runs RTMDet-Ins-m as **Core ML** (`rtmdet-ins-m.mlpackage`, `RTMDetModel`
@@ -74,8 +74,8 @@ the resolved cause.
 
 - Kotlin app under [`../android/`](../android/), target/compile SDK 36, arm64 runtime.
 - Photo → 3D shows the AI/manual picker before heavy decode work. The default AI
-  preview is an optimized flat full-photo GLB; manual setup produces a textured
-  five-plane GLB.
+  preview is an optimized flat full-photo GLB; saving replaces it with a calibrated
+  projective depth-surface GLB. Manual setup produces a textured five-plane GLB.
 - Depth Anything and GeoCalib ONNX models plus one RTMDet FP16 LiteRT model ship in install-time
   Play Asset Delivery packs and are loaded through Android's `AssetManager`.
 - `GLBRoomActivity` hosts the Three.js/WebView room plus the inline RTMDet brain and

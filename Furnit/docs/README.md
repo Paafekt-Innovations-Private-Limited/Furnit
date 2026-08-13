@@ -13,7 +13,8 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
   **Photo → 3D** flow (two-phase): home toolbar → photo capture or library image → camera metadata
   sidecar → **instant preview** (`PreviewFast`, no ML, placeholder dims) in
   `DepthAnythingPreviewRoomView` → **first save** runs GeoCalib + Depth Anything + RTMDet object
-  anchor → measurement grid → textured USDZ → saved room in `ModelViewerView` (or reopen from home).
+  anchor → measurement grid → calibrated projective depth-surface USDZ → saved room in
+  `ModelViewerView` (or reopen from home).
   Other viewers: `GLBRoomView` (GLB), `MeshRoomView` (manual path), `SplatRoomView` (saved PLY via
   MetalSplatter + SplatIO).
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance segmentation
@@ -38,11 +39,16 @@ processing, and enables virtual-device fusion so Apple can apply its multi-frame
 reduction instead of passing a noisier physical ultra-wide frame directly. Standard capture is
 unchanged.
 
-Depth Anything photo-room USDZ meshes preserve the source photograph's aspect ratio; inferred
-W×H×D remains separate authoritative measurement metadata and does not stretch the display plane.
-Preview and saved-room surfaces use constant, non-emissive rendering without fallback/environment
-lighting, preserving the photograph's original brightness. When its camera sidecar is available,
-the saved viewer also corrects the X scale of older stretched photo-room USDZ files at load time.
+The immediate Depth Anything preview remains a flat, pixel-correct photo. On save, calibrated metric
+depth is pinhole-unprojected around the capture camera, and depth-discontinuity triangles are omitted
+instead of stretching foreground pixels into the background. The saved viewer restores the authored
+vertical field of view and capture optical center. Pinch changes field of view without translating
+that center, and turning is limited to the captured single-view frustum. Inferred W×H×D remains
+separate authoritative measurement metadata. Legacy flat photo-room USDZ files can still receive the
+sidecar-based X-aspect correction at load time.
+
+The projective saved-room interaction is build-validated on iOS; final device visual confirmation of
+the current zoom/turn behavior is still pending as of 2026-08-13.
 
 ## Room viewer smoke test
 

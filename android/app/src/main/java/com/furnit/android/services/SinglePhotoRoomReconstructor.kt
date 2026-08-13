@@ -25,7 +25,7 @@ import kotlin.math.min
  * Creates a GLB model file with:
  * - Floor, ceiling, and walls as textured planes
  * - Textures extracted from the photo based on boundary positions
- * - Or, for AI/photo room generation, a Swift-parity flat full-photo mesh with no stretched plane crops
+ * - Or, for AI/photo preview, a pixel-correct flat full-photo surface
  */
 class SinglePhotoRoomReconstructor(private val context: Context) {
 

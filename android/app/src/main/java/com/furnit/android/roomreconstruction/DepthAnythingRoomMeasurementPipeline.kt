@@ -21,6 +21,15 @@ data class RoomMeasurementPipelineResult(
     val measured: Boolean,
     val source: String,
     val focalSource: String,
+    val depthMesh: DepthMeshData,
+)
+
+data class DepthMeshData(
+    val calibratedDepth: FloatArray,
+    val imageWidth: Int,
+    val imageHeight: Int,
+    val focalXPixels: Float,
+    val focalYPixels: Float,
 )
 
 object DepthAnythingRoomMeasurementPipeline {
@@ -221,6 +230,13 @@ object DepthAnythingRoomMeasurementPipeline {
                 measured = true,
                 source = "depth_anything_metric_ios_pipeline",
                 focalSource = measurementFocal.source,
+                depthMesh = DepthMeshData(
+                    calibratedDepth = measurementDepth,
+                    imageWidth = imageWidth,
+                    imageHeight = imageHeight,
+                    focalXPixels = measurementFocal.fx,
+                    focalYPixels = measurementFocal.fy,
+                ),
             )
         } catch (error: Exception) {
             LogUtil.e(TAG, "Pipeline measurement failed", error)

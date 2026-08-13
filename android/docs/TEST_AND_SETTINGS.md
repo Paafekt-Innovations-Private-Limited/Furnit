@@ -27,7 +27,8 @@ For Android Studio device testing, set **Run > Edit Configurations > app > Deplo
 6. Confirm a GLB preview opens with a **flat full-photo** wall (no dragged/stretch artifacts on the front texture).
 7. Confirm `GLBRoomActivity` uses floating top controls (back, ruler/pinch/tap helpers, recenter/save, AR), not a full-width band.
 8. Save the room.
-9. Confirm the saved room appears in the home room list and opens in `GLBRoomActivity`.
+9. Confirm the saved room appears in the home room list and opens in `GLBRoomActivity` as a projective depth surface.
+10. Recenter, pinch in/out, and turn within the captured frustum. Confirm foreground objects do not stretch or leave duplicate photo traces.
 
 ## GLB Room Full-Video Segmentation Smoke Test
 

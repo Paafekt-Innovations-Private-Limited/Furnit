@@ -13,7 +13,7 @@ languages, RTL behavior, and catalog verification: [`docs/LOCALIZATION.md`](docs
 - User input: take a photo or select one from the photo library.
 - Picker performance: after image selection, the AI/manual method picker is shown before heavy work starts.
 - Decode performance: room photos are sampled and EXIF-normalized off the UI thread instead of decoding full-resolution bitmaps on the main thread.
-- AI path: `PhotoRoomGenerationService` runs the generic photo-to-room flow and writes a Swift-parity **flat full-photo** `room.glb` preview (no stretched cuboid plane crops).
+- AI path: `PhotoRoomGenerationService` writes a **flat full-photo** `room.glb` preview; Save runs metric generation and replaces it with a calibrated projective depth-surface GLB.
 - Manual path: the user adjusts room boundaries and exports a textured five-plane GLB room.
 - Viewer path: generated rooms open in `GLBRoomActivity`; saved rooms are listed by `ModelManager`.
 - GLB performance: AI flat-photo previews embed the texture as JPEG to reduce file size and preview/save latency.
@@ -26,6 +26,12 @@ The old native Gaussian-splat stack has been removed from the Android app. There
 
 The room top bar matches the Swift viewer structure: separate floating controls for back, center
 ruler/pinch/tap helpers, recenter/save, and AR resize. It is not a full-width band.
+
+Camera navigation is geometry-derived rather than controlled by the Auto Orbit preference. Exterior
+views orbit around the room; inside a volumetric room, drag turns the camera in place. Saved
+single-photo depth surfaces retain the capture optical center and use field-of-view pinch zoom so
+foreground depth cannot separate from its far-photo backing layer. This saved-room interaction is
+build-validated; final Android device visual confirmation remains pending as of 2026-08-13.
 
 | Mode | Camera preview | Overlay | Purpose |
 |---|---|---|---|

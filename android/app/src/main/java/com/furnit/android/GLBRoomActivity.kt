@@ -73,6 +73,7 @@ import com.furnit.android.models.roomintelligence.StraightSrgbColor
 import com.furnit.android.models.roomintelligence.SurfacePalette
 import com.furnit.android.services.DepthAnythingRoomMeasurer
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.services.GlbGenerator
 import com.furnit.android.services.RoomMeasurementDisplay
 import com.furnit.android.services.SegmentationResult
 import kotlinx.coroutines.Dispatchers
@@ -2377,7 +2378,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
 
         function stepAutoOrbit(nowMs) {
-            if (!AUTO_ORBIT_ENABLED || userInteracting) return false;
+            if (!AUTO_ORBIT_ENABLED || userInteracting || navigationMode !== 'orbit') return false;
             if (nowMs - lastInteractionMs < AUTO_ORBIT_IDLE_DELAY_MS) return false;
             if (nowMs - autoOrbitLastFrameMs < AUTO_ORBIT_FRAME_MS) return false;
 
@@ -2408,8 +2409,199 @@ class GLBRoomActivity : AppCompatActivity() {
         let initialControlsTarget = null;
         let roomBoundsForClamping = null;
         let isFlatPhotoMesh = false;
+        let isDepthPhotoMesh = false;
         let flatPhotoWidth = 0;
         let flatPhotoHeight = 0;
+        let photoSurfaceFrontZ = 0;
+        const depthPhotoCaptureOrigin = new THREE.Vector3();
+        let depthPhotoVerticalFovDegrees = 60;
+        let depthPhotoTargetDistance = 2;
+        let depthPhotoZoom = 1;
+
+        function isPhotoSurfaceMesh() {
+            return isFlatPhotoMesh || isDepthPhotoMesh;
+        }
+
+        // A room needs two different camera models. OrbitControls is appropriate while viewing a
+        // room from outside, but once the eye is inside a real room volume it must turn in place.
+        // Auto Orbit is only an idle animation setting and deliberately does not choose this mode.
+        let navigationMode = 'orbit';
+        const interiorPointers = new Map();
+        const interiorEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const interiorForward = new THREE.Vector3();
+        const interiorRight = new THREE.Vector3();
+        const interiorMove = new THREE.Vector3();
+        let previousInteriorCentroid = null;
+        let previousInteriorDistance = null;
+
+        function hasNavigableRoomVolume() {
+            if (!roomBoundsForClamping || isPhotoSurfaceMesh()) return false;
+            const width = roomBoundsForClamping.maxX - roomBoundsForClamping.minX;
+            const height = roomBoundsForClamping.maxY - roomBoundsForClamping.minY;
+            const depth = roomBoundsForClamping.maxZ - roomBoundsForClamping.minZ;
+            return width > 0.2 && height > 0.2 && depth > 0.2;
+        }
+
+        function isInsideRoom(position) {
+            if (!hasNavigableRoomVolume()) return false;
+            const b = roomBoundsForClamping;
+            return position.x >= b.minX && position.x <= b.maxX &&
+                position.y >= b.minY && position.y <= b.maxY &&
+                position.z >= b.minZ && position.z <= b.maxZ;
+        }
+
+        function constrainToRoom(position) {
+            if (!roomBoundsForClamping) return position;
+            const b = roomBoundsForClamping;
+            if (isPhotoSurfaceMesh()) {
+                position.x = THREE.MathUtils.clamp(position.x, b.minX, b.maxX);
+                position.y = THREE.MathUtils.clamp(position.y, b.minY, b.maxY);
+                position.z = THREE.MathUtils.clamp(position.z, b.minZ, b.maxZ);
+                return position;
+            }
+            if (!hasNavigableRoomVolume()) return position;
+            position.x = THREE.MathUtils.clamp(position.x, b.minX, b.maxX);
+            position.y = THREE.MathUtils.clamp(position.y, b.minY, b.maxY);
+            position.z = THREE.MathUtils.clamp(position.z, b.minZ, b.maxZ);
+            return position;
+        }
+
+        function interiorLookDistance() {
+            if (!hasNavigableRoomVolume()) return 2.0;
+            const b = roomBoundsForClamping;
+            return Math.max(1.0, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5);
+        }
+
+        function syncFirstPersonTarget() {
+            camera.getWorldDirection(interiorForward);
+            controls.target.copy(camera.position).addScaledVector(interiorForward, interiorLookDistance());
+        }
+
+        function resetInteriorGestureBaseline() {
+            const points = Array.from(interiorPointers.values());
+            if (points.length === 0) {
+                previousInteriorCentroid = null;
+                previousInteriorDistance = null;
+                return;
+            }
+            const centroid = points.reduce(
+                (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+                { x: 0, y: 0 },
+            );
+            previousInteriorCentroid = {
+                x: centroid.x / points.length,
+                y: centroid.y / points.length,
+            };
+            previousInteriorDistance = points.length === 2
+                ? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)
+                : null;
+        }
+
+        function updateNavigationMode() {
+            const nextMode = isDepthPhotoMesh
+                ? 'photoDepth'
+                : (isInsideRoom(camera.position) ? 'firstPerson' : 'orbit');
+            if (nextMode === navigationMode) {
+                if (navigationMode === 'firstPerson' || navigationMode === 'photoDepth') syncFirstPersonTarget();
+                return;
+            }
+            navigationMode = nextMode;
+            controls.enabled = navigationMode === 'orbit';
+            interiorPointers.clear();
+            resetInteriorGestureBaseline();
+            if (navigationMode === 'firstPerson' || navigationMode === 'photoDepth') syncFirstPersonTarget();
+            console.log('[GLBViewer] Navigation mode:', navigationMode);
+        }
+
+        // OrbitControls owns gestures outside. Inside, disable it and implement a true walk/look
+        // camera: one pointer changes yaw/pitch without translating the eye; two pointers strafe,
+        // lift and walk. This avoids an interior drag swinging the camera around the front wall.
+        renderer.domElement.addEventListener('pointerdown', (event) => {
+            if (navigationMode !== 'firstPerson' && navigationMode !== 'photoDepth') return;
+            event.preventDefault();
+            interiorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            renderer.domElement.setPointerCapture?.(event.pointerId);
+            resetInteriorGestureBaseline();
+            noteAutoOrbitInteraction();
+        }, { passive: false });
+
+        renderer.domElement.addEventListener('pointermove', (event) => {
+            if ((navigationMode !== 'firstPerson' && navigationMode !== 'photoDepth') ||
+                    !interiorPointers.has(event.pointerId)) return;
+            event.preventDefault();
+            const previousPoint = interiorPointers.get(event.pointerId);
+            interiorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            const points = Array.from(interiorPointers.values());
+
+            if (points.length === 1) {
+                interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+                interiorEuler.y -= (event.clientX - previousPoint.x) * 0.005;
+                interiorEuler.x -= (event.clientY - previousPoint.y) * 0.005;
+                const pitchLimit = navigationMode === 'photoDepth' ? 0.25 : Math.PI / 2 - 0.05;
+                interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x, -pitchLimit, pitchLimit);
+                if (navigationMode === 'photoDepth') {
+                    interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -0.35, 0.35);
+                }
+                interiorEuler.z = 0;
+                camera.quaternion.setFromEuler(interiorEuler);
+            } else if (points.length === 2 && previousInteriorCentroid) {
+                const centroid = {
+                    x: (points[0].x + points[1].x) * 0.5,
+                    y: (points[0].y + points[1].y) * 0.5,
+                };
+                const distance = Math.hypot(
+                    points[0].x - points[1].x,
+                    points[0].y - points[1].y,
+                );
+                if (navigationMode === 'photoDepth') {
+                    if (previousInteriorDistance !== null && previousInteriorDistance > 0) {
+                        const pinchRatio = distance / previousInteriorDistance;
+                        if (Number.isFinite(pinchRatio) && pinchRatio > 0) {
+                            depthPhotoZoom = THREE.MathUtils.clamp(
+                                depthPhotoZoom * pinchRatio,
+                                0.5,
+                                4.0
+                            );
+                            updatePhotoProjection();
+                        }
+                    }
+                    // Preserve the capture optical center. Dolly/strafe separates points that
+                    // originated on the same image ray and exposes duplicate backing-photo traces.
+                    previousInteriorCentroid = centroid;
+                    previousInteriorDistance = distance;
+                    syncFirstPersonTarget();
+                    return;
+                }
+                const b = roomBoundsForClamping;
+                const roomScale = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 1.0);
+                camera.getWorldDirection(interiorForward);
+                interiorForward.y = 0;
+                if (interiorForward.lengthSq() > 1e-6) interiorForward.normalize();
+                interiorRight.set(interiorForward.z, 0, -interiorForward.x);
+                interiorMove.set(0, 0, 0)
+                    .addScaledVector(interiorRight, -(centroid.x - previousInteriorCentroid.x) * roomScale * 0.0015)
+                    .addScaledVector(THREE.Object3D.DEFAULT_UP, -(centroid.y - previousInteriorCentroid.y) * roomScale * 0.0015);
+                if (previousInteriorDistance !== null) {
+                    interiorMove.addScaledVector(
+                        interiorForward,
+                        (distance - previousInteriorDistance) * roomScale * 0.0025,
+                    );
+                }
+                constrainToRoom(camera.position.add(interiorMove));
+                previousInteriorCentroid = centroid;
+                previousInteriorDistance = distance;
+            }
+            syncFirstPersonTarget();
+        }, { passive: false });
+
+        function finishInteriorPointer(event) {
+            if (!interiorPointers.has(event.pointerId)) return;
+            interiorPointers.delete(event.pointerId);
+            resetInteriorGestureBaseline();
+        }
+        renderer.domElement.addEventListener('pointerup', finishInteriorPointer);
+        renderer.domElement.addEventListener('pointercancel', finishInteriorPointer);
+        controls.addEventListener('end', updateNavigationMode);
 
         function viewportSize() {
             const visualViewport = window.visualViewport;
@@ -2441,9 +2633,14 @@ class GLBRoomActivity : AppCompatActivity() {
             return Math.max(fitDistance, 0.2);
         }
 
-        function updateFlatPhotoProjection() {
+        function updatePhotoProjection() {
             const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
-            if (!isPortrait) {
+            if (isDepthPhotoMesh) {
+                const baseHalfFov = THREE.MathUtils.degToRad(depthPhotoVerticalFovDegrees) * 0.5;
+                camera.fov = THREE.MathUtils.radToDeg(
+                    2 * Math.atan(Math.tan(baseHalfFov) / depthPhotoZoom)
+                );
+            } else if (!isPortrait) {
                 const verticalHalfFov = Math.atan(Math.tan(Math.PI / 6.0) / viewportAspect);
                 camera.fov = THREE.MathUtils.radToDeg(2 * verticalHalfFov);
             } else {
@@ -2487,13 +2684,14 @@ class GLBRoomActivity : AppCompatActivity() {
                 minZ: boxWorld.min.z + 0.05,
                 maxZ: boxWorld.max.z - 0.02
             };
+            updateNavigationMode();
             console.log('[GLBViewer] Back-center camera inset=', insetFromBack.toFixed(2),
                 'posZ=', cameraZ.toFixed(2), 'targetZ=', targetZ.toFixed(2));
         }
 
         function applyFlatPhotoCamera() {
             if (!isFlatPhotoMesh || flatPhotoWidth <= 0 || flatPhotoHeight <= 0) return;
-            updateFlatPhotoProjection();
+            updatePhotoProjection();
             const planeWidth = flatPhotoWidth;
             const planeHeight = flatPhotoHeight;
             const standoff = depthAnythingImagePlaneStandoff(planeWidth, planeHeight);
@@ -2505,7 +2703,7 @@ class GLBRoomActivity : AppCompatActivity() {
             const camY = lookAtY;
             // glTF plane normal is +Z; WebGL/Three.js must view from +Z (SceneKit preview parity).
             // Camera on −Z shows the back face and the photo appears horizontally mirrored.
-            camera.position.set(0, camY, standoff);
+            camera.position.set(0, camY, photoSurfaceFrontZ + standoff);
             controls.target.set(0, lookAtY, 0);
             camera.lookAt(controls.target);
             controls.update();
@@ -2516,18 +2714,52 @@ class GLBRoomActivity : AppCompatActivity() {
                 maxX: planeWidth * 0.5 - 0.05,
                 minY: 0.05,
                 maxY: planeHeight - 0.05,
-                minZ: 0.02,
-                maxZ: Math.max(standoff * 1.5, 8.0)
+                minZ: photoSurfaceFrontZ + 0.02,
+                maxZ: photoSurfaceFrontZ + Math.max(standoff * 1.5, 8.0)
             };
+            updateNavigationMode();
             console.log('[GLBViewer] Flat photo camera standoff=', standoff.toFixed(2),
                 'plane=', planeWidth.toFixed(2), 'x', planeHeight.toFixed(2),
                 'posZ=', standoff.toFixed(2));
         }
 
+        function applyDepthPhotoCamera() {
+            if (!isDepthPhotoMesh || flatPhotoWidth <= 0 || flatPhotoHeight <= 0) return;
+            updatePhotoProjection();
+            camera.position.copy(depthPhotoCaptureOrigin);
+            controls.target.set(
+                depthPhotoCaptureOrigin.x,
+                depthPhotoCaptureOrigin.y,
+                depthPhotoCaptureOrigin.z - depthPhotoTargetDistance
+            );
+            camera.lookAt(controls.target);
+            controls.update();
+            initialCameraPosition = camera.position.clone();
+            initialControlsTarget = controls.target.clone();
+
+            const lateralAllowance = Math.max(flatPhotoWidth * 0.12, 0.15);
+            const verticalAllowance = Math.max(flatPhotoHeight * 0.12, 0.15);
+            const depthAllowance = Math.max(depthPhotoTargetDistance * 0.15, 0.15);
+            roomBoundsForClamping = {
+                minX: depthPhotoCaptureOrigin.x - lateralAllowance,
+                maxX: depthPhotoCaptureOrigin.x + lateralAllowance,
+                minY: depthPhotoCaptureOrigin.y - verticalAllowance,
+                maxY: depthPhotoCaptureOrigin.y + verticalAllowance,
+                minZ: depthPhotoCaptureOrigin.z - depthAllowance,
+                maxZ: depthPhotoCaptureOrigin.z + depthAllowance
+            };
+            updateNavigationMode();
+            console.log('[GLBViewer] Depth photo capture camera origin=',
+                depthPhotoCaptureOrigin.x.toFixed(2), depthPhotoCaptureOrigin.y.toFixed(2),
+                depthPhotoCaptureOrigin.z.toFixed(2), 'verticalFov=', depthPhotoVerticalFovDegrees.toFixed(2));
+        }
+
         function scheduleCameraFraming() {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    if (isFlatPhotoMesh) {
+                    if (isDepthPhotoMesh) {
+                        applyDepthPhotoCamera();
+                    } else if (isFlatPhotoMesh) {
                         applyFlatPhotoCamera();
                     }
                     resizeViewer();
@@ -2538,6 +2770,10 @@ class GLBRoomActivity : AppCompatActivity() {
         // D-pad / Splat parity: walk on XZ, vertical Y (same as iOS GLBRoomView).
         window.moveCamera = function(dx, dy) {
             noteAutoOrbitInteraction();
+            if (navigationMode === 'photoDepth') {
+                window.orbitCamera(dx, dy);
+                return;
+            }
             const moveSpeed = 0.03;
             let newX = camera.position.x + dx * moveSpeed;
             let newZ = camera.position.z + dy * moveSpeed;
@@ -2556,11 +2792,16 @@ class GLBRoomActivity : AppCompatActivity() {
             controls.target.x += actualDx;
             controls.target.z += actualDz;
             controls.update();
+            updateNavigationMode();
         };
 
         window.moveCameraUp = function(dy) {
             noteAutoOrbitInteraction();
             if (typeof dy !== 'number' || !isFinite(dy)) return;
+            if (navigationMode === 'photoDepth') {
+                window.orbitCamera(0, -dy * 40);
+                return;
+            }
             camera.position.y += dy;
             controls.target.y += dy;
             if (roomBoundsForClamping) {
@@ -2571,11 +2812,25 @@ class GLBRoomActivity : AppCompatActivity() {
                     Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
             }
             controls.update();
+            updateNavigationMode();
         };
 
         // Camera orbit function (called from Android)
         window.orbitCamera = function(deltaX, deltaY) {
             noteAutoOrbitInteraction();
+            if (navigationMode === 'firstPerson' || navigationMode === 'photoDepth') {
+                interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+                interiorEuler.y -= deltaX * 0.012;
+                const pitchLimit = navigationMode === 'photoDepth' ? 0.25 : Math.PI / 2 - 0.05;
+                interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x - deltaY * 0.012, -pitchLimit, pitchLimit);
+                if (navigationMode === 'photoDepth') {
+                    interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -0.35, 0.35);
+                }
+                interiorEuler.z = 0;
+                camera.quaternion.setFromEuler(interiorEuler);
+                syncFirstPersonTarget();
+                return;
+            }
             const rotateSpeed = 0.012;  // Matching iOS
             const spherical = new THREE.Spherical();
             const offset = new THREE.Vector3();
@@ -2594,6 +2849,12 @@ class GLBRoomActivity : AppCompatActivity() {
         // Recenter function
         window.recenterCamera = function() {
             noteAutoOrbitInteraction();
+            if (isDepthPhotoMesh) {
+                depthPhotoZoom = 1;
+                applyDepthPhotoCamera();
+                console.log('[GLBViewer] Depth photo camera recentered');
+                return;
+            }
             if (isFlatPhotoMesh) {
                 applyFlatPhotoCamera();
                 console.log('[GLBViewer] Flat photo camera recentered');
@@ -2603,6 +2864,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 camera.position.copy(initialCameraPosition);
                 controls.target.copy(initialControlsTarget);
                 controls.update();
+                updateNavigationMode();
                 console.log('[GLBViewer] Camera recentered');
             }
         };
@@ -2610,14 +2872,16 @@ class GLBRoomActivity : AppCompatActivity() {
         function resizeViewer() {
             const viewport = viewportSize();
             camera.aspect = viewport.width / viewport.height;
-            if (isFlatPhotoMesh) {
-                updateFlatPhotoProjection();
+            if (isPhotoSurfaceMesh()) {
+                updatePhotoProjection();
             } else {
                 camera.updateProjectionMatrix();
             }
             renderer.setPixelRatio(viewport.dpr);
             renderer.setSize(viewport.width, viewport.height, false);
-            if (isFlatPhotoMesh && flatPhotoWidth > 0 && flatPhotoHeight > 0) {
+            if (isDepthPhotoMesh && flatPhotoWidth > 0 && flatPhotoHeight > 0) {
+                applyDepthPhotoCamera();
+            } else if (isFlatPhotoMesh && flatPhotoWidth > 0 && flatPhotoHeight > 0) {
                 applyFlatPhotoCamera();
             }
             console.log('[GLBViewer] resizeViewer', viewport.width, 'x', viewport.height, 'dpr', viewport.dpr);
@@ -2664,15 +2928,32 @@ class GLBRoomActivity : AppCompatActivity() {
                 const roomWidth = size.x;
                 const roomHeight = size.y;
                 const roomDepth = size.z;
+                const depthPhotoNode = model.getObjectByName('photo_room_depth');
+                isDepthPhotoMesh = Boolean(depthPhotoNode);
                 isFlatPhotoMesh = roomDepth < 0.05;
 
-                if (isFlatPhotoMesh) {
+                if (isPhotoSurfaceMesh()) {
                     flatPhotoWidth = roomWidth;
                     flatPhotoHeight = roomHeight;
+                    const boxWorld = new THREE.Box3().setFromObject(model);
+                    if (isDepthPhotoMesh) {
+                        // The depth GLB is authored in its capture-camera coordinate frame. The
+                        // model translation applied above must also be applied to that origin.
+                        depthPhotoCaptureOrigin.copy(model.position);
+                        depthPhotoTargetDistance = Math.max(-boxWorld.min.z + depthPhotoCaptureOrigin.z, 0.2);
+                        const authoredFov = Number(depthPhotoNode?.userData?.cameraVerticalFovDegrees);
+                        depthPhotoVerticalFovDegrees = Number.isFinite(authoredFov)
+                            ? THREE.MathUtils.clamp(authoredFov, 10, 140)
+                            : 60;
+                        depthPhotoZoom = 1;
+                    } else {
+                        photoSurfaceFrontZ = boxWorld.max.z;
+                    }
                 } else {
                     const boxWorld = new THREE.Box3().setFromObject(model);
                     applyBackCenterCamera(boxWorld);
                 }
+                updateNavigationMode();
 
                 console.log('[GLBViewer] Room size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), 'x', roomDepth.toFixed(2));
                 console.log('[GLBViewer] Camera:', camera.position.x.toFixed(2), camera.position.y.toFixed(2), camera.position.z.toFixed(2),
@@ -2746,6 +3027,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     ?: throw IllegalStateException("Missing room folder")
 
                 val sourcePhoto = resolveSourcePhotoFile()
+                var measuredForSavedMesh: DepthAnythingRoomMeasurer.Result? = null
                 if (sourcePhoto != null) {
                     val progressJob = launch {
                         var progress = 0.05f
@@ -2758,6 +3040,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     val measured = withContext(Dispatchers.Default) {
                         DepthAnythingRoomMeasurer.measureFromFile(this@GLBRoomActivity, sourcePhoto)
                     }
+                    measuredForSavedMesh = measured
                     progressJob.cancel()
                     if (measured.measured) {
                         applyMeasuredDimensions(measured, persist = false)
@@ -2770,39 +3053,69 @@ class GLBRoomActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     val roomsDir = File(filesDir, "rooms").apply { mkdirs() }
                     val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
-                    previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
+                    try {
+                        previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
 
-                    val createdAtMillis = System.currentTimeMillis()
-                    val metadataFile = File(savedRoomFolder, "metadata.txt")
-                    val metadata = StringBuilder()
-                    metadata.append("name=$name\n")
-                    metadata.append("created=$createdAtMillis\n")
-                    metadata.append("type=photo\n")
-                    metadata.append("roomWidth=$roomWidth\n")
-                    metadata.append("roomHeight=$roomHeight\n")
-                    metadata.append("roomDepth=$roomDepth\n")
-                    metadata.append("photoOrientation=$photoOrientation\n")
-                    metadataFile.writeText(metadata.toString())
-                    val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
-                        savedRoomFolder,
-                        RoomFolderMetadata.Snapshot(
-                            name = name,
-                            createdAt = createdAtMillis,
-                            type = "photo",
-                            photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
-                            photoWideAngle = false,
-                            roomWidth = roomWidth,
-                            roomHeight = roomHeight,
-                            roomDepth = roomDepth,
-                            roomDimsApproach = roomDimsApproach ?: "depth_anything_metric",
-                            roomSceneWidth = roomWidth,
-                            roomSceneHeight = roomHeight,
-                            roomSceneDepth = roomDepth,
-                            previewOnly = false,
-                        ),
-                    )
-                    RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
-                    previewRoomFolder.parentFile?.deleteRecursively()
+                        val depthMesh = measuredForSavedMesh?.depthMesh
+                        if (sourcePhoto != null && depthMesh != null) {
+                            val texture = DepthAnythingRoomMeasurer.decodeOrientedBitmap(sourcePhoto)
+                                ?: throw IllegalStateException("Could not decode saved-room source photo")
+                            try {
+                                val generated = GlbGenerator().generateDepthPhotoGlb(
+                                    outputFile = File(savedRoomFolder, glbFile.name),
+                                    dimensions = GlbGenerator.RoomDimensions(
+                                        width = roomWidth,
+                                        height = roomHeight,
+                                        depth = roomDepth,
+                                    ),
+                                    photoTexture = texture,
+                                    depthMap = depthMesh.calibratedDepth,
+                                    depthWidth = depthMesh.imageWidth,
+                                    depthHeight = depthMesh.imageHeight,
+                                    focalXPixels = depthMesh.focalXPixels,
+                                    focalYPixels = depthMesh.focalYPixels,
+                                )
+                                check(generated) { "Could not generate saved depth-room GLB" }
+                            } finally {
+                                texture.recycle()
+                            }
+                        }
+
+                        val createdAtMillis = System.currentTimeMillis()
+                        val metadataFile = File(savedRoomFolder, "metadata.txt")
+                        val metadata = StringBuilder()
+                        metadata.append("name=$name\n")
+                        metadata.append("created=$createdAtMillis\n")
+                        metadata.append("type=photo\n")
+                        metadata.append("roomWidth=$roomWidth\n")
+                        metadata.append("roomHeight=$roomHeight\n")
+                        metadata.append("roomDepth=$roomDepth\n")
+                        metadata.append("photoOrientation=$photoOrientation\n")
+                        metadataFile.writeText(metadata.toString())
+                        val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
+                            savedRoomFolder,
+                            RoomFolderMetadata.Snapshot(
+                                name = name,
+                                createdAt = createdAtMillis,
+                                type = "photo",
+                                photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                                photoWideAngle = false,
+                                roomWidth = roomWidth,
+                                roomHeight = roomHeight,
+                                roomDepth = roomDepth,
+                                roomDimsApproach = roomDimsApproach ?: "depth_anything_metric",
+                                roomSceneWidth = roomWidth,
+                                roomSceneHeight = roomHeight,
+                                roomSceneDepth = roomDepth,
+                                previewOnly = false,
+                            ),
+                        )
+                        RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
+                        previewRoomFolder.parentFile?.deleteRecursively()
+                    } catch (error: Exception) {
+                        savedRoomFolder.deleteRecursively()
+                        throw error
+                    }
                 }
 
                 overlay.setProgress(1f, getString(R.string.room_viewer_saving_room_ellipsis))

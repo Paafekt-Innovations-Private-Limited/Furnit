@@ -30,6 +30,13 @@ Hard rules:
 - Record only confirmed deferred/unused findings. Search hits alone do not prove that
   a fallback, persisted format, reflection target, test symbol, or compatibility API
   is dead.
+- For a behavior or visual issue that requires on-device judgment, treat automated
+  builds and tests as provisional validation. After implementing a candidate fix,
+  stop and let the user manually test it. Do not describe the issue as fixed, update
+  code-linked behavior documentation, commit, or push that fix until the user
+  explicitly confirms the manual result. If the user explicitly asks to commit or
+  push an unconfirmed candidate, label it as unconfirmed instead of documenting it
+  as resolved.
 
 Validation defaults:
 

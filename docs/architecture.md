@@ -10,7 +10,7 @@ native implementations. The authoritative path-to-code inventory is
 | Flow | iOS | Android |
 |---|---|---|
 | Authentication | `LoginView` → `AuthenticationManager` → `OTPVerificationView` → Firebase Auth | `LoginActivity` → `AuthenticationManager` → `OTPVerificationActivity` → Firebase Auth |
-| AI room creation | Flat preview immediately → GeoCalib/Depth Anything/RTMDet on first save → textured USDZ | Immediate method picker → sampled EXIF-aware decode → flat full-photo GLB preview; metric measurement stack is wired beside generation |
+| AI room creation | Flat preview immediately → GeoCalib/Depth Anything/RTMDet on first save → calibrated projective depth-surface USDZ | Immediate method picker → sampled EXIF-aware decode → flat full-photo GLB preview → calibrated projective depth-surface GLB on save |
 | Manual room creation | Boundary editor → `SinglePhotoRoomReconstructor` → textured mesh/USDZ path | `RoomBoundaryActivity` → five-plane textured GLB → `GLBRoomActivity` |
 | Furniture Fit | Android-equivalent RTMDet FP16 graph variant → mandatory audited full Metal (`cpuNodes=0`) → class-aware NMS → mask affinity → transparent overlays | RTMDet FP16 LiteRT (GPU or XNNPACK CPU) → boxes-only identify or mask segmentation → transparent overlays |
 | Saved room | Private `Documents/SavedRooms` | Private `files/rooms` (excluded from backup/transfer) |

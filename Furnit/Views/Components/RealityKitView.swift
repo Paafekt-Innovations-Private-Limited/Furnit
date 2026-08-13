@@ -187,24 +187,41 @@ struct RealityKitView: UIViewRepresentable {
 
     private static func configureDepthAnythingCameraFieldOfView(
         _ cameraEntity: PerspectiveCamera?,
-        boundaryManager: RealityKitBoundaryManager?,
-        roomCoordinateFrame: RoomCoordinateFrame,
-        photoOrientation: PhotoOrientation
+        model: USDZModel,
+        authoredVerticalFieldOfView: Float?
     ) {
         guard let cameraEntity,
-              roomCoordinateFrame == .depthAnythingImageDepthMeters else {
+              model.roomCoordinateFrame == .depthAnythingImageDepthMeters else {
             return
         }
-        _ = boundaryManager
-        if photoOrientation == .landscape {
+        if let authoredVerticalFieldOfView {
+            cameraEntity.camera.fieldOfViewOrientation = .vertical
+            cameraEntity.camera.fieldOfViewInDegrees = authoredVerticalFieldOfView
+        } else if model.photoOrientation == .landscape {
             cameraEntity.camera.fieldOfViewOrientation = .horizontal
+            cameraEntity.camera.fieldOfViewInDegrees = 60.0
         } else {
             cameraEntity.camera.fieldOfViewOrientation = .vertical
+            cameraEntity.camera.fieldOfViewInDegrees = 60.0
         }
-        cameraEntity.camera.fieldOfViewInDegrees = 60.0
     }
 
-    /// Correct USDZ files created before the flat-mesh exporter preserved photo aspect. The
+    private static func authoredDepthCaptureVerticalFieldOfView(for model: USDZModel) -> Float? {
+        guard model.roomCoordinateFrame == .depthAnythingImageDepthMeters,
+              let modelURL = model.temporaryURL else {
+            return nil
+        }
+        let metadata = CameraExifSidecar.load(roomURL: modelURL)
+        guard metadata["depthMeshProjectionVersion", default: 0] >= 1,
+              let fieldOfView = metadata["depthMeshVerticalFovDegrees"].map(Float.init),
+              fieldOfView.isFinite,
+              (10...140).contains(fieldOfView) else {
+            return nil
+        }
+        return fieldOfView
+    }
+
+    /// Correct legacy flat USDZ files created before the flat-mesh exporter preserved photo aspect. The
     /// room-specific camera sidecar survives the save copy and records the original pixel size.
     /// New files already match and therefore receive a scale of approximately 1.
     private static func restoreDepthAnythingPhotoAspectIfNeeded(
@@ -230,6 +247,9 @@ struct RealityKitView: UIViewRepresentable {
 
         let desiredAspect = pixelWidth / pixelHeight
         let bounds = entity.visualBounds(relativeTo: entity)
+        // Current depth-surface USDZs already preserve pixel aspect. Aspect repair only belongs
+        // to legacy image planes; applying it to spatial depth would deform the reconstruction.
+        guard bounds.extents.z <= 0.2 else { return }
         guard bounds.extents.x > 0.001,
               bounds.extents.y > 0.001,
               desiredAspect.isFinite,
@@ -261,13 +281,26 @@ struct RealityKitView: UIViewRepresentable {
         boundaryManager: RealityKitBoundaryManager,
         model: USDZModel
     ) -> SIMD3<Float>? {
-        guard boundaryManager.bounds != nil else { return nil }
+        guard let bounds = boundaryManager.bounds else { return nil }
+        let authoredVerticalFieldOfView = authoredDepthCaptureVerticalFieldOfView(for: model)
         configureDepthAnythingCameraFieldOfView(
             cameraEntity,
-            boundaryManager: boundaryManager,
-            roomCoordinateFrame: model.roomCoordinateFrame,
-            photoOrientation: model.photoOrientation
+            model: model,
+            authoredVerticalFieldOfView: authoredVerticalFieldOfView
         )
+        if authoredVerticalFieldOfView != nil {
+            // Perspective depth meshes are authored around the original optical center. Keeping
+            // the eye at that origin and restoring the authored focal length makes the first
+            // saved-room frame a pixel-exact reprojection of the source photograph.
+            let cameraPosition = SIMD3<Float>(0, 0, 0)
+            let lookAtPosition = SIMD3<Float>(0, 0, max(bounds.min.z, 0.5))
+            _ = applyCameraPose(
+                cameraAnchor,
+                position: cameraPosition,
+                lookAt: lookAtPosition
+            )
+            return lookAtPosition
+        }
         let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(
             roomCoordinateFrame: model.roomCoordinateFrame,
             photoOrientation: model.photoOrientation,
@@ -332,9 +365,8 @@ struct RealityKitView: UIViewRepresentable {
         // ✅ Track current model to detect room changes
         var currentModelID: UUID?
         var boundaryManager: RealityKitBoundaryManager?
-        /// Point the viewer framed the room around. Publishing it to the gesture handler on
-        /// every change keeps the single-finger orbit swinging around the room and re-syncs
-        /// accumulated yaw/pitch after any programmatic reframe.
+        /// Point used for exterior orbit framing. The gesture handler independently switches to
+        /// turn-in-place navigation whenever the camera lies inside a volumetric room.
         var cameraLookAtTarget: SIMD3<Float>? {
             didSet {
                 gestureHandlers?.setOrbitTarget(cameraLookAtTarget)
@@ -378,6 +410,14 @@ struct RealityKitView: UIViewRepresentable {
         /// Nudge the custom camera like Splat/GLB D-pad: world X walk, world Y lift, orbit target moves with camera.
         private func nudgeCamera(by worldDelta: SIMD3<Float>) {
             guard let cameraAnchor else { return }
+
+            if boundaryManager?.usesCapturedPhotoFrustum == true {
+                let didTurn = gestureHandlers?.nudgeCapturedPhotoView(
+                    yawDelta: -worldDelta.x * 0.4,
+                    pitchDelta: worldDelta.y * 0.48
+                ) == true
+                if didTurn { return }
+            }
 
             let position = cameraAnchor.transform.translation
             let forward = cameraAnchor.transform.rotation.act(SIMD3<Float>(0, 0, -1))
@@ -715,6 +755,9 @@ struct RealityKitView: UIViewRepresentable {
 
                 // Set up boundary manager for camera constraints
                 let boundaryManager = RealityKitBoundaryManager(arView: arView)
+                boundaryManager.setUsesCapturedPhotoFrustum(
+                    model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                )
                 // Option B: Ensure fresh bounds per model load (avoid inheriting previous room bounds)
                 boundaryManager.reset()
                 logDebug("🧹 [RealityKitView] Boundary manager reset before calculating new room bounds")

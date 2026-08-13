@@ -1929,6 +1929,15 @@ struct MeshWebGLView: UIViewRepresentable {
                     }
                 } catch (e0) {}
 
+                const roomBoundsForClamping = {
+                    minX: -roomWidth * 0.5,
+                    maxX: roomWidth * 0.5,
+                    minY: 0,
+                    maxY: roomHeight,
+                    minZ: -roomDepth * 0.5,
+                    maxZ: roomDepth * 0.5
+                };
+
                 // Orbit controls - single-finger rotate matches Splat room feel (no inertia, ~0.005 rad/px).
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = false;
@@ -1953,12 +1962,154 @@ struct MeshWebGLView: UIViewRepresentable {
                     TWO: THREE.TOUCH.DOLLY_PAN
                 };
 
+                let navigationMode = 'orbit';
+                const interiorPointers = new Map();
+                const interiorEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+                const interiorForward = new THREE.Vector3();
+                const interiorRight = new THREE.Vector3();
+                const interiorMove = new THREE.Vector3();
+                let previousInteriorCentroid = null;
+                let previousInteriorDistance = null;
+
+                function hasNavigableRoomVolume() {
+                    return roomBoundsForClamping.maxX - roomBoundsForClamping.minX > 0.2 &&
+                        roomBoundsForClamping.maxY - roomBoundsForClamping.minY > 0.2 &&
+                        roomBoundsForClamping.maxZ - roomBoundsForClamping.minZ > 0.2;
+                }
+
+                function isInsideRoom(position) {
+                    if (!hasNavigableRoomVolume()) return false;
+                    const b = roomBoundsForClamping;
+                    return position.x >= b.minX && position.x <= b.maxX &&
+                        position.y >= b.minY && position.y <= b.maxY &&
+                        position.z >= b.minZ && position.z <= b.maxZ;
+                }
+
+                function constrainToRoom(position) {
+                    const b = roomBoundsForClamping;
+                    position.x = THREE.MathUtils.clamp(position.x, b.minX + 0.05, b.maxX - 0.05);
+                    position.y = THREE.MathUtils.clamp(position.y, b.minY + 0.05, b.maxY - 0.05);
+                    position.z = THREE.MathUtils.clamp(position.z, b.minZ + 0.05, b.maxZ - 0.05);
+                    return position;
+                }
+
+                function interiorLookDistance() {
+                    const b = roomBoundsForClamping;
+                    return Math.max(1.0, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5);
+                }
+
+                function syncFirstPersonTarget() {
+                    camera.getWorldDirection(interiorForward);
+                    controls.target.copy(camera.position).addScaledVector(interiorForward, interiorLookDistance());
+                }
+
+                function resetInteriorGestureBaseline() {
+                    const points = Array.from(interiorPointers.values());
+                    if (points.length === 0) {
+                        previousInteriorCentroid = null;
+                        previousInteriorDistance = null;
+                        return;
+                    }
+                    const centroid = points.reduce(
+                        (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+                        { x: 0, y: 0 },
+                    );
+                    previousInteriorCentroid = {
+                        x: centroid.x / points.length,
+                        y: centroid.y / points.length,
+                    };
+                    previousInteriorDistance = points.length === 2
+                        ? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)
+                        : null;
+                }
+
+                function updateNavigationMode() {
+                    const nextMode = isInsideRoom(camera.position) ? 'firstPerson' : 'orbit';
+                    if (nextMode === navigationMode) {
+                        if (navigationMode === 'firstPerson') syncFirstPersonTarget();
+                        return;
+                    }
+                    navigationMode = nextMode;
+                    controls.enabled = navigationMode === 'orbit';
+                    interiorPointers.clear();
+                    resetInteriorGestureBaseline();
+                    if (navigationMode === 'firstPerson') syncFirstPersonTarget();
+                    console.log('[MeshViewer] Navigation mode:', navigationMode);
+                }
+
+                renderer.domElement.addEventListener('pointerdown', (event) => {
+                    if (navigationMode !== 'firstPerson') return;
+                    event.preventDefault();
+                    interiorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+                    renderer.domElement.setPointerCapture?.(event.pointerId);
+                    resetInteriorGestureBaseline();
+                }, { passive: false });
+
+                renderer.domElement.addEventListener('pointermove', (event) => {
+                    if (navigationMode !== 'firstPerson' || !interiorPointers.has(event.pointerId)) return;
+                    event.preventDefault();
+                    const previousPoint = interiorPointers.get(event.pointerId);
+                    interiorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+                    const points = Array.from(interiorPointers.values());
+
+                    if (points.length === 1) {
+                        interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+                        interiorEuler.y -= (event.clientX - previousPoint.x) * 0.005;
+                        interiorEuler.x -= (event.clientY - previousPoint.y) * 0.005;
+                        interiorEuler.x = THREE.MathUtils.clamp(
+                            interiorEuler.x,
+                            -Math.PI / 2 + 0.05,
+                            Math.PI / 2 - 0.05,
+                        );
+                        interiorEuler.z = 0;
+                        camera.quaternion.setFromEuler(interiorEuler);
+                    } else if (points.length === 2 && previousInteriorCentroid) {
+                        const centroid = {
+                            x: (points[0].x + points[1].x) * 0.5,
+                            y: (points[0].y + points[1].y) * 0.5,
+                        };
+                        const distance = Math.hypot(
+                            points[0].x - points[1].x,
+                            points[0].y - points[1].y,
+                        );
+                        const b = roomBoundsForClamping;
+                        const roomScale = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 1.0);
+                        camera.getWorldDirection(interiorForward);
+                        interiorForward.y = 0;
+                        if (interiorForward.lengthSq() > 1e-6) interiorForward.normalize();
+                        interiorRight.set(interiorForward.z, 0, -interiorForward.x);
+                        interiorMove.set(0, 0, 0)
+                            .addScaledVector(interiorRight, -(centroid.x - previousInteriorCentroid.x) * roomScale * 0.0015)
+                            .addScaledVector(THREE.Object3D.DEFAULT_UP, -(centroid.y - previousInteriorCentroid.y) * roomScale * 0.0015);
+                        if (previousInteriorDistance !== null) {
+                            interiorMove.addScaledVector(
+                                interiorForward,
+                                (distance - previousInteriorDistance) * roomScale * 0.0025,
+                            );
+                        }
+                        constrainToRoom(camera.position.add(interiorMove));
+                        previousInteriorCentroid = centroid;
+                        previousInteriorDistance = distance;
+                    }
+                    syncFirstPersonTarget();
+                }, { passive: false });
+
+                function finishInteriorPointer(event) {
+                    if (!interiorPointers.has(event.pointerId)) return;
+                    interiorPointers.delete(event.pointerId);
+                    resetInteriorGestureBaseline();
+                }
+                renderer.domElement.addEventListener('pointerup', finishInteriorPointer);
+                renderer.domElement.addEventListener('pointercancel', finishInteriorPointer);
+                controls.addEventListener('end', updateNavigationMode);
+
                 // Set initial camera position - back center of room looking at front wall.
                 // Target placed on the front wall so single-finger rotate orbits around it (matches Splat room).
                 const targetY = roomHeight * 0.5;
                 controls.target.set(0, targetY, -roomDepth * 0.5);
                 camera.position.set(0, targetY, roomDepth * 0.35);
                 controls.update();
+                updateNavigationMode();
 
                 // Save initial camera state for recenter
                 let initialCameraPos = camera.position.clone();
@@ -1969,6 +2120,7 @@ struct MeshWebGLView: UIViewRepresentable {
                     camera.position.copy(initialCameraPos);
                     controls.target.copy(initialTarget);
                     controls.update();
+                    updateNavigationMode();
                     console.log('[MeshViewer] Camera recentered');
                 };
 
@@ -1988,19 +2140,11 @@ struct MeshWebGLView: UIViewRepresentable {
                     camera.position.copy(initialCameraPos);
                     controls.target.copy(initialTarget);
                     controls.update();
+                    updateNavigationMode();
                     console.log('[MeshViewer] Room scaled by factor:', factor);
                 };
 
                 // D-pad: same behavior as Splat WebGL — walk on XZ, vertical on Y (not orbit).
-                const roomBoundsForClamping = {
-                    minX: -roomWidth * 0.5,
-                    maxX: roomWidth * 0.5,
-                    minY: 0,
-                    maxY: roomHeight,
-                    minZ: -roomDepth * 0.5,
-                    maxZ: roomDepth * 0.5
-                };
-
                 window.moveCamera = function(dx, dy) {
                     const moveSpeed = 0.03;
                     let newX = camera.position.x + dx * moveSpeed;
@@ -2018,6 +2162,7 @@ struct MeshWebGLView: UIViewRepresentable {
                     controls.target.x += actualDx;
                     controls.target.z += actualDz;
                     controls.update();
+                    updateNavigationMode();
                 };
 
                 window.moveCameraUp = function(dy) {
@@ -2028,6 +2173,7 @@ struct MeshWebGLView: UIViewRepresentable {
                     camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
                     controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
                     controls.update();
+                    updateNavigationMode();
                 };
 
                 // Lighting - brighter for textured walls

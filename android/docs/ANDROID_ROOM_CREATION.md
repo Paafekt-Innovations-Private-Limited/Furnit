@@ -8,18 +8,21 @@
 4. AI generation starts `PhotoRoomGenerationService.startGenerationInBackground`.
 5. `SinglePhotoRoomActivity` handles orientation and screen-size configuration changes without recreation, keeping the selected photo, progress overlay, and in-flight generation callback attached when the phone rotates.
 6. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true` and no artificial wait time.
-7. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB (Swift parity) with an embedded JPEG texture at quality 95.
+7. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB for the immediate preview, with an embedded JPEG texture at quality 95.
 8. Metadata is written beside the GLB, including room dimensions, depth, photo orientation, and preview state.
-9. Preview rooms are saved permanently through `PhotoRoomGenerationService.promoteToLibrary`.
-10. Saved rooms open through `GLBRoomActivity`, which receives the saved dimensions for camera framing and ruler display.
+9. Save reuses the metric measurement result to pinhole-unproject calibrated depth and writes a projective `photo_room_depth` GLB. Depth-discontinuity triangles are omitted, with a calibrated far-photo backing layer filling those openings.
+10. The completed folder is promoted to `files/rooms` transactionally; a failed depth export removes the incomplete saved folder.
+11. Saved rooms open through `GLBRoomActivity`, which restores the authored vertical field of view and capture optical center. Pinch changes field of view rather than translating the camera, preventing foreground and backing-photo traces.
 
 Manual setup still uses boundary-based texture crops and `GlbGenerator.generateGlb` (five-plane cuboid).
 
-## Why Flat Photo GLB For AI
+## Why The AI Preview Remains Flat
 
-The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid planes, which produced visible **dragged pixels** on the front wall. The flat mesh keeps the entire photo as one texture with clamp-to-edge sampling and unlit materials, matching the Swift single-photo preview.
+The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid planes, which produced visible **dragged pixels** on the front wall. The preview keeps the entire photo as one texture with clamp-to-edge sampling and unlit materials, matching the Swift single-photo preview while expensive metric generation remains deferred until Save.
 
-`GLBRoomActivity` detects thin flat meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid. Its flat-photo camera and target remain at the same height so the viewer does not apply a second perspective tilt to the photograph.
+`GLBRoomActivity` detects thin preview meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid. Saved `photo_room_depth` meshes use their authored projection metadata. Volumetric/manual rooms switch from exterior orbit to turn-in-place navigation once the camera is inside; the Auto Orbit setting controls only the idle animation.
+
+The saved projective-room interaction is build-validated on Android; final device visual confirmation of the current zoom/turn behavior is still pending as of 2026-08-13.
 
 The room viewer top controls mirror Swift: floating back, center ruler/pinch/tap helpers, recenter/save,
 and AR resize. The Android viewer no longer uses a full-width top band.
@@ -67,6 +70,7 @@ portrait and landscape while the progress overlay is visible. Confirm that the o
 progress continues, and the generated room opens. For wide capture, verify the log reports a
 capture-quality back camera and the saved JPEG dimensions are not from a low-resolution auxiliary
 sensor. Also confirm that portrait and landscape EXIF inputs remain upright, the picker appears
-before generation work, the preview shows a sharp flat photo wall without dragged crops or an added
-perspective tilt, `GLBRoomActivity` recenters the camera in front of the mesh, and the top controls
-are floating rather than a full-width band.
+before generation work, and the preview remains a sharp flat photo without dragged crops or an added
+perspective tilt. After Save, reopen the projective room, recenter, pinch in/out, and turn within the
+limited captured frustum; foreground objects must not stretch or leave duplicate traces. Confirm the
+top controls remain floating rather than a full-width band.

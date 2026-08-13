@@ -1765,6 +1765,7 @@ struct GLBWebGLView: UIViewRepresentable {
                 console.log('[GLBViewer] Starting...');
 
                 let roomBoundsForClamping = null;
+                let isFlatPhotoMesh = false;
                 const scaledRoomSize = new THREE.Vector3(0, 0, 0);
                 const modelSize = new THREE.Vector3(0, 0, 0);
                 const initialCameraPos = new THREE.Vector3(0, 2, 5);
@@ -1801,6 +1802,155 @@ struct GLBWebGLView: UIViewRepresentable {
                     ONE: THREE.TOUCH.ROTATE,
                     TWO: THREE.TOUCH.DOLLY_PAN
                 };
+
+                // Exterior inspection and interior walking require different camera models.
+                // Auto Orbit remains only an idle-animation preference; it does not select the
+                // manual navigation mode. A zero-depth photo preview has no interior to enter.
+                let navigationMode = 'orbit';
+                const interiorPointers = new Map();
+                const interiorEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+                const interiorForward = new THREE.Vector3();
+                const interiorRight = new THREE.Vector3();
+                const interiorMove = new THREE.Vector3();
+                let previousInteriorCentroid = null;
+                let previousInteriorDistance = null;
+
+                function hasNavigableRoomVolume() {
+                    if (!roomBoundsForClamping || isFlatPhotoMesh) return false;
+                    const width = roomBoundsForClamping.maxX - roomBoundsForClamping.minX;
+                    const height = roomBoundsForClamping.maxY - roomBoundsForClamping.minY;
+                    const depth = roomBoundsForClamping.maxZ - roomBoundsForClamping.minZ;
+                    return width > 0.2 && height > 0.2 && depth > 0.2;
+                }
+
+                function isInsideRoom(position) {
+                    if (!hasNavigableRoomVolume()) return false;
+                    const b = roomBoundsForClamping;
+                    return position.x >= b.minX && position.x <= b.maxX &&
+                        position.y >= b.minY && position.y <= b.maxY &&
+                        position.z >= b.minZ && position.z <= b.maxZ;
+                }
+
+                function constrainToRoom(position) {
+                    if (!hasNavigableRoomVolume()) return position;
+                    const b = roomBoundsForClamping;
+                    position.x = THREE.MathUtils.clamp(position.x, b.minX, b.maxX);
+                    position.y = THREE.MathUtils.clamp(position.y, b.minY, b.maxY);
+                    position.z = THREE.MathUtils.clamp(position.z, b.minZ, b.maxZ);
+                    return position;
+                }
+
+                function interiorLookDistance() {
+                    if (!hasNavigableRoomVolume()) return 2.0;
+                    const b = roomBoundsForClamping;
+                    return Math.max(1.0, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5);
+                }
+
+                function syncFirstPersonTarget() {
+                    camera.getWorldDirection(interiorForward);
+                    controls.target.copy(camera.position).addScaledVector(interiorForward, interiorLookDistance());
+                }
+
+                function resetInteriorGestureBaseline() {
+                    const points = Array.from(interiorPointers.values());
+                    if (points.length === 0) {
+                        previousInteriorCentroid = null;
+                        previousInteriorDistance = null;
+                        return;
+                    }
+                    const centroid = points.reduce(
+                        (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+                        { x: 0, y: 0 },
+                    );
+                    previousInteriorCentroid = {
+                        x: centroid.x / points.length,
+                        y: centroid.y / points.length,
+                    };
+                    previousInteriorDistance = points.length === 2
+                        ? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)
+                        : null;
+                }
+
+                function updateNavigationMode() {
+                    const nextMode = isInsideRoom(camera.position) ? 'firstPerson' : 'orbit';
+                    if (nextMode === navigationMode) {
+                        if (navigationMode === 'firstPerson') syncFirstPersonTarget();
+                        return;
+                    }
+                    navigationMode = nextMode;
+                    controls.enabled = navigationMode === 'orbit';
+                    interiorPointers.clear();
+                    resetInteriorGestureBaseline();
+                    if (navigationMode === 'firstPerson') syncFirstPersonTarget();
+                    console.log('[GLBViewer] Navigation mode:', navigationMode);
+                }
+
+                renderer.domElement.addEventListener('pointerdown', (event) => {
+                    if (navigationMode !== 'firstPerson') return;
+                    event.preventDefault();
+                    interiorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+                    renderer.domElement.setPointerCapture?.(event.pointerId);
+                    resetInteriorGestureBaseline();
+                    noteAutoOrbitInteraction();
+                }, { passive: false });
+
+                renderer.domElement.addEventListener('pointermove', (event) => {
+                    if (navigationMode !== 'firstPerson' || !interiorPointers.has(event.pointerId)) return;
+                    event.preventDefault();
+                    const previousPoint = interiorPointers.get(event.pointerId);
+                    interiorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+                    const points = Array.from(interiorPointers.values());
+
+                    if (points.length === 1) {
+                        interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+                        interiorEuler.y -= (event.clientX - previousPoint.x) * 0.005;
+                        interiorEuler.x -= (event.clientY - previousPoint.y) * 0.005;
+                        interiorEuler.x = THREE.MathUtils.clamp(
+                            interiorEuler.x,
+                            -Math.PI / 2 + 0.05,
+                            Math.PI / 2 - 0.05,
+                        );
+                        interiorEuler.z = 0;
+                        camera.quaternion.setFromEuler(interiorEuler);
+                    } else if (points.length === 2 && previousInteriorCentroid) {
+                        const centroid = {
+                            x: (points[0].x + points[1].x) * 0.5,
+                            y: (points[0].y + points[1].y) * 0.5,
+                        };
+                        const distance = Math.hypot(
+                            points[0].x - points[1].x,
+                            points[0].y - points[1].y,
+                        );
+                        const b = roomBoundsForClamping;
+                        const roomScale = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 1.0);
+                        camera.getWorldDirection(interiorForward);
+                        interiorForward.y = 0;
+                        if (interiorForward.lengthSq() > 1e-6) interiorForward.normalize();
+                        interiorRight.set(interiorForward.z, 0, -interiorForward.x);
+                        interiorMove.set(0, 0, 0)
+                            .addScaledVector(interiorRight, -(centroid.x - previousInteriorCentroid.x) * roomScale * 0.0015)
+                            .addScaledVector(THREE.Object3D.DEFAULT_UP, -(centroid.y - previousInteriorCentroid.y) * roomScale * 0.0015);
+                        if (previousInteriorDistance !== null) {
+                            interiorMove.addScaledVector(
+                                interiorForward,
+                                (distance - previousInteriorDistance) * roomScale * 0.0025,
+                            );
+                        }
+                        constrainToRoom(camera.position.add(interiorMove));
+                        previousInteriorCentroid = centroid;
+                        previousInteriorDistance = distance;
+                    }
+                    syncFirstPersonTarget();
+                }, { passive: false });
+
+                function finishInteriorPointer(event) {
+                    if (!interiorPointers.has(event.pointerId)) return;
+                    interiorPointers.delete(event.pointerId);
+                    resetInteriorGestureBaseline();
+                }
+                renderer.domElement.addEventListener('pointerup', finishInteriorPointer);
+                renderer.domElement.addEventListener('pointercancel', finishInteriorPointer);
+                controls.addEventListener('end', updateNavigationMode);
 
                 // --- Auto-Orbit (Settings > Auto-Orbit) -----------------------------
                 // Restored from 4fd456a8; lost when the WebGL splat viewer became
@@ -1846,7 +1996,7 @@ struct GLBWebGLView: UIViewRepresentable {
                 }
 
                 function stepAutoOrbit(nowMs) {
-                    if (!AUTO_ORBIT_ENABLED || userInteracting) return false;
+                    if (!AUTO_ORBIT_ENABLED || userInteracting || navigationMode !== 'orbit') return false;
                     if (nowMs - lastInteractionMs < AUTO_ORBIT_IDLE_DELAY_MS) return false;
                     if (nowMs - autoOrbitLastFrameMs < AUTO_ORBIT_FRAME_MS) return false;
 
@@ -1894,6 +2044,7 @@ struct GLBWebGLView: UIViewRepresentable {
                     controls.target.x += actualDx;
                     controls.target.z += actualDz;
                     controls.update();
+                    updateNavigationMode();
                 };
 
                 window.moveCameraUp = function(dy) {
@@ -1907,11 +2058,25 @@ struct GLBWebGLView: UIViewRepresentable {
                         controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
                     }
                     controls.update();
+                    updateNavigationMode();
                 };
 
                 // Listen for orbit commands from Swift (touch drag)
                 window.orbitCamera = function(deltaX, deltaY) {
                     noteAutoOrbitInteraction();
+                    if (navigationMode === 'firstPerson') {
+                        interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+                        interiorEuler.y -= deltaX * 0.012;
+                        interiorEuler.x = THREE.MathUtils.clamp(
+                            interiorEuler.x - deltaY * 0.012,
+                            -Math.PI / 2 + 0.05,
+                            Math.PI / 2 - 0.05,
+                        );
+                        interiorEuler.z = 0;
+                        camera.quaternion.setFromEuler(interiorEuler);
+                        syncFirstPersonTarget();
+                        return;
+                    }
                     const spherical = new THREE.Spherical();
                     const offset = new THREE.Vector3();
                     offset.copy(camera.position).sub(controls.target);
@@ -1961,6 +2126,7 @@ struct GLBWebGLView: UIViewRepresentable {
                         const center = box.getCenter(new THREE.Vector3());
                         const size = box.getSize(new THREE.Vector3());
                         modelSize.copy(size);
+                        isFlatPhotoMesh = size.z < 0.05;
 
                         console.log('[GLBViewer] Model bounds - center:', center, 'size:', size);
 
@@ -1998,6 +2164,7 @@ struct GLBWebGLView: UIViewRepresentable {
                             // Do not re-clamp when the user asked for infinite zoom.
                             if (!INFINITE_ZOOM_ENABLED) controls.maxDistance = Math.max(roomWidth, roomDepth) * 2.0;
                             controls.update();
+                            updateNavigationMode();
                             console.log('[GLBViewer] Room scaled by factor:', scaleFactor);
                         }
 
@@ -2017,6 +2184,7 @@ struct GLBWebGLView: UIViewRepresentable {
                             camera.position.copy(initialCameraPos);
                             controls.target.copy(initialTarget);
                             controls.update();
+                            updateNavigationMode();
                             console.log('[GLBViewer] Camera recentered');
                         };
 

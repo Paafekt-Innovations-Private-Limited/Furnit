@@ -7,7 +7,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.ceil
+import kotlin.math.atan
 import kotlin.math.max
+import kotlin.math.sqrt
 
 /**
  * GlbGenerator - Creates binary glTF 2.0 (GLB) files for room models
@@ -31,7 +34,8 @@ class GlbGenerator {
         val positions: FloatArray,
         val normals: FloatArray,
         val uvs: FloatArray,
-        val indices: ShortArray
+        val indices: ShortArray,
+        val cameraVerticalFovDegrees: Float? = null,
     )
 
     data class RoomDimensions(
@@ -146,6 +150,168 @@ class GlbGenerator {
             LogUtil.e(TAG, "Failed to generate flat photo GLB", e)
             false
         }
+    }
+
+    /** Builds a 2.5D surface from the calibrated depth value at each sampled photo pixel. */
+    fun generateDepthPhotoGlb(
+        outputFile: File,
+        dimensions: RoomDimensions,
+        photoTexture: Bitmap,
+        depthMap: FloatArray,
+        depthWidth: Int,
+        depthHeight: Int,
+        focalXPixels: Float,
+        focalYPixels: Float,
+    ): Boolean {
+        return try {
+            val geometry = depthPhotoGeometry(
+                dimensions = dimensions,
+                depthMap = depthMap,
+                depthWidth = depthWidth,
+                depthHeight = depthHeight,
+                focalXPixels = focalXPixels,
+                focalYPixels = focalYPixels,
+            )
+            LogUtil.d(
+                TAG,
+                "Generating depth photo GLB: ${outputFile.absolutePath} " +
+                    "photo=${photoTexture.width}x${photoTexture.height} " +
+                    "depth=${depthWidth}x$depthHeight vertices=${geometry.positions.size / 3}",
+            )
+            writeGlb(
+                outputFile = outputFile,
+                planes = listOf(geometry),
+                textures = listOf(photoTexture),
+                textureNames = listOf("photo_room_depth"),
+                jpegQuality = 95,
+            )
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "Failed to generate depth photo GLB", e)
+            false
+        }
+    }
+
+    internal fun depthPhotoGeometry(
+        dimensions: RoomDimensions,
+        depthMap: FloatArray,
+        depthWidth: Int,
+        depthHeight: Int,
+        focalXPixels: Float,
+        focalYPixels: Float,
+        depthDiscontinuityMeters: Float = 0.15f,
+    ): PlaneGeometry {
+        require(
+            depthWidth > 1 && depthHeight > 1 && depthMap.size == depthWidth * depthHeight &&
+                focalXPixels.isFinite() && focalYPixels.isFinite() &&
+                focalXPixels > 1f && focalYPixels > 1f
+        )
+        val maxVertices = 60_000
+        val step = max(4, ceil(sqrt(depthMap.size.toDouble() / maxVertices)).toInt())
+        fun samples(limit: Int): List<Int> = buildList {
+            var value = 0
+            while (value < limit) {
+                add(value)
+                value += step
+            }
+            if (lastOrNull() != limit - 1) add(limit - 1)
+        }
+        val rows = samples(depthHeight)
+        val columns = samples(depthWidth)
+        require(rows.size * columns.size <= 65_531)
+
+        var farDepth = 0f
+        for (depth in depthMap) {
+            if (depth.isFinite() && depth > farDepth) farDepth = depth
+        }
+        require(farDepth > 0f)
+        val centerX = (depthWidth - 1) * 0.5f
+        val centerY = (depthHeight - 1) * 0.5f
+        val positions = ArrayList<Float>(rows.size * columns.size * 3)
+        val normals = ArrayList<Float>(rows.size * columns.size * 3)
+        val uvs = ArrayList<Float>(rows.size * columns.size * 2)
+        val vertexIndices = IntArray(rows.size * columns.size) { -1 }
+
+        rows.forEachIndexed { rowIndex, row ->
+            columns.forEachIndexed { columnIndex, column ->
+                val depth = depthMap[row * depthWidth + column]
+                if (!depth.isFinite() || depth <= 0f) return@forEachIndexed
+                // True pinhole unprojection. From the capture camera at the origin, every vertex
+                // projects back to its exact source pixel; near objects no longer inflate and tear.
+                val x = (column - centerX) * depth / focalXPixels
+                val y = (centerY - row) * depth / focalYPixels
+                val z = -depth
+                val vertexIndex = positions.size / 3
+                positions.addAll(listOf(x, y, z))
+                normals.addAll(listOf(0f, 0f, 1f))
+                uvs.addAll(listOf(
+                    column.toFloat() / (depthWidth - 1),
+                    row.toFloat() / (depthHeight - 1),
+                ))
+                vertexIndices[rowIndex * columns.size + columnIndex] = vertexIndex
+            }
+        }
+
+        // A depth discontinuity intentionally has no connecting triangle: joining foreground to
+        // background creates the long "stretched pixel" wedges seen while turning. Keep a second,
+        // correctly projected photo layer just behind the farthest depth so those openings reveal
+        // image content instead of the renderer's gray background.
+        val backingDepth = farDepth + 0.02f
+        val backingStart = positions.size / 3
+        val backingCorners = listOf(
+            Triple(0, 0, Pair(0f, 0f)),
+            Triple(depthWidth - 1, 0, Pair(1f, 0f)),
+            Triple(depthWidth - 1, depthHeight - 1, Pair(1f, 1f)),
+            Triple(0, depthHeight - 1, Pair(0f, 1f)),
+        )
+        for ((column, row, uv) in backingCorners) {
+            positions.add((column - centerX) * backingDepth / focalXPixels)
+            positions.add((centerY - row) * backingDepth / focalYPixels)
+            positions.add(-backingDepth)
+            normals.addAll(listOf(0f, 0f, 1f))
+            uvs.addAll(listOf(uv.first, uv.second))
+        }
+
+        val indices = ArrayList<Short>((rows.size - 1) * (columns.size - 1) * 6)
+        fun continuous(vararg values: Float): Boolean {
+            if (values.any { !it.isFinite() || it <= 0f }) return false
+            return (values.maxOrNull()!! - values.minOrNull()!!) <= depthDiscontinuityMeters
+        }
+        for (rowIndex in 0 until rows.lastIndex) {
+            for (columnIndex in 0 until columns.lastIndex) {
+                val i00 = vertexIndices[rowIndex * columns.size + columnIndex]
+                val i10 = vertexIndices[rowIndex * columns.size + columnIndex + 1]
+                val i01 = vertexIndices[(rowIndex + 1) * columns.size + columnIndex]
+                val i11 = vertexIndices[(rowIndex + 1) * columns.size + columnIndex + 1]
+                if (i00 < 0 || i10 < 0 || i01 < 0 || i11 < 0) continue
+                val r0 = rows[rowIndex]
+                val r1 = rows[rowIndex + 1]
+                val c0 = columns[columnIndex]
+                val c1 = columns[columnIndex + 1]
+                if (!continuous(
+                        depthMap[r0 * depthWidth + c0], depthMap[r0 * depthWidth + c1],
+                        depthMap[r1 * depthWidth + c0], depthMap[r1 * depthWidth + c1],
+                    )
+                ) continue
+                indices.addAll(listOf(
+                    i00.toShort(), i10.toShort(), i11.toShort(),
+                    i00.toShort(), i11.toShort(), i01.toShort(),
+                ))
+            }
+        }
+        indices.addAll(listOf(
+            backingStart.toShort(), (backingStart + 1).toShort(), (backingStart + 2).toShort(),
+            backingStart.toShort(), (backingStart + 2).toShort(), (backingStart + 3).toShort(),
+        ))
+        require(indices.size >= 3)
+
+        return PlaneGeometry(
+            positions = positions.toFloatArray(),
+            normals = normals.toFloatArray(),
+            uvs = uvs.toFloatArray(),
+            indices = indices.toShortArray(),
+            cameraVerticalFovDegrees =
+                2f * atan((depthHeight * 0.5f) / focalYPixels) * 180f / Math.PI.toFloat(),
+        )
     }
 
     private fun writeGlb(
@@ -392,7 +558,10 @@ class GlbGenerator {
         val childNodes = planes.indices.joinToString(",", prefix = "[", postfix = "]") { (it + 1).toString() }
         sb.append("{\"children\":$childNodes}")  // Root node
         for (i in planes.indices) {
-            sb.append(",{\"mesh\":$i,\"name\":\"${textureNames[i]}\"}")
+            val cameraExtras = planes[i].cameraVerticalFovDegrees?.let { fov ->
+                ",\"extras\":{\"cameraVerticalFovDegrees\":$fov}"
+            }.orEmpty()
+            sb.append(",{\"mesh\":$i,\"name\":\"${textureNames[i]}\"$cameraExtras}")
         }
         sb.append("],")
 
