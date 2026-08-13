@@ -4,6 +4,10 @@ Android follows the same live-frame ownership rules as Swift even though the mod
 (FP16 LiteRT on Android, Core ML on iOS). Android packages one RTMDet model; LiteRT uses the GPU
 delegate when supported and otherwise executes that same model with XNNPACK CPU.
 
+The packaged class blacklist is currently empty, so all 80 COCO classes compete during raw-head
+decoding on both Android and iOS. Confidence, class-aware NMS, primary scoring, and mask-affinity
+grouping still decide which detections become boxes or cutouts.
+
 RTMDet lifecycle also follows Swift: app launch does not load or warm the detector; AI photo-room
 generation requests it for the upcoming preview; room-viewer appearance ensures it asynchronously;
 Fit activation ensures it again; and saved-viewer disappearance releases the session and reusable
@@ -34,12 +38,25 @@ While a room viewer owns RTMDet, the serial inference executor owns reusable sto
 - the scaled model-input bitmap;
 - model-input ARGB pixels;
 - full-frame source and cutout pixel arrays;
-- LiteRT NHWC BGR input and named NHWC/NCHW output arrays;
+- LiteRT NHWC BGR input and named output arrays; `mask_feat` stays NHWC for the mask head while
+  classification, box, and dynamic-kernel outputs are converted to NCHW for decoding;
 - copied ARCore Y/U/V planes and direct ARGB output;
 - CameraX RGBA packing and periodic color sampling.
 
 Do not make these shared buffers accessible to concurrent inference. If inference becomes parallel,
 replace them with a bounded buffer pool first.
+
+## Native mask head
+
+Segmentation evaluates each detection's 169-coefficient dynamic mask MLP across a 160×160 feature
+plane. The arm64 build packages `libfurnit_rtmdet.so`, whose NEON kernel reads LiteRT's native NHWC
+`mask_feat` layout and computes the eight hidden channels in two four-lane vectors. If the library
+cannot load or rejects its inputs, `RTMDetMaskHead` falls back to the Kotlin scalar implementation;
+detection and cutout behavior therefore do not depend on native availability.
+
+JVM tests compare NHWC and legacy NCHW layouts against the previous formulation. The arm64
+instrumentation test checks native packaging, scalar parity, repeated-call stability, and a native
+speedup. Keep the app's arm64-only split and CMake configuration aligned when changing this path.
 
 ## Verification
 
@@ -48,6 +65,10 @@ Run the automated checks:
 ```bash
 ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest :app:assembleDebug
 ```
+
+Run `RTMDetMaskHeadNativeTest` on a physical arm64 device using Android Studio or another
+asset-pack-preserving deployment. Do not use `app:installDebug`; it strips the install-time model
+splits from the host app.
 
 On a physical arm64 device, test portrait and landscape rooms in default segmentation, full-video
 Identify, and selected Segment modes. Confirm camera colors, overlay orientation, tap selection,
@@ -69,3 +90,9 @@ final bulk input-buffer copy, steady mask frames were 294–361 ms total versus 
 the previous ONNX XNNPACK path. The first installation compiled the GPU program in 28,918 ms and
 wrote a serialization artifact under `code_cache`; treat that as cold initialization, not per-frame
 latency, and verify cache reuse on a second killed-process launch.
+
+The 2026-08-13 Pixel 9a run loaded the packaged NEON mask head. Steady raw mask-plane affinity work
+for three to six retained detections took 7–19 ms, cutout construction took 27–35 ms, and complete
+raw RTMDet segmentation frames took 186–245 ms. The first process after an APK update again spent
+28,864 ms creating the GPU backend (189 ms warm-up) and wrote a 107,004,968-byte serialization
+artifact; that cold delegate compile remains separate from frame latency.

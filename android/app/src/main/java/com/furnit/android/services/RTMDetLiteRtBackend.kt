@@ -28,6 +28,7 @@ internal data class RTMDetLiteRtRun(
     val kernel80: FloatArray,
     val kernel40: FloatArray,
     val kernel20: FloatArray,
+    /** NHWC (`pixel * 8 + channel`) — every other output is transposed to NCHW, this one is not. */
     val maskFeat: FloatArray,
     val inputPackingMillis: Long,
     val inferenceMillis: Long,
@@ -187,9 +188,19 @@ internal class RTMDetLiteRtBackend private constructor(
             floats.clear()
         }
 
-        fun copyToNchw(): FloatArray {
+        /**
+         * LiteRT already writes NHWC, so this is a straight copy with no transpose. The mask head
+         * consumes it directly: its eight per-pixel features then share a cache line instead of
+         * being gathered across a 102 KB channel stride.
+         */
+        fun copyToNhwc(): FloatArray {
             floats.position(0)
             floats.get(nhwcValues)
+            return nhwcValues
+        }
+
+        fun copyToNchw(): FloatArray {
+            copyToNhwc()
             RTMDetLiteRtTensorLayout.nhwcToNchw(
                 source = nhwcValues,
                 destination = nchwValues,
@@ -266,7 +277,13 @@ internal class RTMDetLiteRtBackend private constructor(
                 kernel80 = output("kernel_80", requireKernels),
                 kernel40 = output("kernel_40", requireKernels),
                 kernel20 = output("kernel_20", requireKernels),
-                maskFeat = output("mask_feat", requireMaskFeat),
+                // NHWC, unlike every other output: the mask head reads it per pixel.
+                maskFeat = if (requireMaskFeat) {
+                    checkNotNull(outputsByName["mask_feat"]) { "Missing LiteRT output 'mask_feat'" }
+                        .copyToNhwc()
+                } else {
+                    FloatArray(0)
+                },
                 inputPackingMillis = inputPackingMillis,
                 inferenceMillis = inferenceMillis,
                 outputCopyMillis = elapsedMillis(outputCopyStartNanos),

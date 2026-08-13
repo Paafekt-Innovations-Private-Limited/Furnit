@@ -1477,6 +1477,7 @@ class FurnitureFitManager(private val context: Context) {
                 RtmdetLevelOutput(run.cls20, run.bbox20, run.kernel20, side = 20, stride = 32f),
             ),
             maskFeat = run.maskFeat,
+            maskFeatIsNhwc = true,
         )
         return handleRtmdetRawResults(
             frame = frame,
@@ -1901,6 +1902,12 @@ class FurnitureFitManager(private val context: Context) {
     private data class RtmdetRawOutputs(
         val levels: List<RtmdetLevelOutput>,
         val maskFeat: FloatArray,
+        /**
+         * True when [maskFeat] is `pixel * 8 + channel`, which is what LiteRT emits natively and
+         * what the NEON mask head needs. The retired ONNX path still produces NCHW and leaves this
+         * false, so it keeps taking the scalar route.
+         */
+        val maskFeatIsNhwc: Boolean = false,
     )
 
     private fun elapsedMillis(startNanos: Long): Long =
@@ -2114,7 +2121,7 @@ class FurnitureFitManager(private val context: Context) {
         }
 
         val rawMaskPlaneStartNanos = System.nanoTime()
-        val rawMaskPlanes = keepDets.map { buildRtmdetRawMaskPlane(it, raw.maskFeat) }
+        val rawMaskPlanes = keepDets.map { buildRtmdetRawMaskPlane(it, raw.maskFeat, raw.maskFeatIsNhwc) }
         val affinityGraph = makeMaskAffinityGraph(rawMaskPlanes)
         val rawMaskPlaneMillis = elapsedMillis(rawMaskPlaneStartNanos)
         LogUtil.i(
@@ -2387,58 +2394,17 @@ class FurnitureFitManager(private val context: Context) {
     private fun buildRtmdetRawMaskPlane(
         detection: Detection,
         maskFeat: FloatArray,
-    ): FloatArray? {
-        if (detection.coeffs.size != 169 || maskFeat.size < 8 * RTMDET_MASK_SIDE * RTMDET_MASK_SIDE) return null
-        val maskSide = RTMDET_MASK_SIDE
-        val hw = maskSide * maskSide
-        val maskStride = RTMDET_INPUT_SIZE.toFloat() / maskSide.toFloat()
-        val out = FloatArray(hw)
-        val w1 = 0
-        val w2 = w1 + 80
-        val w3 = w2 + 64
-        val b1 = w3 + 8
-        val b2 = b1 + 8
-        val b3 = b2 + 8
-        val input = FloatArray(10)
-        val hidden1 = FloatArray(8)
-        val hidden2 = FloatArray(8)
-
-        for (y in 0 until maskSide) {
-            for (x in 0 until maskSide) {
-                val pos = y * maskSide + x
-                val gridX = (x + 0.5f) * maskStride
-                val gridY = (y + 0.5f) * maskStride
-                input[0] = (detection.priorX - gridX) / max(1f, detection.levelStride * 8f)
-                input[1] = (detection.priorY - gridY) / max(1f, detection.levelStride * 8f)
-                for (c in 0 until 8) {
-                    input[2 + c] = maskFeat[c * hw + pos]
-                }
-
-                for (o in 0 until 8) {
-                    var sum = detection.coeffs[b1 + o]
-                    for (i in 0 until 10) {
-                        sum += detection.coeffs[w1 + o * 10 + i] * input[i]
-                    }
-                    hidden1[o] = max(0f, sum)
-                }
-
-                for (o in 0 until 8) {
-                    var sum = detection.coeffs[b2 + o]
-                    for (i in 0 until 8) {
-                        sum += detection.coeffs[w2 + o * 8 + i] * hidden1[i]
-                    }
-                    hidden2[o] = max(0f, sum)
-                }
-
-                var logit = detection.coeffs[b3]
-                for (i in 0 until 8) {
-                    logit += detection.coeffs[w3 + i] * hidden2[i]
-                }
-                out[pos] = sigmoid(logit)
-            }
-        }
-        return out
-    }
+        maskFeatIsNhwc: Boolean,
+    ): FloatArray? = RTMDetMaskHead.buildPlane(
+        coeffs = detection.coeffs,
+        maskFeat = maskFeat,
+        maskFeatIsNhwc = maskFeatIsNhwc,
+        maskSide = RTMDET_MASK_SIDE,
+        inputSize = RTMDET_INPUT_SIZE,
+        priorX = detection.priorX,
+        priorY = detection.priorY,
+        levelStride = detection.levelStride,
+    )
 
     private fun refineRtmdetMaskPlaneForDetection(
         plane: FloatArray,

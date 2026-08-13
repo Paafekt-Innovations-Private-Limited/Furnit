@@ -165,6 +165,9 @@ yarn.lock
 # Local tool installs (e.g. npm-installed firebase-tools)
 .tools/
 
+# Local prebuilt SDK/framework payloads (large; restored outside Git when needed)
+Vendor/
+
 # Android / Gradle
 android/.gradle/
 android/build/

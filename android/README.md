@@ -41,7 +41,9 @@ backend asynchronously; activating Fit ensures it again; and leaving a saved-roo
 the backend after accepted inference drains. RTMDet ships as one FP16 LiteRT model: it uses the GPU
 delegate on supported devices and otherwise runs the same model through XNNPACK CPU. Identify mode
 consumes only cls/bbox results and skips mask-plane/affinity work; segmentation modes use kernels
-plus `mask_feat` to build cutouts.
+plus `mask_feat` to build cutouts. The class blacklist is empty, so all 80 COCO classes are eligible.
+For segmentation, LiteRT's `mask_feat` remains NHWC and an arm64 NEON mask-head library evaluates
+the per-instance dynamic MLP; a Kotlin scalar implementation remains the runtime fallback.
 
 Live frame ownership matches Swift: busy AR frames are dropped before CPU-image/depth work, accepted
 AR frames leave the GL thread after a quick plane copy, and CameraX supplies native rotated RGBA with
