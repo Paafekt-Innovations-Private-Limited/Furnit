@@ -487,6 +487,32 @@ class FurnitureFitManager(private val context: Context) {
     @Volatile private var ortEnv: OrtEnvironment? = null
     @Volatile private var ortSession: OrtSession? = null
     @Volatile private var liteRtBackend: RTMDetLiteRtBackend? = null
+
+    /**
+     * Resolves the backend to run a frame on, reviving it when the shared instance has been closed.
+     *
+     * [liteRtBackend] caches the process-wide singleton owned by the companion, but
+     * `scheduleSharedBackendRelease` closes that singleton and clears only the companion's own
+     * reference — every manager instance is left holding a dead object. The next frame then failed
+     * `check(!executor.isShutdown)` inside `RTMDetLiteRtBackend.run` and threw
+     * "RTMDet LiteRT backend is closed", which repeated for every subsequent frame and disabled
+     * segmentation until the process was restarted. Re-acquiring through `sharedLiteRtBackend`
+     * reuses the live singleton when one exists and rebuilds it otherwise.
+     */
+    private fun activeLiteRtBackend(): RTMDetLiteRtBackend? {
+        liteRtBackend?.takeIf { !it.isClosed }?.let { return it }
+        val revived = try {
+            sharedLiteRtBackend(context)
+        } catch (error: Exception) {
+            LogUtil.e(TAG, "Could not revive closed RTMDet LiteRT backend: ${error.message}", error)
+            null
+        }
+        if (revived != null) {
+            LogUtil.i(TAG, "Revived shared RTMDet LiteRT backend after it was closed")
+            liteRtBackend = revived
+        }
+        return revived
+    }
     private var loadedOnnxAssetName: String? = null
 
     private data class OnnxBackend(
@@ -1401,7 +1427,7 @@ class FurnitureFitManager(private val context: Context) {
         requireClusters: Boolean,
         acceptedGeneration: Long,
     ): SegmentationResult? {
-        val backend = liteRtBackend ?: return null
+        val backend = activeLiteRtBackend() ?: return null
         val totalStartNanos = System.nanoTime()
         val inputW = backend.inputWidth
         val inputH = backend.inputHeight

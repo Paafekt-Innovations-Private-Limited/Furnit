@@ -110,6 +110,33 @@ tasks.named("preBuild").configure {
     dependsOn(tasks.named("verifyLegalAssets"))
 }
 
+// `installDebug` / `installRelease` build ONE standalone APK. A standalone APK cannot carry
+// install-time asset packs, so running them replaces a split install and silently deletes
+// `split_rtmdet_models.apk` from the device. The RTMDet model then disappears,
+// `context.assets.open(...)` throws inside RTMDetLiteRtBackend, and furniture segmentation dies
+// with the generic "Detection model unavailable" message that gives no hint of the real cause.
+//
+// The app declares assetPacks (see `android.assetPacks` above), so these tasks are never a safe
+// way to deploy it. Fail before anything reaches the device; Android Studio's Run button and
+// bundletool both install the asset packs correctly.
+def assetPackHostileInstallTasks = ["installDebug", "installRelease"]
+gradle.taskGraph.whenReady { graph ->
+    def offender = graph.allTasks.find { assetPackHostileInstallTasks.contains(it.name) }
+    if (offender != null) {
+        throw new GradleException(
+                "'${offender.name}' would strip this app's install-time asset packs " +
+                "(${android.assetPacks.join(", ")}) off the device and disable furniture segmentation.\n" +
+                "Deploy from Android Studio (Run), or build and install the bundle:\n" +
+                "  ./gradlew :app:bundleDebug\n" +
+                "  bundletool build-apks --bundle=app/build/outputs/bundle/debug/app-debug.aab \\\n" +
+                "      --output=/tmp/app.apks --connected-device \\\n" +
+                "      --ks=\$HOME/.android/debug.keystore --ks-pass=pass:android \\\n" +
+                "      --ks-key-alias=androiddebugkey --key-pass=pass:android\n" +
+                "  bundletool install-apks --apks=/tmp/app.apks"
+        )
+    }
+}
+
 dependencies {
     implementation 'androidx.core:core-ktx:1.10.1'
     implementation 'androidx.exifinterface:exifinterface:1.3.7'

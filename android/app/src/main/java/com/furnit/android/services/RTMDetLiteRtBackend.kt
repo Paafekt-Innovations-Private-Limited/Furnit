@@ -4,6 +4,7 @@ import android.content.Context
 import com.furnit.android.utils.LogUtil
 import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -33,6 +34,58 @@ internal data class RTMDetLiteRtRun(
     val outputCopyMillis: Long,
     val nativeInferenceMillis: Long?,
 )
+
+/**
+ * Reuse and extraction rules for the on-device model copy, kept free of `Context` so they stay
+ * covered by focused JVM tests.
+ *
+ * The model ships in an install-time asset pack and must be extracted to `cacheDir` before it can
+ * be memory-mapped. The original rule reused any cached file with `length() > 0`, which cannot
+ * tell a finished 57.9 MB copy from a truncated one, and it wrote straight to the final path. An
+ * extraction interrupted by process death or by the platform reclaiming `cacheDir` therefore left
+ * a short file that satisfied the check forever: every later launch mapped a corrupt FlatBuffer,
+ * failed interpreter creation on both GPU and CPU, and disabled segmentation permanently until
+ * app storage was cleared by hand.
+ *
+ * So the byte count is now recorded in the token and verified on reuse, and extraction lands on a
+ * temporary file that is renamed into place only once complete. A partial copy can never be
+ * observed as valid, and a bad one re-extracts itself on the next launch.
+ */
+internal object RTMDetModelCache {
+    private const val TOKEN_SEPARATOR = ":"
+
+    fun buildToken(installTime: Long, byteCount: Long): String =
+        "$installTime$TOKEN_SEPARATOR$byteCount"
+
+    /** A cached copy is reusable only when this install wrote it and it is still byte-complete. */
+    fun isReusable(cachedFile: File, token: String?, installTime: Long): Boolean {
+        if (!cachedFile.isFile || token == null) return false
+        val cachedInstallTime = token.substringBefore(TOKEN_SEPARATOR).toLongOrNull() ?: return false
+        // Tokens written before the byte count was recorded have no separator, so they read as
+        // unverifiable and force one clean re-extraction on upgrade.
+        val expectedLength = token.substringAfter(TOKEN_SEPARATOR, "").toLongOrNull() ?: return false
+        return cachedInstallTime == installTime && cachedFile.length() == expectedLength
+    }
+
+    /**
+     * Copies through [temporary] and renames on completion, so [destination] never exposes a
+     * partial file. Returns the number of bytes written.
+     */
+    fun extract(destination: File, temporary: File, openSource: () -> InputStream): Long {
+        temporary.delete()
+        return try {
+            val written = openSource().use { input ->
+                temporary.outputStream().use(input::copyTo)
+            }
+            check(written > 0L) { "model asset is empty" }
+            destination.delete()
+            check(temporary.renameTo(destination)) { "could not move extracted model into place" }
+            written
+        } finally {
+            temporary.delete()
+        }
+    }
+}
 
 /** Pure tensor-layout helpers kept visible to focused JVM parity tests. */
 internal object RTMDetLiteRtTensorLayout {
@@ -85,6 +138,12 @@ internal class RTMDetLiteRtBackend private constructor(
     val executionProvider: String = state.executionProvider
     val inputWidth: Int = state.inputWidth
     val inputHeight: Int = state.inputHeight
+
+    /**
+     * True once [close] has run. This instance is shared between every Furniture Fit surface, so a
+     * holder that cached the reference must re-check it rather than assume it is still alive.
+     */
+    val isClosed: Boolean get() = executor.isShutdown
 
     fun run(
         argbPixels: IntArray,
@@ -255,7 +314,13 @@ internal class RTMDetLiteRtBackend private constructor(
 
             val gpuOptions = try {
                 CompatibilityList().use { compatibility ->
-                    if (!compatibility.isDelegateSupportedOnThisDevice) return@use null
+                    if (!compatibility.isDelegateSupportedOnThisDevice) {
+                        // The allowlist is keyed on SoC/GPU/driver/OS, so a system update can flip
+                        // this to false with no code change. Log it: otherwise the app drops to the
+                        // XNNPACK CPU path silently and the only symptom is that it feels slow.
+                        LogUtil.w(TAG, "GPU delegate unsupported on this device; using LiteRT XNNPACK")
+                        return@use null
+                    }
                     compatibility.bestOptionsForThisDevice
                         .setPrecisionLossAllowed(true)
                         .setInferencePreference(GpuDelegateFactory.Options.INFERENCE_PREFERENCE_SUSTAINED_SPEED)
@@ -396,20 +461,32 @@ internal class RTMDetLiteRtBackend private constructor(
         private fun directBuffer(byteCount: Int): ByteBuffer =
             ByteBuffer.allocateDirect(byteCount).order(ByteOrder.nativeOrder())
 
+        /// Extracts the model out of its install-time asset pack into `cacheDir`, where it can be
+        /// memory-mapped. The reuse and extraction rules live in ``RTMDetModelCache`` so they can
+        /// be unit tested without a device.
         private fun copyAssetToCache(context: Context, assetName: String): File {
             val output = File(context.cacheDir, assetName)
-            val installToken = context.packageManager
+            val tokenFile = File(context.cacheDir, "$assetName.install-token")
+            val installTime = context.packageManager
                 .getPackageInfo(context.packageName, 0)
                 .lastUpdateTime
-                .toString()
-            val tokenFile = File(context.cacheDir, "$assetName.install-token")
             val currentToken = runCatching { tokenFile.takeIf(File::isFile)?.readText() }.getOrNull()
-            if (output.isFile && output.length() > 0L && currentToken == installToken) return output
 
-            context.assets.open(assetName).use { input ->
-                output.outputStream().use(input::copyTo)
+            if (RTMDetModelCache.isReusable(output, currentToken, installTime)) return output
+            if (output.isFile) {
+                LogUtil.w(
+                    TAG,
+                    "Cached '$assetName' is stale or incomplete (${output.length()} bytes); re-extracting",
+                )
             }
-            tokenFile.writeText(installToken)
+
+            tokenFile.delete()
+            val copiedBytes = RTMDetModelCache.extract(
+                destination = output,
+                temporary = File(context.cacheDir, "$assetName.tmp"),
+            ) { context.assets.open(assetName) }
+            tokenFile.writeText(RTMDetModelCache.buildToken(installTime, copiedBytes))
+            LogUtil.i(TAG, "Extracted '$assetName' to cache ($copiedBytes bytes)")
             return output
         }
 
