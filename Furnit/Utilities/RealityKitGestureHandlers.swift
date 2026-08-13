@@ -36,6 +36,11 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     private var accumulatedPitch: Float = 0.0  // Vertical rotation around X-axis
     private var capturedFrustumCenterYaw: Float?
     private var capturedFrustumCenterPitch: Float?
+    /// The one camera origin from which a single-photo depth surface was authored. Unlike a
+    /// volumetric room, this surface has no valid translated viewpoints: moving the eye exposes
+    /// geometry that the source photograph never observed.
+    private var capturedPhotoOpticalCenter: SIMD3<Float>?
+    private var usesFlatPhotoNavigation = false
 
     // Exterior inspection orbits around the framed model. Once the camera is within a genuine
     // room volume, single-finger drag becomes first-person yaw/pitch and keeps the eye fixed.
@@ -93,12 +98,32 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         initializeRotationFromCamera()
     }
 
+    /// Installs or clears the navigation contract for a projective single-photo room.
+    /// Every camera input path consults this value directly instead of inferring the contract from
+    /// mutable room bounds, so gesture setup order cannot accidentally re-enable translation.
+    func setCapturedPhotoOpticalCenter(_ opticalCenter: SIMD3<Float>?) {
+        capturedPhotoOpticalCenter = opticalCenter
+        if opticalCenter != nil { usesFlatPhotoNavigation = false }
+        if let opticalCenter, let cameraAnchor {
+            var transform = cameraAnchor.transform
+            transform.translation = opticalCenter
+            cameraAnchor.transform = transform
+        }
+        initializeRotationFromCamera()
+    }
+
+    func setFlatPhotoNavigationEnabled(_ enabled: Bool) {
+        usesFlatPhotoNavigation = enabled
+        if enabled { capturedPhotoOpticalCenter = nil }
+        initializeRotationFromCamera()
+    }
+
     /// Captured single-photo rooms cannot translate away from their authored optical center.
     /// Reinterpret the D-pad as bounded look controls so every navigation path preserves the
     /// pinhole reprojection, not only touch gestures.
     @discardableResult
     func nudgeCapturedPhotoView(yawDelta: Float, pitchDelta: Float) -> Bool {
-        guard boundaryManager?.usesCapturedPhotoFrustum == true,
+        guard let opticalCenter = capturedPhotoOpticalCenter,
               let cameraAnchor else {
             return false
         }
@@ -113,6 +138,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             min(centerPitch + 0.25, accumulatedPitch + pitchDelta)
         )
         var transform = cameraAnchor.transform
+        transform.translation = opticalCenter
         let yawRotation = simd_quatf(angle: accumulatedYaw, axis: SIMD3<Float>(0, 1, 0))
         let pitchRotation = simd_quatf(angle: accumulatedPitch, axis: SIMD3<Float>(1, 0, 0))
         transform.rotation = yawRotation * pitchRotation
@@ -155,7 +181,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
 
         accumulatedYaw = yaw
         accumulatedPitch = pitch
-        if boundaryManager?.usesCapturedPhotoFrustum == true {
+        if capturedPhotoOpticalCenter != nil {
             capturedFrustumCenterYaw = yaw
             capturedFrustumCenterPitch = pitch
         } else {
@@ -431,15 +457,40 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
 
         let translation = gesture.translation(in: arView)
 
+        if usesFlatPhotoNavigation {
+            switch gesture.state {
+            case .began:
+                initialCameraTransform = cameraAnchor.transform
+            case .changed:
+                var transform = initialCameraTransform
+                transform.translation.x = initialCameraTransform.translation.x
+                    + Float(translation.x) * panSensitivity
+                transform.translation.y = initialCameraTransform.translation.y
+                    - Float(translation.y) * panSensitivity
+                cameraAnchor.transform = transform
+            case .ended, .cancelled:
+                initialCameraTransform = cameraAnchor.transform
+                lastPanTranslation = .zero
+            default:
+                break
+            }
+            return
+        }
+
         switch gesture.state {
         case .began:
+            if let opticalCenter = capturedPhotoOpticalCenter {
+                var transform = cameraAnchor.transform
+                transform.translation = opticalCenter
+                cameraAnchor.transform = transform
+            }
             // Store initial position but don't reset accumulated rotation
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = gesture.location(in: arView)
             lastPanTranslation = translation
             activeRotationTurnsInPlace = boundaryManager?
                 .isInsideNavigableInterior(cameraAnchor.transform.translation) == true ||
-                boundaryManager?.usesCapturedPhotoFrustum == true
+                capturedPhotoOpticalCenter != nil
             if !activeRotationTurnsInPlace {
                 beginOrbit(from: cameraAnchor)
             }
@@ -462,7 +513,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             accumulatedPitch += -deltaPitch // Negative for natural direction
 
             // Apply pitch limits to prevent over-rotation and tilting (45 degrees up/down max)
-            let usesCapturedPhotoFrustum = boundaryManager?.usesCapturedPhotoFrustum == true
+            let usesCapturedPhotoFrustum = capturedPhotoOpticalCenter != nil
             if usesCapturedPhotoFrustum {
                 let centerYaw = capturedFrustumCenterYaw ?? accumulatedYaw
                 let centerPitch = capturedFrustumCenterPitch ?? accumulatedPitch
@@ -482,7 +533,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
 
             var newTransform = Transform()
             if activeRotationTurnsInPlace {
-                newTransform.translation = initialCameraTransform.translation
+                newTransform.translation = capturedPhotoOpticalCenter ?? initialCameraTransform.translation
             } else {
                 // Exterior inspection keeps the room framed by swinging around its pivot.
                 let newForward = combinedRotation.act(SIMD3<Float>(0, 0, -1))
@@ -524,9 +575,20 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         }
         logDebug("✅ Two-finger pan proceeding with cameraAnchor")
 
-        if boundaryManager?.usesCapturedPhotoFrustum == true {
+        if usesFlatPhotoNavigation {
+            if gesture.state == .ended || gesture.state == .cancelled {
+                initialTouchPoint = nil
+                lastPositionPanTranslation = .zero
+            }
+            return
+        }
+
+        if let opticalCenter = capturedPhotoOpticalCenter {
+            var transform = cameraAnchor.transform
+            transform.translation = opticalCenter
+            cameraAnchor.transform = transform
             // The saved single-photo surface is defined around one optical center. Translation
-            // makes foreground depth separate from its far-photo backing and creates duplicates.
+            // reveals surfaces that were occluded in the only source view.
             if gesture.state == .ended || gesture.state == .cancelled {
                 initialTouchPoint = nil
                 lastPositionPanTranslation = .zero
@@ -602,14 +664,19 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         case .began:
             initialCameraTransform = cameraAnchor.transform
             lastPinchScale = 1
-            if boundaryManager?.usesCapturedPhotoFrustum == true,
+            if capturedPhotoOpticalCenter != nil || usesFlatPhotoNavigation,
                let cameraEntity {
                 capturedFrustumPinchStartFieldOfView = cameraEntity.camera.fieldOfViewInDegrees
             }
             
         case .changed:
-            if boundaryManager?.usesCapturedPhotoFrustum == true,
+            if (capturedPhotoOpticalCenter != nil || usesFlatPhotoNavigation),
                let cameraEntity {
+                if let opticalCenter = capturedPhotoOpticalCenter {
+                    var transform = cameraAnchor.transform
+                    transform.translation = opticalCenter
+                    cameraAnchor.transform = transform
+                }
                 let scale = max(Float(gesture.scale), 0.01)
                 let initialHalfFov = capturedFrustumPinchStartFieldOfView * .pi / 360
                 let zoomedFieldOfView = 2 * atan(tan(initialHalfFov) / scale) * 180 / .pi

@@ -524,15 +524,19 @@ final class DepthAnythingRoomReconstructor {
         let meshVerticalFovDegrees = 2.0 * atan(
             Float(imageHeight) * 0.5 / meshFocalYPixels
         ) * 180.0 / .pi
-        enrichedCalibrationMetadata["depthMeshProjectionVersion"] = 1
+        // A single photograph has no observed pixels behind foreground objects. Persist the same
+        // pixel-stable photo plane used by preview; metric depth remains measurement metadata and
+        // must not be presented as a navigable reconstruction with invented side views.
+        enrichedCalibrationMetadata["depthMeshProjectionVersion"] = 3
+        enrichedCalibrationMetadata["depthMeshIsFlatPhotoPlane"] = 1
         enrichedCalibrationMetadata["depthMeshFocalLengthXPx"] = Double(meshFocalXPixels)
         enrichedCalibrationMetadata["depthMeshFocalLengthYPx"] = Double(meshFocalYPixels)
         enrichedCalibrationMetadata["depthMeshVerticalFovDegrees"] = Double(meshVerticalFovDegrees)
-        let mesh = try buildPerspectiveMesh(
+        let mesh = try buildPhotoPlaneMesh(
             image: workingImage,
             depthMap: calibratedDepthMap,
-            focalXPixels: meshFocalXPixels,
-            focalYPixels: meshFocalYPixels
+            widthMeters: meshDisplayDimensions.width,
+            heightMeters: meshDisplayDimensions.height
         )
         let meshEnd = CFAbsoluteTimeGetCurrent()
         reportProgress(0.85)
@@ -641,9 +645,29 @@ final class DepthAnythingRoomReconstructor {
         )
     }
 
+    /// Saves the exact photo surface shown by the immediate preview. Depth inference still owns
+    /// room measurement, but it cannot reveal geometry hidden behind objects in a single image.
+    func buildPhotoPlaneMesh(
+        image: UIImage,
+        depthMap: [[Float]],
+        widthMeters: Float,
+        heightMeters: Float
+    ) throws -> MDLMesh {
+        guard widthMeters.isFinite, heightMeters.isFinite,
+              widthMeters > 0, heightMeters > 0 else {
+            throw DepthAnythingRoomError.invalidDepthOutput
+        }
+        return try buildMesh(
+            image: image,
+            depthMap: depthMap,
+            projection: .photoPlane(widthMeters: widthMeters, heightMeters: heightMeters)
+        )
+    }
+
     private enum MeshProjection {
         case displayPlane(widthMeters: Float, heightMeters: Float)
         case pinhole(focalXPixels: Float, focalYPixels: Float)
+        case photoPlane(widthMeters: Float, heightMeters: Float)
     }
 
     private func buildMesh(
@@ -670,23 +694,31 @@ final class DepthAnythingRoomReconstructor {
             throw DepthAnythingRoomError.invalidDepthOutput
         }
 
-        let sampledRows = Array(stride(from: 0, to: imageHeight, by: pixelStep))
-        let sampledColumns = Array(stride(from: 0, to: imageWidth, by: pixelStep))
+        var sampledRows = Array(stride(from: 0, to: imageHeight, by: pixelStep))
+        var sampledColumns = Array(stride(from: 0, to: imageWidth, by: pixelStep))
+        if sampledRows.last != imageHeight - 1 { sampledRows.append(imageHeight - 1) }
+        if sampledColumns.last != imageWidth - 1 { sampledColumns.append(imageWidth - 1) }
         let rowCount = sampledRows.count
         let columnCount = sampledColumns.count
         var vertexIndices = [Int32](repeating: -1, count: rowCount * columnCount)
         var vertexData = Data()
         vertexData.reserveCapacity(rowCount * columnCount * DepthAnythingVertex.byteStride)
         var vertexCount = 0
-        var backingVertexStart: UInt32?
 
         let centerX = Float(imageWidth) / 2.0
         let centerY = Float(imageHeight) / 2.0
 
         for (sampledRowIndex, row) in sampledRows.enumerated() {
             for (sampledColumnIndex, column) in sampledColumns.enumerated() {
-                let depth = depthMap[row][column]
-                guard depth.isFinite, depth > 0 else { continue }
+                let sampledDepth = depthMap[row][column]
+                let depth: Float
+                if case .photoPlane = projection {
+                    // Photo-plane geometry must never acquire holes from invalid depth samples.
+                    depth = 1
+                } else {
+                    guard sampledDepth.isFinite, sampledDepth > 0 else { continue }
+                    depth = sampledDepth
+                }
 
                 let x: Float
                 let y: Float
@@ -700,6 +732,12 @@ final class DepthAnythingRoomReconstructor {
                     x = -(Float(column) - centerX) * depth / focalXPixels
                     y = (Float(row) - centerY) * depth / focalYPixels
                     z = depth
+                case let .photoPlane(widthMeters, heightMeters):
+                    let lastColumn = Float(max(imageWidth - 1, 1))
+                    let lastRow = Float(max(imageHeight - 1, 1))
+                    x = -(Float(column) - lastColumn * 0.5) * widthMeters / lastColumn
+                    y = (Float(row) - lastRow * 0.5) * heightMeters / lastRow
+                    z = 0
                 }
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
@@ -714,34 +752,6 @@ final class DepthAnythingRoomReconstructor {
                 vertexData.appendFloat32LE(u)
                 vertexData.appendFloat32LE(v)
                 vertexIndices[sampledRowIndex * columnCount + sampledColumnIndex] = Int32(vertexCount)
-                vertexCount += 1
-            }
-        }
-
-        if case let .pinhole(focalXPixels, focalYPixels) = projection {
-            // Do not bridge a foreground/background depth jump with a long triangle: that is the
-            // source of stretched texture wedges. A second projected photo layer behind the far
-            // depth fills the deliberate openings without changing the capture-view reprojection.
-            let backingDepth = depthMax + 0.02
-            backingVertexStart = UInt32(vertexCount)
-            let corners: [(column: Int, row: Int, u: Float, v: Float)] = [
-                (0, 0, 0, 1),
-                (imageWidth - 1, 0, 1, 1),
-                (imageWidth - 1, imageHeight - 1, 1, 0),
-                (0, imageHeight - 1, 0, 0),
-            ]
-            for corner in corners {
-                let x = -(Float(corner.column) - centerX) * backingDepth / focalXPixels
-                let y = (Float(corner.row) - centerY) * backingDepth / focalYPixels
-                let color = raster.color(x: corner.column, y: corner.row).floatRGB
-                vertexData.appendFloat32LE(x)
-                vertexData.appendFloat32LE(y)
-                vertexData.appendFloat32LE(backingDepth)
-                vertexData.appendFloat32LE(color.x)
-                vertexData.appendFloat32LE(color.y)
-                vertexData.appendFloat32LE(color.z)
-                vertexData.appendFloat32LE(corner.u)
-                vertexData.appendFloat32LE(corner.v)
                 vertexCount += 1
             }
         }
@@ -778,14 +788,18 @@ final class DepthAnythingRoomReconstructor {
                 let d10 = depthMap[r0][c1]
                 let d01 = depthMap[r1][c0]
                 let d11 = depthMap[r1][c1]
-                guard Self.depthsAreContinuous(
-                    d00,
-                    d10,
-                    d01,
-                    d11,
-                    threshold: depthDiscontinuityThresholdMeters
-                ) else {
-                    continue
+                if case .photoPlane = projection {
+                    // The preview-equivalent plane is continuous by definition.
+                } else {
+                    guard Self.depthsAreContinuous(
+                        d00,
+                        d10,
+                        d01,
+                        d11,
+                        threshold: depthDiscontinuityThresholdMeters
+                    ) else {
+                        continue
+                    }
                 }
 
                 indexData.appendUInt32LE(UInt32(v00))
@@ -796,16 +810,6 @@ final class DepthAnythingRoomReconstructor {
                 indexData.appendUInt32LE(UInt32(v01))
                 indexCount += 6
             }
-        }
-
-        if let backingVertexStart {
-            indexData.appendUInt32LE(backingVertexStart)
-            indexData.appendUInt32LE(backingVertexStart + 1)
-            indexData.appendUInt32LE(backingVertexStart + 2)
-            indexData.appendUInt32LE(backingVertexStart)
-            indexData.appendUInt32LE(backingVertexStart + 2)
-            indexData.appendUInt32LE(backingVertexStart + 3)
-            indexCount += 6
         }
 
         guard indexCount >= 3 else {

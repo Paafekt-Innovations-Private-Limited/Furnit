@@ -81,6 +81,7 @@ struct RealityKitView: UIViewRepresentable {
                     boundaryManager: boundaryManager,
                     model: model
                 )
+                context.coordinator.configureNavigationContract(for: model)
 
                 logDebug("📷 [RealityKitView.updateUIView] Camera RESET to: \(cameraAnchor.transform.translation)")
             }
@@ -101,7 +102,7 @@ struct RealityKitView: UIViewRepresentable {
                     boundaryManager: boundaryManager,
                     model: model
                 )
-                context.coordinator.gestureHandlers?.syncRotationState()
+                context.coordinator.configureNavigationContract(for: model)
             }
         }
 
@@ -133,6 +134,7 @@ struct RealityKitView: UIViewRepresentable {
                     boundaryManager: boundaryManager,
                     model: model
                 )
+                context.coordinator.configureNavigationContract(for: model)
 
                 if debugMode {
                     logDebug("📷 [RealityKitView] Camera RESET to optimal position: \(cameraAnchor.transform.translation)")
@@ -213,6 +215,7 @@ struct RealityKitView: UIViewRepresentable {
         }
         let metadata = CameraExifSidecar.load(roomURL: modelURL)
         guard metadata["depthMeshProjectionVersion", default: 0] >= 1,
+              metadata["depthMeshIsFlatPhotoPlane", default: 0] < 0.5,
               let fieldOfView = metadata["depthMeshVerticalFovDegrees"].map(Float.init),
               fieldOfView.isFinite,
               (10...140).contains(fieldOfView) else {
@@ -411,13 +414,11 @@ struct RealityKitView: UIViewRepresentable {
         private func nudgeCamera(by worldDelta: SIMD3<Float>) {
             guard let cameraAnchor else { return }
 
-            if boundaryManager?.usesCapturedPhotoFrustum == true {
-                let didTurn = gestureHandlers?.nudgeCapturedPhotoView(
-                    yawDelta: -worldDelta.x * 0.4,
-                    pitchDelta: worldDelta.y * 0.48
-                ) == true
-                if didTurn { return }
-            }
+            let didTurn = gestureHandlers?.nudgeCapturedPhotoView(
+                yawDelta: -worldDelta.x * 0.4,
+                pitchDelta: worldDelta.y * 0.48
+            ) == true
+            if didTurn { return }
 
             let position = cameraAnchor.transform.translation
             let forward = cameraAnchor.transform.rotation.act(SIMD3<Float>(0, 0, -1))
@@ -443,6 +444,18 @@ struct RealityKitView: UIViewRepresentable {
             )
             cameraLookAtTarget = newLookAt
             gestureHandlers?.syncRotationState()
+        }
+
+        func configureNavigationContract(for model: USDZModel) {
+            let metadata = model.temporaryURL.map { CameraExifSidecar.load(roomURL: $0) } ?? [:]
+            let usesFlatPhotoPlane = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                && metadata["depthMeshIsFlatPhotoPlane", default: 0] >= 0.5
+            gestureHandlers?.setFlatPhotoNavigationEnabled(usesFlatPhotoPlane)
+            let opticalCenter = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                && !usesFlatPhotoPlane
+                ? cameraAnchor?.transform.translation
+                : nil
+            gestureHandlers?.setCapturedPhotoOpticalCenter(opticalCenter)
         }
 
         func shouldReframeForViewportChange(_ size: CGSize) -> Bool {
@@ -798,7 +811,6 @@ struct RealityKitView: UIViewRepresentable {
                         model: model
                     )
                     coordinator.lastViewportSize = arView.bounds.size
-
                     let lookAt = coordinator.cameraLookAtTarget ?? SIMD3<Float>(
                         (bounds.min.x + bounds.max.x) * 0.5,
                         (bounds.min.y + bounds.max.y) * 0.5,
@@ -817,7 +829,7 @@ struct RealityKitView: UIViewRepresentable {
                     coordinator.addCameraToScene(arView: arView)
 
                     // ✅ Sync gesture handler rotation state with camera's new orientation
-                    coordinator.gestureHandlers?.syncRotationState()
+                    coordinator.configureNavigationContract(for: model)
                     logDebug("✅ [RealityKitView] Camera ready - gestures synced with camera orientation")
                 } else if let cameraAnchor = coordinator.cameraAnchor {
                     // Fallback if no bounds - use default position
@@ -846,7 +858,7 @@ struct RealityKitView: UIViewRepresentable {
                     coordinator.addCameraToScene(arView: arView)
 
                     // ✅ Sync gesture handler rotation state with camera's new orientation
-                    coordinator.gestureHandlers?.syncRotationState()
+                    coordinator.configureNavigationContract(for: model)
                     logDebug("✅ [RealityKitView] Camera ready - gestures synced with camera orientation")
                 } else {
                     logDebug("❌ [RealityKitView] NO CAMERA ANCHOR - cannot position camera!")
