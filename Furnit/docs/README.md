@@ -13,7 +13,7 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
   **Photo → 3D** flow (two-phase): home toolbar → photo capture or library image → camera metadata
   sidecar → **instant preview** (`PreviewFast`, no ML, placeholder dims) in
   `DepthAnythingPreviewRoomView` → **first save** runs GeoCalib + Depth Anything + RTMDet object
-  anchor → measurement grid → pixel-stable photo-plane USDZ → saved room in
+  anchor → measurement grid → version-5 single-surface projective USDZ → saved room in
   `ModelViewerView` (or reopen from home).
   Other viewers: `GLBRoomView` (GLB), `MeshRoomView` (manual path), `SplatRoomView` (saved PLY via
   MetalSplatter + SplatIO).
@@ -25,7 +25,7 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
   confidence-first NMS → mask affinity → pixel-union cutout.
 
 Room generation (default AI path): **instant preview (no ML)** then **GeoCalib + Depth Anything +
-RTMDet object anchor → measured photo-plane USDZ on first save**. Swift entry points: `SinglePhotoRoomViewer.swift`
+RTMDet object anchor → measured single-surface projective USDZ on first save**. Swift entry points: `SinglePhotoRoomViewer.swift`
 (`makeDepthAnythingPreviewDestination` for preview; `reconstructWithResult` on save) →
 `CameraExifSidecar.swift` → `DepthAnythingRoomReconstructor.swift` → `USDZModel` /
 `ModelViewerView`.
@@ -39,19 +39,22 @@ processing, and enables virtual-device fusion so Apple can apply its multi-frame
 reduction instead of passing a noisier physical ultra-wide frame directly. Standard capture is
 unchanged.
 
-The immediate Depth Anything preview remains a flat, pixel-correct photo. New saves preserve that
-continuous photo plane instead of depth-displacing its pixels: a single source image has no observed
-background behind furniture, so treating estimated depth as a navigable surface creates stretched
-edges, holes, and repeated foreground objects. Inferred W×H×D remains authoritative measurement
-metadata. The saved viewer uses one-finger pan and field-of-view pinch zoom without rotating the
-plane. Projection metadata version 3 marks this contract. Older projective and legacy flat USDZ files
-remain readable; the sidecar-based X-aspect correction still applies only to legacy flat files.
+The immediate Depth Anything preview remains a flat, pixel-correct photo. New saves depth-unproject
+the displayed pixels into one continuous perspective surface. They do not add a second
+completed-background enclosure; keeping one opaque surface avoids the prior translucent shell while
+limited capture-eye translation and look-around expose the metric depth shape. A single photograph
+still contains no true hidden pixels, so off-axis views are reprojections rather than newly observed
+content. Inferred W×H×D remains authoritative measurement metadata. Projection metadata version 5
+marks this contract. Older projective and legacy flat USDZ files remain readable; the sidecar-based
+X-aspect correction still applies only to legacy flat files.
 
-The active exporter was re-checked after a saved-room report showing torn, duplicated curtain/fan
-regions and remains the version-3 flat photo plane. The generic layered-depth helpers and viewer
-metadata compatibility code are not used by new iOS saves. A generic iPhoneOS Debug build succeeds,
-but the saved-room appearance is still device-unconfirmed as of 2026-08-14; test a newly saved room,
-because an older broken USDZ is not rewritten in place.
+The current saved-room appearance candidate uses a single opaque, unlit texture without interpolated
+vertex color, stages `room.jpg` through `SCNSceneExportDelegate`, and normalizes imported photo-room
+materials in RealityKit with a neutral black background and no image-based lighting. The camera and
+movement envelope use the same capture convention as Android/glTF (forward is negative Z). A generic
+iPhoneOS Debug build succeeds, but the saved-room appearance is still device-unconfirmed as of
+2026-08-14. Test a newly saved room for the export/UV path; opening an older room exercises only the
+viewer-side material normalization and does not rewrite its USDZ.
 
 `FurnitUITests/SavedRoomNavigationUITests.swift` adds a create → preview → save → reopen navigation
 regression using a programmatically generated synthetic room image. It checks zoom, pan and D-pad

@@ -525,20 +525,39 @@ final class DepthAnythingRoomReconstructor {
         let meshVerticalFovDegrees = 2.0 * atan(
             Float(imageHeight) * 0.5 / meshFocalYPixels
         ) * 180.0 / .pi
-        // A single photograph has no observed pixels behind foreground objects. Persist the same
-        // pixel-stable photo plane used by preview; metric depth remains measurement metadata and
-        // must not be presented as a navigable reconstruction with invented side views.
-        enrichedCalibrationMetadata["depthMeshProjectionVersion"] = 3
-        enrichedCalibrationMetadata["depthMeshIsFlatPhotoPlane"] = 1
         enrichedCalibrationMetadata["depthMeshFocalLengthXPx"] = Double(meshFocalXPixels)
         enrichedCalibrationMetadata["depthMeshFocalLengthYPx"] = Double(meshFocalYPixels)
         enrichedCalibrationMetadata["depthMeshVerticalFovDegrees"] = Double(meshVerticalFovDegrees)
-        let mesh = try buildPhotoPlaneMesh(
+        enrichedCalibrationMetadata["depthMeshImageWidthPx"] = Double(imageWidth)
+        enrichedCalibrationMetadata["depthMeshImageHeightPx"] = Double(imageHeight)
+
+        let representativeDepth = max(stats.median ?? measured.depth, 0.2)
+        let nearestReliableDepth = max(stats.p05 ?? stats.min ?? 0.2, 0.2)
+        let forwardLimit = (representativeDepth * 0.35).clamped(to: 0.75...1.40)
+        let lateralLimit = (representativeDepth * 0.12).clamped(to: 0.24...0.48)
+        let backwardLimit = (representativeDepth * 0.08).clamped(to: 0.18...0.32)
+
+        // One opaque continuous surface only. The previous completed-background mesh formed a
+        // second enclosure around the room and became visible as a translucent/foggy shell.
+        let mesh = try buildPerspectiveMesh(
             image: workingImage,
             depthMap: calibratedDepthMap,
-            widthMeters: meshDisplayDimensions.width,
-            heightMeters: meshDisplayDimensions.height
+            focalXPixels: meshFocalXPixels,
+            focalYPixels: meshFocalYPixels,
+            depthDiscontinuityThreshold: .infinity,
+            meshName: "DepthAnythingMetricRoom"
         )
+        enrichedCalibrationMetadata["depthMeshProjectionVersion"] = 5
+        enrichedCalibrationMetadata["depthMeshIsFlatPhotoPlane"] = 0
+        enrichedCalibrationMetadata["depthMeshHasCompletedBackground"] = 0
+        enrichedCalibrationMetadata["depthMeshUsesContinuousSurface"] = 1
+        enrichedCalibrationMetadata["depthMeshMaxTranslationM"] = Double(forwardLimit)
+        enrichedCalibrationMetadata["depthMeshForwardTranslationM"] = Double(forwardLimit)
+        enrichedCalibrationMetadata["depthMeshLateralTranslationM"] = Double(lateralLimit)
+        enrichedCalibrationMetadata["depthMeshBackwardTranslationM"] = Double(backwardLimit)
+        enrichedCalibrationMetadata["depthMeshMaxYawRadians"] = Double(Float.pi / 6)
+        enrichedCalibrationMetadata["depthMeshMaxPitchRadians"] = Double(Float.pi / 5)
+        enrichedCalibrationMetadata["depthMeshNearestReliableDepthM"] = Double(nearestReliableDepth)
         let meshEnd = CFAbsoluteTimeGetCurrent()
         reportProgress(0.85)
         let url = try exportUSDZ(mesh: mesh, textureImage: workingImage)
@@ -741,9 +760,13 @@ final class DepthAnythingRoomReconstructor {
                     y = (Float(row) - centerY) * heightMeters / Float(imageHeight)
                     z = -(depthMax - depth)
                 case let .pinhole(focalXPixels, focalYPixels):
-                    x = -(Float(column) - centerX) * depth / focalXPixels
-                    y = (Float(row) - centerY) * depth / focalYPixels
-                    z = depth
+                    // Match Android/glTF capture-camera coordinates exactly: +X right, +Y up,
+                    // and the camera looking forward along -Z from the authored origin.
+                    let captureCenterX = Float(imageWidth - 1) * 0.5
+                    let captureCenterY = Float(imageHeight - 1) * 0.5
+                    x = (Float(column) - captureCenterX) * depth / focalXPixels
+                    y = (captureCenterY - Float(row)) * depth / focalYPixels
+                    z = -depth
                 case let .photoPlane(widthMeters, heightMeters):
                     let lastColumn = Float(max(imageWidth - 1, 1))
                     let lastRow = Float(max(imageHeight - 1, 1))
@@ -753,7 +776,9 @@ final class DepthAnythingRoomReconstructor {
                 }
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
-                let v = 1.0 - Float(row) / Float(max(imageHeight - 1, 1))
+                // The JPEG supplied to SceneKit is file-backed and uses a top-left image origin.
+                // Keep V aligned with the raster row instead of applying the in-memory UIImage flip.
+                let v = Float(row) / Float(max(imageHeight - 1, 1))
 
                 vertexData.appendFloat32LE(x)
                 vertexData.appendFloat32LE(y)
@@ -882,9 +907,7 @@ final class DepthAnythingRoomReconstructor {
 
     func exportUSDZ(
         mesh: MDLMesh,
-        textureImage: UIImage,
-        backgroundMesh: MDLMesh? = nil,
-        backgroundTextureImage: UIImage? = nil
+        textureImage: UIImage
     ) throws -> URL {
         let directory = try resolvedOutputDirectory()
         let url = directory.appendingPathComponent("DepthAnythingRoom_\(Self.outputStamp()).usdz")
@@ -894,16 +917,41 @@ final class DepthAnythingRoomReconstructor {
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
             }
+            // Export from a private temporary scene document so the delegate can place room.jpg
+            // beside it. SceneKit then resolves and packages the relative texture reference.
+            let sceneDocumentDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "DepthAnythingUSDZScene_\(UUID().uuidString)",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: sceneDocumentDirectory,
+                withIntermediateDirectories: true
+            )
+            defer { try? FileManager.default.removeItem(at: sceneDocumentDirectory) }
+
+            let sceneDocumentURL = sceneDocumentDirectory.appendingPathComponent("room.usdz")
+            guard let textureData = textureImage.jpegData(compressionQuality: 0.95) else {
+                throw DepthAnythingRoomError.exportFailed("Could not encode room texture.")
+            }
+
             let scene = try Self.makeSceneKitScene(
                 from: mesh,
-                textureImage: textureImage,
-                backgroundMesh: backgroundMesh,
-                backgroundTextureImage: backgroundTextureImage
+                textureContents: textureImage
             )
-            let didWrite = scene.write(to: url, options: nil, delegate: nil, progressHandler: nil)
-            guard didWrite, FileManager.default.fileExists(atPath: url.path) else {
+            let exportDelegate = DepthAnythingSceneExportDelegate(
+                textureData: textureData,
+                textureFileName: "room.jpg"
+            )
+            let didWrite = scene.write(
+                to: sceneDocumentURL,
+                options: nil,
+                delegate: exportDelegate,
+                progressHandler: nil
+            )
+            guard didWrite, FileManager.default.fileExists(atPath: sceneDocumentURL.path) else {
                 throw DepthAnythingRoomError.exportFailed("SceneKit writer returned false.")
             }
+            try FileManager.default.moveItem(at: sceneDocumentURL, to: url)
             return url
         } catch {
             exportErrors.append("SceneKit: \(error.localizedDescription)")
@@ -913,7 +961,6 @@ final class DepthAnythingRoomReconstructor {
             do {
                 let asset = MDLAsset(bufferAllocator: MDLMeshBufferDataAllocator())
                 asset.add(mesh)
-                if let backgroundMesh { asset.add(backgroundMesh) }
                 try asset.export(to: url)
                 return url
             } catch {
@@ -928,11 +975,19 @@ final class DepthAnythingRoomReconstructor {
 
     static func makeSceneKitScene(
         from mesh: MDLMesh,
-        textureImage: UIImage,
-        backgroundMesh: MDLMesh? = nil,
-        backgroundTextureImage: UIImage? = nil
+        textureImage: UIImage
     ) throws -> SCNScene {
-        func makeNode(from mesh: MDLMesh, textureImage: UIImage, name: String) throws -> SCNNode {
+        try makeSceneKitScene(
+            from: mesh,
+            textureContents: textureImage
+        )
+    }
+
+    private static func makeSceneKitScene(
+        from mesh: MDLMesh,
+        textureContents: Any
+    ) throws -> SCNScene {
+        func makeNode(from mesh: MDLMesh, textureContents: Any, name: String) throws -> SCNNode {
         guard let vertexBuffer = mesh.vertexBuffers.first else {
             throw DepthAnythingRoomError.emptyMesh
         }
@@ -948,16 +1003,6 @@ final class DepthAnythingRoomReconstructor {
             componentsPerVector: 3,
             bytesPerComponent: MemoryLayout<Float>.size,
             dataOffset: 0,
-            dataStride: DepthAnythingVertex.byteStride
-        )
-        let colorSource = SCNGeometrySource(
-            data: vertexData,
-            semantic: .color,
-            vectorCount: mesh.vertexCount,
-            usesFloatComponents: true,
-            componentsPerVector: 3,
-            bytesPerComponent: MemoryLayout<Float>.size,
-            dataOffset: 3 * MemoryLayout<Float>.size,
             dataStride: DepthAnythingVertex.byteStride
         )
         let texcoordSource = SCNGeometrySource(
@@ -990,12 +1035,19 @@ final class DepthAnythingRoomReconstructor {
             throw DepthAnythingRoomError.emptyMesh
         }
 
-        let geometry = SCNGeometry(sources: [positionSource, colorSource, texcoordSource], elements: elements)
+        // Match Android's KHR_materials_unlit output: the source texture is the sole color input.
+        // Exporting sampled vertex colors as well lets RealityKit interpolate a second, blurred
+        // copy of the photo across triangles, which appears as a grey/white haze around edges.
+        let geometry = SCNGeometry(sources: [positionSource, texcoordSource], elements: elements)
         let material = SCNMaterial()
-        material.diffuse.contents = textureImage
+        material.diffuse.contents = textureContents
         material.diffuse.intensity = 1
         material.lightingModel = .constant
         material.isDoubleSided = true
+        material.transparency = 1
+        material.blendMode = .replace
+        material.readsFromDepthBuffer = true
+        material.writesToDepthBuffer = true
         material.diffuse.wrapS = .clamp
         material.diffuse.wrapT = .clamp
         geometry.materials = [material]
@@ -1008,16 +1060,9 @@ final class DepthAnythingRoomReconstructor {
         let scene = SCNScene()
         scene.rootNode.addChildNode(try makeNode(
             from: mesh,
-            textureImage: textureImage,
+            textureContents: textureContents,
             name: "DepthAnythingMetricRoom"
         ))
-        if let backgroundMesh, let backgroundTextureImage {
-            scene.rootNode.addChildNode(try makeNode(
-                from: backgroundMesh,
-                textureImage: backgroundTextureImage,
-                name: "DepthAnythingCompletedBackground"
-            ))
-        }
         return scene
     }
 
@@ -3151,6 +3196,33 @@ final class DepthAnythingRoomReconstructor {
 
 private enum DepthAnythingVertex {
     static let byteStride = 8 * MemoryLayout<Float>.size
+}
+
+private final class DepthAnythingSceneExportDelegate: NSObject, SCNSceneExportDelegate {
+    private let textureData: Data
+    private let textureFileName: String
+
+    init(textureData: Data, textureFileName: String) {
+        self.textureData = textureData
+        self.textureFileName = textureFileName
+    }
+
+    func write(
+        _ image: UIImage,
+        withSceneDocumentURL documentURL: URL,
+        originalImageURL: URL?
+    ) -> URL? {
+        let textureURL = documentURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(textureFileName)
+        do {
+            try textureData.write(to: textureURL, options: .atomic)
+            return textureURL
+        } catch {
+            logDebug("❌ [DepthAnythingRoom] Could not stage USDZ texture: \(error.localizedDescription)")
+            return nil
+        }
+    }
 }
 
 private struct DenseDepthArray {

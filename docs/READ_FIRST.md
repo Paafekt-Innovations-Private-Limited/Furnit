@@ -55,9 +55,10 @@ the resolved cause.
 
 - Swift/SwiftUI/UIKit app under [`../Furnit/`](../Furnit/).
 - Default Photo → 3D is two-phase: an immediate flat-photo preview, then GeoCalib +
-  Depth Anything V2 Metric Indoor + RTMDet measurement and a pixel-stable photo-plane
-  USDZ export on first save. Metric depth remains measurement metadata because one
-  photograph cannot supply the hidden pixels required for navigable side views.
+  Depth Anything V2 Metric Indoor + RTMDet measurement and a version-5 single-surface
+  projective USDZ export on first save. It has limited capture-eye navigation and no
+  secondary completed-background shell; one photograph still cannot supply true hidden
+  pixels. Saved-room appearance remains device-unconfirmed as of 2026-08-14.
 - The manual boundary path uses `SinglePhotoRoomReconstructor` and
   `SyntheticDepthEstimator`, then opens `MeshRoomView`.
 - Furniture Fit runs RTMDet-Ins-m as **Core ML** (`rtmdet-ins-m.mlpackage`, `RTMDetModel`

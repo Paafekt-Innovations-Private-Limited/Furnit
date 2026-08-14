@@ -137,8 +137,8 @@ class RealityKitBoundaryManager {
         usesCapturedPhotoFrustum = enabled
     }
 
-    /// The capture eye is the rear edge of the completed-photo volume. Positive Z points from the
-    /// capture eye into the authored room, so the useful allowance is intentionally one-way.
+    /// The capture eye is the rear edge of the completed-photo volume. As on Android/glTF, negative
+    /// Z points forward into the authored room, so the useful allowance is intentionally one-way.
     func setCompletedPhotoCameraEnvelope(
         forwardTranslation: Float?,
         lateralTranslation: Float?,
@@ -150,14 +150,14 @@ class RealityKitBoundaryManager {
             completedPhotoCameraBounds = nil
             return
         }
-        // The minimum also repairs already-saved v4 assets authored with the old 8–22 cm sphere.
-        let forward = min(max(forwardTranslation, 0.45), 0.90)
-        let lateral = min(max(lateralTranslation ?? forward * 0.40, 0.18), 0.36)
-        let backward = min(max(backwardTranslation ?? 0.06, 0.03), 0.10)
-        let vertical = min(max(forward * 0.18, 0.08), 0.16)
+        // Match Android's version-5 capture-eye envelope exactly.
+        let forward = min(max(forwardTranslation, 0.75), 1.40)
+        let lateral = min(max(lateralTranslation ?? forward * 0.34, 0.24), 0.48)
+        let backward = min(max(backwardTranslation ?? forward * 0.25, 0.18), 0.32)
+        let vertical = min(max(forward * 0.18, 0.10), 0.24)
         completedPhotoCameraBounds = (
-            min: SIMD3<Float>(-lateral, -vertical, -backward),
-            max: SIMD3<Float>(lateral, vertical, forward)
+            min: SIMD3<Float>(-lateral, -vertical, -forward),
+            max: SIMD3<Float>(lateral, vertical, backward)
         )
     }
 

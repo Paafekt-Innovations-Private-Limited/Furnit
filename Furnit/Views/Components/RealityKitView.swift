@@ -329,7 +329,9 @@ struct RealityKitView: UIViewRepresentable {
             // the eye at that origin and restoring the authored focal length makes the first
             // saved-room frame a pixel-exact reprojection of the source photograph.
             let cameraPosition = SIMD3<Float>(0, 0, 0)
-            let lookAtPosition = SIMD3<Float>(0, 0, max(bounds.min.z, 0.5))
+            // Android/glTF camera space looks down -Z. Target the farthest authored depth from the
+            // capture origin so recenter, gestures and D-pad share its full-room baseline.
+            let lookAtPosition = SIMD3<Float>(0, 0, min(bounds.min.z, -0.2))
             _ = applyCameraPose(
                 cameraAnchor,
                 position: cameraPosition,
@@ -485,10 +487,13 @@ struct RealityKitView: UIViewRepresentable {
                 && metadata["depthMeshIsFlatPhotoPlane", default: 0] >= 0.5
             let hasCompletedBackground = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
                 && metadata["depthMeshHasCompletedBackground", default: 0] >= 0.5
+            let hasNavigableDepthSurface = hasCompletedBackground
+                || (model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                    && metadata["depthMeshUsesContinuousSurface", default: 0] >= 0.5)
             gestureHandlers?.setFlatPhotoNavigationEnabled(isFlatPhotoPlane)
             let opticalCenter = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
                 && !isFlatPhotoPlane
-                && !hasCompletedBackground
+                && !hasNavigableDepthSurface
                 ? cameraAnchor?.transform.translation
                 : nil
             gestureHandlers?.setCapturedPhotoOpticalCenter(opticalCenter)
@@ -503,19 +508,19 @@ struct RealityKitView: UIViewRepresentable {
                 return 2 * atan(tan(verticalHalfFov) * Float(imageWidth / imageHeight)) * 180 / .pi
             }()
             gestureHandlers?.setLayeredPhotoLookLimits(
-                maximumYaw: hasCompletedBackground
+                maximumYaw: hasNavigableDepthSurface
                     ? metadata["depthMeshMaxYawRadians"].map(Float.init)
                     : nil,
-                maximumPitch: hasCompletedBackground
+                maximumPitch: hasNavigableDepthSurface
                     ? metadata["depthMeshMaxPitchRadians"].map(Float.init)
                     : nil,
-                sourceHorizontalFieldOfView: hasCompletedBackground
+                sourceHorizontalFieldOfView: hasNavigableDepthSurface
                     ? sourceHorizontalFieldOfView
                     : nil,
-                sourceVerticalFieldOfView: hasCompletedBackground
+                sourceVerticalFieldOfView: hasNavigableDepthSurface
                     ? sourceVerticalFieldOfView
                     : nil,
-                nearestReliableDepth: hasCompletedBackground
+                nearestReliableDepth: hasNavigableDepthSurface
                     ? metadata["depthMeshNearestReliableDepthM"].map(Float.init)
                     : nil
             )
@@ -727,7 +732,7 @@ struct RealityKitView: UIViewRepresentable {
                 // Ensure model has proper materials for visibility
                 ensureModelHasMaterials(modelEntity)
                 if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
-                    applyNoFaceCulling(to: modelEntity)
+                    normalizePhotoRoomMaterials(in: modelEntity)
                 }
 
                 // Calculate model bounds for camera positioning
@@ -836,22 +841,25 @@ struct RealityKitView: UIViewRepresentable {
                 } ?? [:]
                 let hasCompletedBackground = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
                     && navigationMetadata["depthMeshHasCompletedBackground", default: 0] >= 0.5
+                let hasNavigableDepthSurface = hasCompletedBackground
+                    || (model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                        && navigationMetadata["depthMeshUsesContinuousSurface", default: 0] >= 0.5)
                 boundaryManager.setUsesCapturedPhotoFrustum(
                     model.roomCoordinateFrame == .depthAnythingImageDepthMeters
-                        && !hasCompletedBackground
+                        && !hasNavigableDepthSurface
                 )
                 // Option B: Ensure fresh bounds per model load (avoid inheriting previous room bounds)
                 boundaryManager.reset()
                 boundaryManager.setCompletedPhotoCameraEnvelope(
-                    forwardTranslation: hasCompletedBackground
+                    forwardTranslation: hasNavigableDepthSurface
                         ? navigationMetadata["depthMeshForwardTranslationM"]
                             .map(Float.init)
                             ?? navigationMetadata["depthMeshMaxTranslationM"].map(Float.init)
                         : nil,
-                    lateralTranslation: hasCompletedBackground
+                    lateralTranslation: hasNavigableDepthSurface
                         ? navigationMetadata["depthMeshLateralTranslationM"].map(Float.init)
                         : nil,
-                    backwardTranslation: hasCompletedBackground
+                    backwardTranslation: hasNavigableDepthSurface
                         ? navigationMetadata["depthMeshBackwardTranslationM"].map(Float.init)
                         : nil
                 )
@@ -1060,10 +1068,13 @@ struct RealityKitView: UIViewRepresentable {
         logDebug("💡 Added dedicated lighting for placed 3D objects")
     }
     
-    /// Depth Anything flat planes: cover in landscape viewport (full screen), contain in portrait.
+    /// Photo rooms carry their own color in an unlit texture. Keep the viewport and IBL neutral so
+    /// uncovered depth samples cannot read as a grey haze around or through the saved mesh.
     private static func configureViewerBackground(_ arView: ARView, roomCoordinateFrame: RoomCoordinateFrame) {
         if roomCoordinateFrame == .depthAnythingImageDepthMeters {
-            arView.environment.background = .color(.init(white: 0.12, alpha: 1.0))
+            arView.environment.background = .color(.black)
+            arView.environment.lighting.resource = nil
+            arView.environment.lighting.intensityExponent = 0
         } else {
             arView.environment.background = .color(.init(white: 0, alpha: 1.0))
         }
@@ -1104,27 +1115,39 @@ struct RealityKitView: UIViewRepresentable {
     }
 
     // Ensure loaded model has proper materials for visibility
-    private func applyNoFaceCulling(to entity: Entity) {
+    private func normalizePhotoRoomMaterials(in entity: Entity) {
         if var modelComponent = entity.components[ModelComponent.self] {
             modelComponent.materials = modelComponent.materials.map { material in
-                if var pbr = material as? PhysicallyBasedMaterial {
-                    pbr.faceCulling = .none
-                    return pbr
+                let sourceColor: UnlitMaterial.BaseColor
+                if let unlit = material as? UnlitMaterial {
+                    sourceColor = unlit.color
+                } else if let pbr = material as? PhysicallyBasedMaterial {
+                    sourceColor = pbr.baseColor
+                } else if let simple = material as? SimpleMaterial {
+                    sourceColor = simple.color
+                } else {
+                    return material
                 }
-                if var unlit = material as? UnlitMaterial {
-                    unlit.faceCulling = .none
-                    return unlit
-                }
-                if var simple = material as? SimpleMaterial {
-                    simple.faceCulling = .none
-                    return simple
-                }
-                return material
+
+                var opaqueColor = sourceColor
+                opaqueColor.tint = sourceColor.tint.withAlphaComponent(1)
+
+                // The saved room is a captured photograph, not a relightable surface. Converting
+                // any importer-created PBR/Simple material also protects older saved USDZ files
+                // whose SceneKit `.constant` material was not preserved as unlit by RealityKit.
+                var unlit = UnlitMaterial(applyPostProcessToneMap: false)
+                unlit.color = opaqueColor
+                unlit.blending = .opaque
+                unlit.opacityThreshold = nil
+                unlit.faceCulling = .none
+                unlit.readsDepth = true
+                unlit.writesDepth = true
+                return unlit
             }
             entity.components.set(modelComponent)
         }
         for child in entity.children {
-            applyNoFaceCulling(to: child)
+            normalizePhotoRoomMaterials(in: child)
         }
     }
 
