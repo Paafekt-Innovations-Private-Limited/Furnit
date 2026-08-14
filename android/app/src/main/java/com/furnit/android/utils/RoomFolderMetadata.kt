@@ -49,6 +49,8 @@ object RoomFolderMetadata {
         val savedRefImageHeightPx: Int? = null,
         /** When true, the room exists only as a preview and was not committed via Save. */
         val previewOnly: Boolean? = null,
+        val depthMeshProjectionVersion: Int? = null,
+        val depthMeshHasCompletedBackground: Boolean? = null,
     ) {
         fun normalizedOrientation(): String =
             if (photoOrientation.trim().lowercase() == "landscape") "landscape" else "portrait"
@@ -93,6 +95,9 @@ object RoomFolderMetadata {
             roomSceneWidth = newSnapshot.roomSceneWidth ?: prev.roomSceneWidth,
             roomSceneHeight = newSnapshot.roomSceneHeight ?: prev.roomSceneHeight,
             roomSceneDepth = newSnapshot.roomSceneDepth ?: prev.roomSceneDepth,
+            depthMeshProjectionVersion = newSnapshot.depthMeshProjectionVersion ?: prev.depthMeshProjectionVersion,
+            depthMeshHasCompletedBackground = newSnapshot.depthMeshHasCompletedBackground
+                ?: prev.depthMeshHasCompletedBackground,
         )
         if (!hadCalibrationWork) return withAdditiveRoomFields
         return withAdditiveRoomFields.copy(
@@ -136,6 +141,8 @@ object RoomFolderMetadata {
             true -> jo.put("previewOnly", true)
             false -> jo.put("previewOnly", false)
         }
+        snapshot.depthMeshProjectionVersion?.let { jo.put("depthMeshProjectionVersion", it) }
+        snapshot.depthMeshHasCompletedBackground?.let { jo.put("depthMeshHasCompletedBackground", it) }
         File(folder, JSON_FILE_NAME).writeText(jo.toString())
     }
 
@@ -172,6 +179,12 @@ object RoomFolderMetadata {
                 !jo.has("previewOnly") -> null
                 else -> jo.optBoolean("previewOnly", false)
             },
+            depthMeshProjectionVersion = if (jo.has("depthMeshProjectionVersion")) {
+                jo.optInt("depthMeshProjectionVersion", 0).takeIf { it > 0 }
+            } else null,
+            depthMeshHasCompletedBackground = if (jo.has("depthMeshHasCompletedBackground")) {
+                jo.optBoolean("depthMeshHasCompletedBackground", false)
+            } else null,
         )
     }
 
@@ -231,6 +244,8 @@ object RoomFolderMetadata {
                 map["previewOnly"]?.trim()?.lowercase() == "true" -> true
                 else -> false
             },
+            depthMeshProjectionVersion = map["depthMeshProjectionVersion"]?.toIntOrNull(),
+            depthMeshHasCompletedBackground = map["depthMeshHasCompletedBackground"]?.toBooleanStrictOrNull(),
         )
     }
 }

@@ -22,11 +22,19 @@
 			remoteGlobalIDString = 045F5BD82E6D302900C5585D;
 			remoteInfo = Furnit;
 		};
+		61E2E0012F30000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 045F5BD12E6D302900C5585D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 045F5BD82E6D302900C5585D;
+			remoteInfo = Furnit;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		61A62FAD2F24C31500FE755A /* FurnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		61E2E0012F30000000000003 /* FurnitUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Furnit/Resources/WebViewVendor; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -66,6 +74,11 @@
 			path = FurnitTests;
 			sourceTree = "<group>";
 		};
+		61E2E0012F30000000000004 /* FurnitUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FurnitUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -87,6 +100,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		61E2E0012F30000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -95,6 +115,7 @@
 			children = (
 				045F5BDB2E6D302900C5585D /* Furnit */,
 				61A62FAE2F24C31500FE755A /* FurnitTests */,
+				61E2E0012F30000000000004 /* FurnitUITests */,
 				045F5BDA2E6D302900C5585D /* Products */,
 				61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */,
 			);
@@ -105,6 +126,7 @@
 			children = (
 				045F5BD92E6D302900C5585D /* Furnit.app */,
 				61A62FAD2F24C31500FE755A /* FurnitTests.xctest */,
+				61E2E0012F30000000000003 /* FurnitUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -159,6 +181,27 @@
 			productReference = 61A62FAD2F24C31500FE755A /* FurnitTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		61E2E0012F30000000000008 /* FurnitUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 61E2E0012F3000000000000B /* Build configuration list for PBXNativeTarget "FurnitUITests" */;
+			buildPhases = (
+				61E2E0012F30000000000007 /* Sources */,
+				61E2E0012F30000000000005 /* Frameworks */,
+				61E2E0012F30000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				61E2E0012F30000000000002 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				61E2E0012F30000000000004 /* FurnitUITests */,
+			);
+			name = FurnitUITests;
+			productName = FurnitUITests;
+			productReference = 61E2E0012F30000000000003 /* FurnitUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -182,6 +225,10 @@
 						};
 					};
 					61A62FAC2F24C31500FE755A = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 045F5BD82E6D302900C5585D;
+					};
+					61E2E0012F30000000000008 = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 045F5BD82E6D302900C5585D;
 					};
@@ -220,6 +267,7 @@
 			targets = (
 				045F5BD82E6D302900C5585D /* Furnit */,
 				61A62FAC2F24C31500FE755A /* FurnitTests */,
+				61E2E0012F30000000000008 /* FurnitUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -234,6 +282,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		61A62FAB2F24C31500FE755A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		61E2E0012F30000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -257,6 +312,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		61E2E0012F30000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -264,6 +326,11 @@
 			isa = PBXTargetDependency;
 			target = 045F5BD82E6D302900C5585D /* Furnit */;
 			targetProxy = 61A62FB12F24C31500FE755A /* PBXContainerItemProxy */;
+		};
+		61E2E0012F30000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 045F5BD82E6D302900C5585D /* Furnit */;
+			targetProxy = 61E2E0012F30000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -550,6 +617,40 @@
 			};
 			name = Release;
 		};
+		61E2E0012F30000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W38QXPUZWC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt.FurnitUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Furnit;
+			};
+			name = Debug;
+		};
+		61E2E0012F3000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W38QXPUZWC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt.FurnitUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Furnit;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -576,6 +677,15 @@
 			buildConfigurations = (
 				61A62FB42F24C31500FE755A /* Debug */,
 				61A62FB52F24C31500FE755A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		61E2E0012F3000000000000B /* Build configuration list for PBXNativeTarget "FurnitUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				61E2E0012F30000000000009 /* Debug */,
+				61E2E0012F3000000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

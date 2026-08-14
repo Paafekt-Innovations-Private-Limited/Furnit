@@ -237,6 +237,7 @@ struct PaafektImmersiveSaveFAB: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .accessibilityLabel(L10n.RoomViewer.saveRoom)
+        .accessibilityIdentifier("save_room_button")
     }
 }
 
@@ -510,6 +511,7 @@ struct PaafektViewerCameraDPad: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(systemName))
+        .accessibilityIdentifier("camera_dpad_\(systemName.replacingOccurrences(of: "arrow.", with: ""))")
     }
 }
 

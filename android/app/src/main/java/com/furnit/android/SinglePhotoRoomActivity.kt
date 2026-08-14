@@ -58,6 +58,11 @@ import java.util.Locale
  */
 class SinglePhotoRoomActivity : AppCompatActivity() {
 
+    companion object {
+        /** Debug-only fixture injection used by the device UI regression test. */
+        const val EXTRA_UI_TEST_IMAGE_PATH = "ui_test_image_path"
+    }
+
     private enum class CameraCaptureMode {
         STANDARD,
         WIDE_ANGLE,
@@ -210,6 +215,16 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
             },
         )
+
+        if (BuildConfig.DEBUG) {
+            intent.getStringExtra(EXTRA_UI_TEST_IMAGE_PATH)
+                ?.let(::File)
+                ?.takeIf { it.isFile }
+                ?.let { fixture ->
+                    selectedImageUri = Uri.fromFile(fixture)
+                    loadImageFromUri(selectedImageUri!!)
+                }
+        }
     }
 
     override fun onDestroy() {
@@ -846,6 +861,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ) {
                 onAIRoomSelected()
             }
+            aiOption.contentDescription = "ai_room_option"
             content.addView(
                 aiOption,
                 LinearLayout.LayoutParams(

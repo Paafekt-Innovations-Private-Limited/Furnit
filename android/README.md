@@ -13,7 +13,7 @@ languages, RTL behavior, and catalog verification: [`docs/LOCALIZATION.md`](docs
 - User input: take a photo or select one from the photo library.
 - Picker performance: after image selection, the AI/manual method picker is shown before heavy work starts.
 - Decode performance: room photos are sampled and EXIF-normalized off the UI thread instead of decoding full-resolution bitmaps on the main thread.
-- AI path: `PhotoRoomGenerationService` writes a **flat full-photo** `room.glb` preview; Save runs metric generation and replaces it with a calibrated projective depth-surface GLB.
+- AI path: `PhotoRoomGenerationService` writes a **flat full-photo** `room.glb` preview. Save runs metric generation and attempts a version-5 layered projective GLB with separated foreground geometry and completed background appearance; it falls back to a flat photo GLB if layered generation is unavailable.
 - Manual path: the user adjusts room boundaries and exports a textured five-plane GLB room.
 - Viewer path: generated rooms open in `GLBRoomActivity`; saved rooms are listed by `ModelManager`.
 - GLB performance: AI flat-photo previews embed the texture as JPEG to reduce file size and preview/save latency.
@@ -28,10 +28,12 @@ The room top bar matches the Swift viewer structure: separate floating controls 
 ruler/pinch/tap helpers, recenter/save, and AR resize. It is not a full-width band.
 
 Camera navigation is geometry-derived rather than controlled by the Auto Orbit preference. Exterior
-views orbit around the room; inside a volumetric room, drag turns the camera in place. Saved
-single-photo depth surfaces retain the capture optical center and use field-of-view pinch zoom so
-foreground depth cannot separate from its far-photo backing layer. This saved-room interaction is
-build-validated; final Android device visual confirmation remains pending as of 2026-08-13.
+views orbit around the room; inside a volumetric room, drag turns the camera in place. Version-5
+saved single-photo rooms use an authored camera envelope: pinch permits limited forward/backward
+movement, while drag and the D-pad apply coverage-bounded look changes. The completed background
+layer replaces the old full-photo backing plane so foreground source pixels are not copied behind
+foreground geometry. This candidate is build-validated only; final Android device visual
+confirmation remains pending as of 2026-08-14.
 
 | Mode | Camera preview | Overlay | Purpose |
 |---|---|---|---|

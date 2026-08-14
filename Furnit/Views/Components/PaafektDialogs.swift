@@ -201,6 +201,7 @@ struct PaafektNameRoomSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.lg) {
                     TextField(L10n.RoomViewer.roomNamePlaceholder, text: $roomName)
+                        .accessibilityIdentifier("room_name_input")
                         .textFieldStyle(.plain)
                         .font(Theme.Typo.body())
                         .foregroundStyle(Theme.Palette.textPrimary)
@@ -237,6 +238,7 @@ struct PaafektNameRoomSheet: View {
                             guard isNameValid else { return }
                             onSave()
                         }
+                        .accessibilityIdentifier("room_name_save_button")
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(!isNameValid)
                     }

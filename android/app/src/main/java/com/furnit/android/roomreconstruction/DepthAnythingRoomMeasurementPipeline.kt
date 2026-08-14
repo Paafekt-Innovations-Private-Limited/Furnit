@@ -30,6 +30,7 @@ data class DepthMeshData(
     val imageHeight: Int,
     val focalXPixels: Float,
     val focalYPixels: Float,
+    val foregroundMask: ByteArray? = null,
 )
 
 object DepthAnythingRoomMeasurementPipeline {
@@ -42,6 +43,7 @@ object DepthAnythingRoomMeasurementPipeline {
         rawDepth: FloatArray,
         imageUri: Uri? = null,
         cameraMetadata: Map<String, Double>? = null,
+        includeForegroundMask: Boolean = false,
     ): RoomMeasurementPipelineResult {
         val imageWidth = workingImage.width
         val imageHeight = workingImage.height
@@ -52,12 +54,22 @@ object DepthAnythingRoomMeasurementPipeline {
             val geoCalibFuture: Future<GeoCalibCalibrationResult?> = executor.submit(
                 Callable { GeoCalibCalibrationService.estimateCalibration(context, workingImage) },
             )
-            val objectRectFuture: Future<MeasurementObjectRect?> = executor.submit(
-                Callable { MeasurementObjectDetection.detectMeasurementObject(context, workingImage) },
+            val sceneAnalysisFuture: Future<MeasurementSceneAnalysis> = executor.submit(
+                Callable {
+                    if (includeForegroundMask) {
+                        MeasurementObjectDetection.analyzeMeasurementScene(context, workingImage)
+                    } else {
+                        MeasurementSceneAnalysis(
+                            objectRect = MeasurementObjectDetection.detectMeasurementObject(context, workingImage),
+                            foregroundMask = null,
+                        )
+                    }
+                },
             )
 
             val geoCalib = geoCalibFuture.get(60, TimeUnit.SECONDS)
-            val objectRect = objectRectFuture.get(60, TimeUnit.SECONDS)
+            val sceneAnalysis = sceneAnalysisFuture.get(60, TimeUnit.SECONDS)
+            val objectRect = sceneAnalysis.objectRect
 
             val exifFocalPx = readExifFocalPixels(context, imageUri, imageWidth)
             val geoFocalPx = exifFocalPx ?: FocalResolver.resolve(
@@ -236,6 +248,7 @@ object DepthAnythingRoomMeasurementPipeline {
                     imageHeight = imageHeight,
                     focalXPixels = measurementFocal.fx,
                     focalYPixels = measurementFocal.fy,
+                    foregroundMask = sceneAnalysis.foregroundMask,
                 ),
             )
         } catch (error: Exception) {

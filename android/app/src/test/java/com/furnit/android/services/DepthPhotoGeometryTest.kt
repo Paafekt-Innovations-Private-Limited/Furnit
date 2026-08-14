@@ -23,16 +23,16 @@ class DepthPhotoGeometryTest {
         )
 
         val zs = (2 until geometry.positions.size step 3).map { geometry.positions[it] }
-        val primarySurfaceZs = zs.dropLast(4)
-        assertEquals(1f, primarySurfaceZs.maxOrNull()!! - primarySurfaceZs.minOrNull()!!, 0.0001f)
-        assertTrue(zs.takeLast(4).all { it < primarySurfaceZs.minOrNull()!! })
+        assertEquals(1f, zs.maxOrNull()!! - zs.minOrNull()!!, 0.0001f)
         // Pixel (0,0) at depth 1 unprojects to (-0.5,+0.5,-1) for c=(4,4), f=8.
         assertEquals(-0.5f, geometry.positions[0], 0.0001f)
         assertEquals(0.5f, geometry.positions[1], 0.0001f)
         assertEquals(-1f, geometry.positions[2], 0.0001f)
         assertTrue(geometry.cameraVerticalFovDegrees!! > 0f)
-        // Discontinuous foreground/background quads remain disconnected; six final indices are
-        // the calibrated far-photo backing layer that fills those openings.
+        // Discontinuous foreground/background quads remain disconnected. There is deliberately
+        // no copied full-photo far plane; layered exports author their completed background as a
+        // separate depth mesh.
         assertTrue(geometry.indices.size < 30)
     }
+
 }

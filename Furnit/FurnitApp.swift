@@ -105,6 +105,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         logDebug("🔥 [AppDelegate] didFinishLaunching START")
 
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-PaafektSavedRoomE2E"),
+           let testRoomName = ProcessInfo.processInfo.environment["PAAFEKT_UI_TEST_ROOM_NAME"] {
+            SavedRoomE2ECleanup.removeSavedRoom(named: testRoomName)
+        }
+        #endif
+
         FirebaseConfiguration.shared.setLoggerLevel(.error)
         logDebug("🔥 [AppDelegate] Firebase logging level set to .error")
 
@@ -156,6 +163,33 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         completionHandler(.noData)
     }
 }
+
+#if DEBUG
+private enum SavedRoomE2ECleanup {
+    static func removeSavedRoom(named roomName: String) {
+        let fileManager = FileManager.default
+        guard let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let savedRooms = documents.appendingPathComponent("SavedRooms", isDirectory: true)
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: savedRooms,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for metadataURL in files where metadataURL.lastPathComponent.hasSuffix(".usdz.meta") {
+            guard let data = try? Data(contentsOf: metadataURL),
+                  let metadata = try? JSONDecoder().decode([String: String].self, from: data),
+                  metadata["displayName"] == roomName else { continue }
+            let canonicalStem = metadataURL.lastPathComponent
+                .replacingOccurrences(of: ".usdz.meta", with: "")
+            for artifact in files where artifact.lastPathComponent.hasPrefix(canonicalStem) {
+                try? fileManager.removeItem(at: artifact)
+            }
+            logDebug("[SavedRoomE2E] Removed previous test room \(roomName)")
+        }
+    }
+}
+#endif
 
 @main
 struct FurnitApp: App {

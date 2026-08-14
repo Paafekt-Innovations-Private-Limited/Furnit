@@ -27,8 +27,13 @@ For Android Studio device testing, set **Run > Edit Configurations > app > Deplo
 6. Confirm a GLB preview opens with a **flat full-photo** wall (no dragged/stretch artifacts on the front texture).
 7. Confirm `GLBRoomActivity` uses floating top controls (back, ruler/pinch/tap helpers, recenter/save, AR), not a full-width band.
 8. Save the room.
-9. Confirm the saved room appears in the home room list and opens in `GLBRoomActivity` as a projective depth surface.
-10. Recenter, pinch in/out, rotate through the full horizontal range, and look nearly straight up/down. Confirm the eye remains at the authored optical center and foreground objects do not move out of place, stretch, or leave duplicate gray/photo traces. This candidate still requires manual device confirmation as of 2026-08-14.
+9. Confirm the saved room appears in the home room list and opens in `GLBRoomActivity` as either a version-5 layered depth asset or the safe flat fallback.
+10. For a layered asset, recenter, pinch within the bounded forward/backward envelope, and use drag plus D-pad toward each coverage limit. Confirm foreground objects stay in place and the completed background does not repeat foreground pixels, stretch, or reveal renderer-gray holes. This candidate still requires manual device confirmation as of 2026-08-14.
+
+The large `SavedRoomNavigationE2ETest` exercises the same create/save/reopen/navigation sequence with
+a synthetic image generated at runtime. Compile it with `:app:assembleAndroidTest`; run it only on a
+suitable arm64 device with the install-time model packs available. Its pixel checks are regression
+signals, not a substitute for the room-photo smoke test above.
 
 ## GLB Room Full-Video Segmentation Smoke Test
 

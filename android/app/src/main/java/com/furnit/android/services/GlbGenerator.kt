@@ -1,6 +1,7 @@
 package com.furnit.android.services
 
 import android.graphics.Bitmap
+import com.furnit.android.roomreconstruction.LayeredDepthRoomCompletion
 import com.furnit.android.utils.LogUtil
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -36,6 +37,16 @@ class GlbGenerator {
         val uvs: FloatArray,
         val indices: ShortArray,
         val cameraVerticalFovDegrees: Float? = null,
+        val layeredDepthVersion: Int? = null,
+        val cameraTranslationLimitMeters: Float? = null,
+        val cameraForwardTranslationLimitMeters: Float? = null,
+        val cameraLateralTranslationLimitMeters: Float? = null,
+        val cameraBackwardTranslationLimitMeters: Float? = null,
+        val cameraYawLimitRadians: Float? = null,
+        val cameraPitchLimitRadians: Float? = null,
+        val cameraSourceImageWidth: Int? = null,
+        val cameraSourceImageHeight: Int? = null,
+        val cameraNearestReliableDepthMeters: Float? = null,
     )
 
     data class RoomDimensions(
@@ -162,29 +173,73 @@ class GlbGenerator {
         depthHeight: Int,
         focalXPixels: Float,
         focalYPixels: Float,
+        semanticForegroundMask: ByteArray? = null,
     ): Boolean {
         return try {
-            val geometry = depthPhotoGeometry(
+            val completion = LayeredDepthRoomCompletion.complete(
+                photo = photoTexture,
+                depth = depthMap,
+                width = depthWidth,
+                height = depthHeight,
+                semanticForegroundMask = semanticForegroundMask,
+            ) ?: run {
+                LogUtil.w(TAG, "No reliable foreground layers; refusing projective export")
+                return false
+            }
+            val maxYaw = Math.PI.toFloat() / 6f
+            val maxPitch = Math.PI.toFloat() / 5f
+            val forwardLimit = (completion.representativeRoomDepth * 0.35f).coerceIn(0.75f, 1.40f)
+            val lateralLimit = (completion.representativeRoomDepth * 0.12f).coerceIn(0.24f, 0.48f)
+            val backwardLimit = (completion.representativeRoomDepth * 0.08f).coerceIn(0.18f, 0.32f)
+            val backgroundGeometry = depthPhotoGeometry(
+                dimensions = dimensions,
+                depthMap = completion.completedBackgroundDepth,
+                depthWidth = depthWidth,
+                depthHeight = depthHeight,
+                focalXPixels = focalXPixels,
+                focalYPixels = focalYPixels,
+                // The completed structural layer must cover every source-image cell. Edge
+                // rejection is retained on the foreground mesh only.
+                depthDiscontinuityMeters = Float.POSITIVE_INFINITY,
+            ).copy(
+                layeredDepthVersion = 5,
+                cameraTranslationLimitMeters = forwardLimit,
+                cameraForwardTranslationLimitMeters = forwardLimit,
+                cameraLateralTranslationLimitMeters = lateralLimit,
+                cameraBackwardTranslationLimitMeters = backwardLimit,
+                cameraYawLimitRadians = maxYaw,
+                cameraPitchLimitRadians = maxPitch,
+                cameraSourceImageWidth = depthWidth,
+                cameraSourceImageHeight = depthHeight,
+                cameraNearestReliableDepthMeters = completion.nearestReliableDepth,
+            )
+            val foregroundGeometry = depthPhotoGeometry(
                 dimensions = dimensions,
                 depthMap = depthMap,
                 depthWidth = depthWidth,
                 depthHeight = depthHeight,
                 focalXPixels = focalXPixels,
                 focalYPixels = focalYPixels,
+                triangleMask = completion.foregroundMask,
+                depthDiscontinuityMeters = Float.POSITIVE_INFINITY,
             )
             LogUtil.d(
                 TAG,
                 "Generating depth photo GLB: ${outputFile.absolutePath} " +
                     "photo=${photoTexture.width}x${photoTexture.height} " +
-                    "depth=${depthWidth}x$depthHeight vertices=${geometry.positions.size / 3}",
+                    "depth=${depthWidth}x$depthHeight " +
+                    "backgroundVertices=${backgroundGeometry.positions.size / 3} " +
+                    "foregroundVertices=${foregroundGeometry.positions.size / 3}",
             )
-            writeGlb(
+            val written = writeGlb(
                 outputFile = outputFile,
-                planes = listOf(geometry),
-                textures = listOf(photoTexture),
-                textureNames = listOf("photo_room_depth"),
+                planes = listOf(backgroundGeometry, foregroundGeometry),
+                textures = listOf(completion.completedBackground, photoTexture),
+                textureNames = listOf("photo_room_depth", "photo_room_foreground"),
                 jpegQuality = 95,
             )
+            completion.completedBackground.recycle()
+            written
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to generate depth photo GLB", e)
             false
@@ -199,6 +254,7 @@ class GlbGenerator {
         focalXPixels: Float,
         focalYPixels: Float,
         depthDiscontinuityMeters: Float = 0.15f,
+        triangleMask: ByteArray? = null,
     ): PlaneGeometry {
         require(
             depthWidth > 1 && depthHeight > 1 && depthMap.size == depthWidth * depthHeight &&
@@ -218,6 +274,7 @@ class GlbGenerator {
         val rows = samples(depthHeight)
         val columns = samples(depthWidth)
         require(rows.size * columns.size <= 65_531)
+        require(triangleMask == null || triangleMask.size == depthWidth * depthHeight)
 
         var farDepth = 0f
         for (depth in depthMap) {
@@ -251,26 +308,6 @@ class GlbGenerator {
             }
         }
 
-        // A depth discontinuity intentionally has no connecting triangle: joining foreground to
-        // background creates the long "stretched pixel" wedges seen while turning. Keep a second,
-        // correctly projected photo layer just behind the farthest depth so those openings reveal
-        // image content instead of the renderer's gray background.
-        val backingDepth = farDepth + 0.02f
-        val backingStart = positions.size / 3
-        val backingCorners = listOf(
-            Triple(0, 0, Pair(0f, 0f)),
-            Triple(depthWidth - 1, 0, Pair(1f, 0f)),
-            Triple(depthWidth - 1, depthHeight - 1, Pair(1f, 1f)),
-            Triple(0, depthHeight - 1, Pair(0f, 1f)),
-        )
-        for ((column, row, uv) in backingCorners) {
-            positions.add((column - centerX) * backingDepth / focalXPixels)
-            positions.add((centerY - row) * backingDepth / focalYPixels)
-            positions.add(-backingDepth)
-            normals.addAll(listOf(0f, 0f, 1f))
-            uvs.addAll(listOf(uv.first, uv.second))
-        }
-
         val indices = ArrayList<Short>((rows.size - 1) * (columns.size - 1) * 6)
         fun continuous(vararg values: Float): Boolean {
             if (values.any { !it.isFinite() || it <= 0f }) return false
@@ -287,6 +324,13 @@ class GlbGenerator {
                 val r1 = rows[rowIndex + 1]
                 val c0 = columns[columnIndex]
                 val c1 = columns[columnIndex + 1]
+                if (triangleMask != null) {
+                    val includedCorners = listOf(
+                        triangleMask[r0 * depthWidth + c0], triangleMask[r0 * depthWidth + c1],
+                        triangleMask[r1 * depthWidth + c0], triangleMask[r1 * depthWidth + c1],
+                    ).count { it.toInt() != 0 }
+                    if (includedCorners < 2) continue
+                }
                 if (!continuous(
                         depthMap[r0 * depthWidth + c0], depthMap[r0 * depthWidth + c1],
                         depthMap[r1 * depthWidth + c0], depthMap[r1 * depthWidth + c1],
@@ -298,10 +342,6 @@ class GlbGenerator {
                 ))
             }
         }
-        indices.addAll(listOf(
-            backingStart.toShort(), (backingStart + 1).toShort(), (backingStart + 2).toShort(),
-            backingStart.toShort(), (backingStart + 2).toShort(), (backingStart + 3).toShort(),
-        ))
         require(indices.size >= 3)
 
         return PlaneGeometry(
@@ -558,9 +598,20 @@ class GlbGenerator {
         val childNodes = planes.indices.joinToString(",", prefix = "[", postfix = "]") { (it + 1).toString() }
         sb.append("{\"children\":$childNodes}")  // Root node
         for (i in planes.indices) {
-            val cameraExtras = planes[i].cameraVerticalFovDegrees?.let { fov ->
-                ",\"extras\":{\"cameraVerticalFovDegrees\":$fov}"
-            }.orEmpty()
+            val extras = buildList {
+                planes[i].cameraVerticalFovDegrees?.let { add("\"cameraVerticalFovDegrees\":$it") }
+                planes[i].layeredDepthVersion?.let { add("\"layeredDepthVersion\":$it") }
+                planes[i].cameraTranslationLimitMeters?.let { add("\"cameraTranslationLimitMeters\":$it") }
+                planes[i].cameraForwardTranslationLimitMeters?.let { add("\"cameraForwardTranslationLimitMeters\":$it") }
+                planes[i].cameraLateralTranslationLimitMeters?.let { add("\"cameraLateralTranslationLimitMeters\":$it") }
+                planes[i].cameraBackwardTranslationLimitMeters?.let { add("\"cameraBackwardTranslationLimitMeters\":$it") }
+                planes[i].cameraYawLimitRadians?.let { add("\"cameraYawLimitRadians\":$it") }
+                planes[i].cameraPitchLimitRadians?.let { add("\"cameraPitchLimitRadians\":$it") }
+                planes[i].cameraSourceImageWidth?.let { add("\"cameraSourceImageWidth\":$it") }
+                planes[i].cameraSourceImageHeight?.let { add("\"cameraSourceImageHeight\":$it") }
+                planes[i].cameraNearestReliableDepthMeters?.let { add("\"cameraNearestReliableDepthMeters\":$it") }
+            }
+            val cameraExtras = if (extras.isEmpty()) "" else ",\"extras\":{${extras.joinToString(",")}}"
             sb.append(",{\"mesh\":$i,\"name\":\"${textureNames[i]}\"$cameraExtras}")
         }
         sb.append("],")

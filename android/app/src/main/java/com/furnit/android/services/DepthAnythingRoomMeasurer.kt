@@ -66,6 +66,7 @@ object DepthAnythingRoomMeasurer {
         image: Bitmap,
         imageUri: Uri? = null,
         cameraMetadata: Map<String, Double>? = null,
+        includeForegroundMask: Boolean = false,
     ): Result {
         val working = downsample(image, RoomMeasurementConstants.MAX_WORKING_IMAGE_DIMENSION)
         return try {
@@ -76,6 +77,7 @@ object DepthAnythingRoomMeasurer {
                 rawDepth = depth,
                 imageUri = imageUri,
                 cameraMetadata = cameraMetadata,
+                includeForegroundMask = includeForegroundMask,
             )
             Result(
                 width = pipelineResult.width,
@@ -99,10 +101,11 @@ object DepthAnythingRoomMeasurer {
         imageFile: File,
         imageUri: Uri? = null,
         cameraMetadata: Map<String, Double>? = null,
+        includeForegroundMask: Boolean = false,
     ): Result {
         val bitmap = decodeOrientedBitmap(imageFile) ?: return fallback("decode_failed")
         return try {
-            measure(context, bitmap, imageUri, cameraMetadata)
+            measure(context, bitmap, imageUri, cameraMetadata, includeForegroundMask)
         } finally {
             bitmap.recycle()
         }

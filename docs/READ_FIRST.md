@@ -2,7 +2,7 @@
 
 This is the compact active context for contributors and coding agents. It records
 settled facts that should not be reconstructed from chat history or stale audits.
-Last verified: 2026-08-05.
+Last verified: 2026-08-14.
 
 ## Settled product and ownership facts
 
@@ -75,8 +75,11 @@ the resolved cause.
 
 - Kotlin app under [`../android/`](../android/), target/compile SDK 36, arm64 runtime.
 - Photo → 3D shows the AI/manual picker before heavy decode work. The default AI
-  preview is an optimized flat full-photo GLB; saving replaces it with a calibrated
-  projective depth-surface GLB. Manual setup produces a textured five-plane GLB.
+  preview is an optimized flat full-photo GLB. Save attempts a version-5 layered
+  projective GLB with foreground separation and deterministic background appearance
+  completion; if that representation cannot be produced safely, Save emits a flat
+  photo GLB instead. The layered result remains device-unconfirmed as of 2026-08-14.
+  Manual setup produces a textured five-plane GLB.
 - Depth Anything and GeoCalib ONNX models plus one RTMDet FP16 LiteRT model ship in install-time
   Play Asset Delivery packs and are loaded through Android's `AssetManager`.
 - `GLBRoomActivity` hosts the Three.js/WebView room plus the inline RTMDet brain and

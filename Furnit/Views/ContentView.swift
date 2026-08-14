@@ -256,6 +256,7 @@ struct HomeTab: View {
                         }
                     }
                     .accessibilityLabel("accessibility.createRoom".localized)
+                    .accessibilityIdentifier("create_room_button")
                 }
                 
                 // Help Button

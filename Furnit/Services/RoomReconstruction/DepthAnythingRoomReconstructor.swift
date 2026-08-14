@@ -208,8 +208,8 @@ final class DepthAnythingRoomReconstructor {
         async let geoCalibTask = Self.timedStage("geocalib") {
             await GeoCalibCalibrationService.shared.estimateCalibration(image: workingImage)
         }
-        async let objectRectTask = Self.timedStage("rtmdet") {
-            await Self.detectMeasurementObjectRect(
+        async let objectAnalysisTask = Self.timedStage("rtmdet") {
+            await Self.detectMeasurementObjectAnalysis(
                 image: workingImage,
                 imageWidth: workingPixelWidth,
                 imageHeight: workingPixelHeight
@@ -220,7 +220,8 @@ final class DepthAnythingRoomReconstructor {
         }
         reportProgress(0.50)
         let geoCalibCalibration = await geoCalibTask
-        let objectRect = await objectRectTask
+        let objectAnalysis = await objectAnalysisTask
+        let objectRect = objectAnalysis?.rect
         reportProgress(0.58)
         let inferenceEnd = CFAbsoluteTimeGetCurrent()
         logDebug(String(
@@ -629,7 +630,10 @@ final class DepthAnythingRoomReconstructor {
         image: UIImage,
         depthMap: [[Float]],
         focalXPixels: Float,
-        focalYPixels: Float
+        focalYPixels: Float,
+        triangleMask: [UInt8]? = nil,
+        depthDiscontinuityThreshold: Float? = nil,
+        meshName: String = "DepthAnythingMetricRoom"
     ) throws -> MDLMesh {
         guard focalXPixels.isFinite, focalYPixels.isFinite,
               focalXPixels > 1, focalYPixels > 1 else {
@@ -641,7 +645,10 @@ final class DepthAnythingRoomReconstructor {
             projection: .pinhole(
                 focalXPixels: focalXPixels,
                 focalYPixels: focalYPixels
-            )
+            ),
+            triangleMask: triangleMask,
+            depthDiscontinuityThreshold: depthDiscontinuityThreshold,
+            meshName: meshName
         )
     }
 
@@ -673,7 +680,10 @@ final class DepthAnythingRoomReconstructor {
     private func buildMesh(
         image: UIImage,
         depthMap: [[Float]],
-        projection: MeshProjection
+        projection: MeshProjection,
+        triangleMask: [UInt8]? = nil,
+        depthDiscontinuityThreshold: Float? = nil,
+        meshName: String = "DepthAnythingMetricRoom"
     ) throws -> MDLMesh {
         let fixedImage = image.fixedOrientation()
         let raster = try DepthAnythingRasterImage(image: fixedImage)
@@ -683,7 +693,9 @@ final class DepthAnythingRoomReconstructor {
               depthMap.allSatisfy({ $0.count == imageWidth }) else {
             throw DepthAnythingRoomError.depthImageSizeMismatch
         }
-
+        if let triangleMask, triangleMask.count != imageWidth * imageHeight {
+            throw DepthAnythingRoomError.depthImageSizeMismatch
+        }
         var depthMax: Float = 0
         for row in depthMap {
             for depth in row where depth.isFinite {
@@ -788,6 +800,17 @@ final class DepthAnythingRoomReconstructor {
                 let d10 = depthMap[r0][c1]
                 let d01 = depthMap[r1][c0]
                 let d11 = depthMap[r1][c1]
+                if let triangleMask {
+                    let includedCorners = [
+                        triangleMask[r0 * imageWidth + c0],
+                        triangleMask[r0 * imageWidth + c1],
+                        triangleMask[r1 * imageWidth + c0],
+                        triangleMask[r1 * imageWidth + c1]
+                    ].reduce(into: 0) { count, value in
+                        if value != 0 { count += 1 }
+                    }
+                    guard includedCorners >= 2 else { continue }
+                }
                 if case .photoPlane = projection {
                     // The preview-equivalent plane is continuous by definition.
                 } else {
@@ -796,7 +819,7 @@ final class DepthAnythingRoomReconstructor {
                         d10,
                         d01,
                         d11,
-                        threshold: depthDiscontinuityThresholdMeters
+                        threshold: depthDiscontinuityThreshold ?? depthDiscontinuityThresholdMeters
                     ) else {
                         continue
                     }
@@ -811,7 +834,6 @@ final class DepthAnythingRoomReconstructor {
                 indexCount += 6
             }
         }
-
         guard indexCount >= 3 else {
             throw DepthAnythingRoomError.emptyMesh
         }
@@ -854,11 +876,16 @@ final class DepthAnythingRoomReconstructor {
             descriptor: descriptor,
             submeshes: [submesh]
         )
-        mesh.name = "DepthAnythingMetricRoom"
+        mesh.name = meshName
         return mesh
     }
 
-    func exportUSDZ(mesh: MDLMesh, textureImage: UIImage) throws -> URL {
+    func exportUSDZ(
+        mesh: MDLMesh,
+        textureImage: UIImage,
+        backgroundMesh: MDLMesh? = nil,
+        backgroundTextureImage: UIImage? = nil
+    ) throws -> URL {
         let directory = try resolvedOutputDirectory()
         let url = directory.appendingPathComponent("DepthAnythingRoom_\(Self.outputStamp()).usdz")
 
@@ -867,7 +894,12 @@ final class DepthAnythingRoomReconstructor {
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
             }
-            let scene = try Self.makeSceneKitScene(from: mesh, textureImage: textureImage)
+            let scene = try Self.makeSceneKitScene(
+                from: mesh,
+                textureImage: textureImage,
+                backgroundMesh: backgroundMesh,
+                backgroundTextureImage: backgroundTextureImage
+            )
             let didWrite = scene.write(to: url, options: nil, delegate: nil, progressHandler: nil)
             guard didWrite, FileManager.default.fileExists(atPath: url.path) else {
                 throw DepthAnythingRoomError.exportFailed("SceneKit writer returned false.")
@@ -881,6 +913,7 @@ final class DepthAnythingRoomReconstructor {
             do {
                 let asset = MDLAsset(bufferAllocator: MDLMeshBufferDataAllocator())
                 asset.add(mesh)
+                if let backgroundMesh { asset.add(backgroundMesh) }
                 try asset.export(to: url)
                 return url
             } catch {
@@ -893,7 +926,13 @@ final class DepthAnythingRoomReconstructor {
         throw DepthAnythingRoomError.exportFailed(exportErrors.joined(separator: "; "))
     }
 
-    static func makeSceneKitScene(from mesh: MDLMesh, textureImage: UIImage) throws -> SCNScene {
+    static func makeSceneKitScene(
+        from mesh: MDLMesh,
+        textureImage: UIImage,
+        backgroundMesh: MDLMesh? = nil,
+        backgroundTextureImage: UIImage? = nil
+    ) throws -> SCNScene {
+        func makeNode(from mesh: MDLMesh, textureImage: UIImage, name: String) throws -> SCNNode {
         guard let vertexBuffer = mesh.vertexBuffers.first else {
             throw DepthAnythingRoomError.emptyMesh
         }
@@ -961,10 +1000,24 @@ final class DepthAnythingRoomReconstructor {
         material.diffuse.wrapT = .clamp
         geometry.materials = [material]
 
-        let scene = SCNScene()
         let node = SCNNode(geometry: geometry)
-        node.name = "DepthAnythingMetricRoom"
-        scene.rootNode.addChildNode(node)
+        node.name = name
+        return node
+        }
+
+        let scene = SCNScene()
+        scene.rootNode.addChildNode(try makeNode(
+            from: mesh,
+            textureImage: textureImage,
+            name: "DepthAnythingMetricRoom"
+        ))
+        if let backgroundMesh, let backgroundTextureImage {
+            scene.rootNode.addChildNode(try makeNode(
+                from: backgroundMesh,
+                textureImage: backgroundTextureImage,
+                name: "DepthAnythingCompletedBackground"
+            ))
+        }
         return scene
     }
 
@@ -1942,7 +1995,7 @@ final class DepthAnythingRoomReconstructor {
         return median(cameraHeights)
     }
 
-    struct ObjectDetectionRect {
+    struct ObjectDetectionRect: Sendable {
         let classIdx: Int
         let confidence: Float
         let leftX: Int
@@ -1951,19 +2004,502 @@ final class DepthAnythingRoomReconstructor {
         let bottomY: Int
     }
 
-    /// RTMDet inference is image-only, so it can run concurrently with GeoCalib and
-    /// Depth Anything. It reuses the app's single shared Core ML `MLModel`.
-    private static func detectMeasurementObjectRect(
+    private struct ObjectDetectionAnalysis: Sendable {
+        let rect: ObjectDetectionRect?
+        let foregroundMask: [UInt8]?
+    }
+
+    /// Apple Vision's salient-instance mask is class-agnostic, so it covers objects such as a
+    /// ceiling fan that COCO/RTMDet does not name. The high-resolution mask is generated in the
+    /// same oriented pixel space as the depth map and source texture.
+    private static func generateForegroundMask(
         image: UIImage,
         imageWidth: Int,
         imageHeight: Int
-    ) async -> ObjectDetectionRect? {
+    ) async -> [UInt8]? {
+        guard let cgImage = image.cgImage else { return nil }
+        do {
+            let handler = ImageRequestHandler(cgImage, orientation: .up)
+            let observation = try await handler.perform(GenerateForegroundInstanceMaskRequest())
+            guard let observation, !observation.allInstances.isEmpty else { return nil }
+            let pixelBuffer = try observation.generateScaledMask(
+                for: observation.allInstances,
+                scaledToImageFrom: handler
+            )
+            guard CVPixelBufferGetWidth(pixelBuffer) == imageWidth,
+                  CVPixelBufferGetHeight(pixelBuffer) == imageHeight else {
+                return nil
+            }
+            CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+            guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+            let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+            let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
+            var mask = [UInt8](repeating: 0, count: imageWidth * imageHeight)
+            if format == kCVPixelFormatType_OneComponent32Float {
+                for row in 0..<imageHeight {
+                    let source = baseAddress.advanced(by: row * bytesPerRow)
+                        .assumingMemoryBound(to: Float.self)
+                    for column in 0..<imageWidth where source[column] >= 0.5 {
+                        mask[row * imageWidth + column] = 255
+                    }
+                }
+            } else {
+                for row in 0..<imageHeight {
+                    let source = baseAddress.advanced(by: row * bytesPerRow)
+                        .assumingMemoryBound(to: UInt8.self)
+                    for column in 0..<imageWidth where source[column] >= 128 {
+                        mask[row * imageWidth + column] = 255
+                    }
+                }
+            }
+            let foregroundCount = mask.reduce(into: 0) { count, value in
+                if value != 0 { count += 1 }
+            }
+            let fraction = Double(foregroundCount) / Double(max(mask.count, 1))
+            guard fraction >= 0.005, fraction <= 0.75 else {
+                logDebug("[DepthAnythingRoom][BackgroundCompletion] rejected foreground fraction=\(fraction)")
+                return nil
+            }
+            logDebug("[DepthAnythingRoom][BackgroundCompletion] foreground fraction=\(fraction)")
+            return mask
+        } catch {
+            logDebug("[DepthAnythingRoom][BackgroundCompletion] foreground mask unavailable: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static func alphaMask(
+        from image: UIImage,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> [UInt8]? {
+        guard let cgImage = image.cgImage else { return nil }
+        var rgba = [UInt8](repeating: 0, count: imageWidth * imageHeight * 4)
+        guard let context = CGContext(
+            data: &rgba,
+            width: imageWidth,
+            height: imageHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: imageWidth * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.translateBy(x: 0, y: CGFloat(imageHeight))
+        context.scaleBy(x: 1, y: -1)
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
+        return (0..<(imageWidth * imageHeight)).map {
+            rgba[$0 * 4 + 3] >= 64 ? UInt8(255) : UInt8(0)
+        }
+    }
+
+    /// Combines semantic and class-agnostic masks, then removes structural regions using component
+    /// size/border checks and a calibrated depth-separation test. An RTMDet-backed component may
+    /// survive weak monocular depth, but broad border-connected curtains/walls may not.
+    private static func refinedForegroundMask(
+        salientMask: [UInt8]?,
+        instanceMask: [UInt8]?,
+        depthMap: [[Float]],
+        objectRect: ObjectDetectionRect?,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> [UInt8]? {
+        let pixelCount = imageWidth * imageHeight
+        guard depthMap.count == imageHeight,
+              depthMap.allSatisfy({ $0.count == imageWidth }) else { return nil }
+        var candidates = [UInt8](repeating: 0, count: pixelCount)
+        if let salientMask, salientMask.count == pixelCount {
+            for index in 0..<pixelCount where salientMask[index] != 0 { candidates[index] = 255 }
+        }
+        if let instanceMask, instanceMask.count == pixelCount {
+            for index in 0..<pixelCount where instanceMask[index] != 0 { candidates[index] = 255 }
+        }
+        guard candidates.contains(255) else { return nil }
+
+        var visited = [Bool](repeating: false, count: pixelCount)
+        var output = [UInt8](repeating: 0, count: pixelCount)
+        let minimumArea = max(24, pixelCount / 1200)
+        let maximumArea = Int(Float(pixelCount) * 0.42)
+        let ringMargin = max(6, min(imageWidth, imageHeight) / 100)
+
+        for seed in 0..<pixelCount where candidates[seed] != 0 && !visited[seed] {
+            var component = [Int]()
+            var queue = [Int](arrayLiteral: seed)
+            visited[seed] = true
+            var head = 0
+            var minX = imageWidth
+            var maxX = 0
+            var minY = imageHeight
+            var maxY = 0
+            var touchesLeft = false
+            var touchesRight = false
+            var touchesTop = false
+            var touchesBottom = false
+            var overlapsInstanceMask = false
+            var overlapsObjectRect = false
+            while head < queue.count {
+                let index = queue[head]
+                head += 1
+                component.append(index)
+                let row = index / imageWidth
+                let column = index - row * imageWidth
+                minX = min(minX, column); maxX = max(maxX, column)
+                minY = min(minY, row); maxY = max(maxY, row)
+                touchesLeft = touchesLeft || column == 0
+                touchesRight = touchesRight || column == imageWidth - 1
+                touchesTop = touchesTop || row == 0
+                touchesBottom = touchesBottom || row == imageHeight - 1
+                overlapsInstanceMask = overlapsInstanceMask || (instanceMask?[index] ?? 0) != 0
+                if let objectRect {
+                    overlapsObjectRect = overlapsObjectRect || (
+                        column >= objectRect.leftX && column <= objectRect.rightX &&
+                        row >= objectRect.topY && row <= objectRect.bottomY
+                    )
+                }
+                let neighbors = [
+                    column > 0 ? index - 1 : -1,
+                    column + 1 < imageWidth ? index + 1 : -1,
+                    row > 0 ? index - imageWidth : -1,
+                    row + 1 < imageHeight ? index + imageWidth : -1
+                ]
+                for neighbor in neighbors where neighbor >= 0 && candidates[neighbor] != 0 && !visited[neighbor] {
+                    visited[neighbor] = true
+                    queue.append(neighbor)
+                }
+            }
+
+            let borderCount = [touchesLeft, touchesRight, touchesTop, touchesBottom].filter { $0 }.count
+            guard component.count >= minimumArea,
+                  component.count <= maximumArea,
+                  borderCount < 2 else { continue }
+
+            let componentStride = max(1, component.count / 2048)
+            var componentDepths = [Float]()
+            for offset in stride(from: 0, to: component.count, by: componentStride) {
+                let index = component[offset]
+                let depth = depthMap[index / imageWidth][index % imageWidth]
+                if depth.isFinite && depth > 0.05 { componentDepths.append(depth) }
+            }
+            var ringDepths = [Float]()
+            let ringMinX = max(0, minX - ringMargin)
+            let ringMaxX = min(imageWidth - 1, maxX + ringMargin)
+            let ringMinY = max(0, minY - ringMargin)
+            let ringMaxY = min(imageHeight - 1, maxY + ringMargin)
+            let ringStride = max(1, max(ringMaxX - ringMinX, ringMaxY - ringMinY) / 128)
+            for row in stride(from: ringMinY, through: ringMaxY, by: ringStride) {
+                for column in stride(from: ringMinX, through: ringMaxX, by: ringStride) {
+                    let index = row * imageWidth + column
+                    guard candidates[index] == 0 else { continue }
+                    let depth = depthMap[row][column]
+                    if depth.isFinite && depth > 0.05 { ringDepths.append(depth) }
+                }
+            }
+            let isDepthSeparated: Bool
+            if componentDepths.count >= 8, ringDepths.count >= 8 {
+                let componentMedian = median(componentDepths)
+                let ringMedian = median(ringDepths)
+                isDepthSeparated = ringMedian - componentMedian > max(0.06, ringMedian * 0.035)
+            } else {
+                isDepthSeparated = false
+            }
+            guard isDepthSeparated || overlapsInstanceMask || overlapsObjectRect else { continue }
+            for index in component { output[index] = 255 }
+        }
+
+        let foregroundCount = output.reduce(into: 0) { count, value in
+            if value != 0 { count += 1 }
+        }
+        let fraction = Float(foregroundCount) / Float(max(pixelCount, 1))
+        logDebug("[DepthAnythingRoom][LayeredMask] fraction=\(String(format: "%.4f", fraction))")
+        return fraction >= 0.002 && fraction <= 0.42 ? output : nil
+    }
+
+    private static func combinedForegroundMask(
+        _ masks: [[UInt8]?],
+        pixelCount: Int
+    ) -> [UInt8]? {
+        guard pixelCount > 0 else { return nil }
+        var combined = [UInt8](repeating: 0, count: pixelCount)
+        var hasForeground = false
+        for mask in masks {
+            guard let mask, mask.count == pixelCount else { continue }
+            for index in 0..<pixelCount where mask[index] != 0 {
+                combined[index] = 255
+                hasForeground = true
+            }
+        }
+        return hasForeground ? combined : nil
+    }
+
+    /// RTMDet's selected measurement object remains useful when its mask head or Vision's salient
+    /// segmentation misses. A padded rectangle is deliberately only a last-resort appearance mask:
+    /// it keeps the detected object on the observed layer and gives background completion enough
+    /// overlap to prevent its pixels from stretching across disoccluded wall/floor regions.
+    private static func foregroundMask(
+        for rect: ObjectDetectionRect,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> [UInt8]? {
+        guard imageWidth > 1, imageHeight > 1 else { return nil }
+        let objectWidth = max(1, rect.rightX - rect.leftX)
+        let objectHeight = max(1, rect.bottomY - rect.topY)
+        let padX = max(3, Int((Float(objectWidth) * 0.06).rounded(.up)))
+        let padY = max(3, Int((Float(objectHeight) * 0.06).rounded(.up)))
+        let left = max(0, rect.leftX - padX)
+        let right = min(imageWidth - 1, rect.rightX + padX)
+        let top = max(0, rect.topY - padY)
+        let bottom = min(imageHeight - 1, rect.bottomY + padY)
+        guard left < right, top < bottom else { return nil }
+
+        var mask = [UInt8](repeating: 0, count: imageWidth * imageHeight)
+        for row in top...bottom {
+            let start = row * imageWidth + left
+            let end = row * imageWidth + right
+            for index in start...end { mask[index] = 255 }
+        }
+        logDebug(
+            "[DepthAnythingRoom][LayeredMask] using RTMDet rectangle fallback " +
+                "rect=(\(left),\(top),\(right),\(bottom))"
+        )
+        return mask
+    }
+
+    private static func dilatedForegroundMask(
+        _ foregroundMask: [UInt8],
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> [UInt8]? {
+        guard foregroundMask.count == imageWidth * imageHeight else { return nil }
+        var mask = foregroundMask.map { $0 == 0 ? UInt8(0) : UInt8(255) }
+        let dilationPasses = max(3, min(imageWidth, imageHeight) / 180)
+        for _ in 0..<dilationPasses {
+            var expanded = mask
+            for row in 0..<imageHeight {
+                for column in 0..<imageWidth where mask[row * imageWidth + column] != 0 {
+                    let y0 = max(0, row - 1)
+                    let y1 = min(imageHeight - 1, row + 1)
+                    let x0 = max(0, column - 1)
+                    let x1 = min(imageWidth - 1, column + 1)
+                    for neighborY in y0...y1 {
+                        for neighborX in x0...x1 {
+                            expanded[neighborY * imageWidth + neighborX] = 255
+                        }
+                    }
+                }
+            }
+            mask = expanded
+        }
+        return mask
+    }
+
+    /// Planar surfaces are affine in inverse depth under pinhole projection. Harmonic completion in
+    /// inverse-depth space therefore continues a wall/floor/ceiling plane through an occluder while
+    /// still blending correctly where a mask crosses a structural boundary.
+    private static func completeBackgroundDepth(
+        depthMap: [[Float]],
+        foregroundMask: [UInt8],
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> [[Float]]? {
+        guard depthMap.count == imageHeight,
+              depthMap.allSatisfy({ $0.count == imageWidth }),
+              foregroundMask.count == imageWidth * imageHeight else { return nil }
+
+        let pixelCount = imageWidth * imageHeight
+        let masked = foregroundMask.map { $0 != 0 }
+        var nearest = [Int32](repeating: -1, count: pixelCount)
+        var queue = [Int32]()
+        queue.reserveCapacity(pixelCount)
+        var inverseDepth = [Float](repeating: 0, count: pixelCount)
+        for row in 0..<imageHeight {
+            for column in 0..<imageWidth {
+                let index = row * imageWidth + column
+                let depth = depthMap[row][column]
+                guard !masked[index], depth.isFinite, depth > 0.05 else { continue }
+                nearest[index] = Int32(index)
+                inverseDepth[index] = 1 / depth
+                queue.append(Int32(index))
+            }
+        }
+        guard !queue.isEmpty else { return nil }
+
+        var head = 0
+        while head < queue.count {
+            let index = Int(queue[head])
+            head += 1
+            let row = index / imageWidth
+            let column = index - row * imageWidth
+            let sourceIndex = nearest[index]
+            let neighbors = [
+                column > 0 ? index - 1 : -1,
+                column + 1 < imageWidth ? index + 1 : -1,
+                row > 0 ? index - imageWidth : -1,
+                row + 1 < imageHeight ? index + imageWidth : -1
+            ]
+            for neighbor in neighbors where neighbor >= 0 && nearest[neighbor] < 0 {
+                nearest[neighbor] = sourceIndex
+                queue.append(Int32(neighbor))
+            }
+        }
+        for index in 0..<pixelCount where masked[index] {
+            let sourceIndex = Int(nearest[index])
+            guard sourceIndex >= 0 else { continue }
+            inverseDepth[index] = inverseDepth[sourceIndex]
+        }
+
+        var relaxed = inverseDepth
+        for _ in 0..<24 {
+            relaxed = inverseDepth
+            for row in 1..<(imageHeight - 1) {
+                for column in 1..<(imageWidth - 1) {
+                    let index = row * imageWidth + column
+                    guard masked[index] else { continue }
+                    relaxed[index] = (
+                        inverseDepth[index - 1] + inverseDepth[index + 1] +
+                        inverseDepth[index - imageWidth] + inverseDepth[index + imageWidth]
+                    ) * 0.25
+                }
+            }
+            swap(&inverseDepth, &relaxed)
+        }
+
+        var completed = depthMap
+        for row in 0..<imageHeight {
+            for column in 0..<imageWidth {
+                let index = row * imageWidth + column
+                guard masked[index], inverseDepth[index].isFinite, inverseDepth[index] > 1e-5 else { continue }
+                completed[row][column] = 1 / inverseDepth[index]
+            }
+        }
+        return completed
+    }
+
+    /// Extends observed background pixels through the already-expanded foreground mask. A
+    /// multi-source fill establishes real neighboring wall/floor/ceiling colors, then harmonic
+    /// relaxation removes propagation seams without copying the foreground object itself.
+    private static func completeBackground(
+        image: UIImage,
+        foregroundMask: [UInt8],
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> UIImage? {
+        guard foregroundMask.count == imageWidth * imageHeight,
+              let sourceImage = image.cgImage else { return nil }
+        let pixelCount = imageWidth * imageHeight
+        let mask = foregroundMask.map { $0 == 0 ? UInt8(0) : UInt8(1) }
+
+        var rgba = [UInt8](repeating: 0, count: pixelCount * 4)
+        guard let context = CGContext(
+            data: &rgba,
+            width: imageWidth,
+            height: imageHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: imageWidth * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.translateBy(x: 0, y: CGFloat(imageHeight))
+        context.scaleBy(x: 1, y: -1)
+        context.draw(sourceImage, in: CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
+        // A completed background is always an opaque appearance layer, even when the source
+        // UIImage happened to carry an alpha channel.
+        for index in 0..<pixelCount {
+            rgba[index * 4 + 3] = 255
+        }
+
+        var nearest = [Int32](repeating: -1, count: pixelCount)
+        var queue = [Int32]()
+        queue.reserveCapacity(pixelCount)
+        for index in 0..<pixelCount where mask[index] == 0 {
+            nearest[index] = Int32(index)
+            queue.append(Int32(index))
+        }
+        guard !queue.isEmpty else { return nil }
+        var head = 0
+        while head < queue.count {
+            let index = Int(queue[head])
+            head += 1
+            let row = index / imageWidth
+            let column = index - row * imageWidth
+            let sourceIndex = nearest[index]
+            if column > 0 {
+                let neighbor = index - 1
+                if nearest[neighbor] < 0 { nearest[neighbor] = sourceIndex; queue.append(Int32(neighbor)) }
+            }
+            if column + 1 < imageWidth {
+                let neighbor = index + 1
+                if nearest[neighbor] < 0 { nearest[neighbor] = sourceIndex; queue.append(Int32(neighbor)) }
+            }
+            if row > 0 {
+                let neighbor = index - imageWidth
+                if nearest[neighbor] < 0 { nearest[neighbor] = sourceIndex; queue.append(Int32(neighbor)) }
+            }
+            if row + 1 < imageHeight {
+                let neighbor = index + imageWidth
+                if nearest[neighbor] < 0 { nearest[neighbor] = sourceIndex; queue.append(Int32(neighbor)) }
+            }
+        }
+        for index in 0..<pixelCount where mask[index] != 0 {
+            let sourceIndex = Int(nearest[index])
+            guard sourceIndex >= 0 else { continue }
+            let destinationOffset = index * 4
+            let sourceOffset = sourceIndex * 4
+            rgba[destinationOffset] = rgba[sourceOffset]
+            rgba[destinationOffset + 1] = rgba[sourceOffset + 1]
+            rgba[destinationOffset + 2] = rgba[sourceOffset + 2]
+            rgba[destinationOffset + 3] = 255
+        }
+
+        var relaxed = rgba
+        for _ in 0..<8 {
+            relaxed = rgba
+            for row in 1..<(imageHeight - 1) {
+                for column in 1..<(imageWidth - 1) {
+                    let index = row * imageWidth + column
+                    guard mask[index] != 0 else { continue }
+                    let neighbors = [index - 1, index + 1, index - imageWidth, index + imageWidth]
+                    let offset = index * 4
+                    for channel in 0..<3 {
+                        var sum = 0
+                        for neighbor in neighbors { sum += Int(rgba[neighbor * 4 + channel]) }
+                        relaxed[offset + channel] = UInt8(sum / neighbors.count)
+                    }
+                    relaxed[offset + 3] = 255
+                }
+            }
+            swap(&rgba, &relaxed)
+        }
+
+        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
+              let completedCGImage = CGImage(
+                  width: imageWidth,
+                  height: imageHeight,
+                  bitsPerComponent: 8,
+                  bitsPerPixel: 32,
+                  bytesPerRow: imageWidth * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                  provider: provider,
+                  decode: nil,
+                  shouldInterpolate: true,
+                  intent: .defaultIntent
+              ) else { return nil }
+        return UIImage(cgImage: completedCGImage, scale: image.scale, orientation: .up)
+    }
+
+    /// RTMDet inference is image-only, so it can run concurrently with GeoCalib and
+    /// Depth Anything. It reuses the app's single shared Core ML `MLModel`.
+    private static func detectMeasurementObjectAnalysis(
+        image: UIImage,
+        imageWidth: Int,
+        imageHeight: Int
+    ) async -> ObjectDetectionAnalysis? {
         guard let objectModel = await RTMDetModelService.shared.modelForInference() else {
             logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=rtmdet_model_not_found")
             return nil
         }
         return await Task.detached(priority: .userInitiated) {
-            detectMeasurementObjectRectSync(
+            detectMeasurementObjectAnalysisSync(
                 image: image,
                 imageWidth: imageWidth,
                 imageHeight: imageHeight,
@@ -1972,19 +2508,19 @@ final class DepthAnythingRoomReconstructor {
         }.value
     }
 
-    private static func detectMeasurementObjectRectSync(
+    private static func detectMeasurementObjectAnalysisSync(
         image: UIImage,
         imageWidth: Int,
         imageHeight: Int,
         objectModel: MLModel
-    ) -> ObjectDetectionRect? {
+    ) -> ObjectDetectionAnalysis? {
         let inference: RTMDetInferenceResult
         do {
             inference = try RTMDetImageInference.runInstanceSegmentation(
                 image: image,
                 model: objectModel,
                 confidenceThreshold: objectBBoxConfidenceThreshold,
-                maxMaskCount: 1,
+                maxMaskCount: 6,
                 maxDetectionCount: 25,
                 buildInstanceMasks: false,
                 cacheMaskBuildInputs: false,
@@ -1995,27 +2531,33 @@ final class DepthAnythingRoomReconstructor {
             return nil
         }
 
+        let foregroundMask = inference.overlayMaskImage.flatMap {
+            alphaMask(from: $0, imageWidth: imageWidth, imageHeight: imageHeight)
+        }
         guard let detection = selectMeasurementObjectBBox(
             from: inference.detections,
             imageWidth: imageWidth,
             imageHeight: imageHeight
         ) else {
             logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=no_valid_object_bbox detections=\(inference.detections.count)")
-            return nil
+            return ObjectDetectionAnalysis(rect: nil, foregroundMask: foregroundMask)
         }
 
         let rect = clampedBBox(detection, imageWidth: imageWidth, imageHeight: imageHeight)
         guard rect.leftX < rect.rightX, rect.topY < rect.bottomY else {
             logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=empty_bbox cls=\(detection.classIdx)")
-            return nil
+            return ObjectDetectionAnalysis(rect: nil, foregroundMask: foregroundMask)
         }
-        return ObjectDetectionRect(
-            classIdx: detection.classIdx,
-            confidence: detection.confidence,
-            leftX: rect.leftX,
-            rightX: rect.rightX,
-            topY: rect.topY,
-            bottomY: rect.bottomY
+        return ObjectDetectionAnalysis(
+            rect: ObjectDetectionRect(
+                classIdx: detection.classIdx,
+                confidence: detection.confidence,
+                leftX: rect.leftX,
+                rightX: rect.rightX,
+                topY: rect.topY,
+                bottomY: rect.bottomY
+            ),
+            foregroundMask: foregroundMask
         )
     }
 

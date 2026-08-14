@@ -1,0 +1,36 @@
+{
+  "configurations" : [
+    {
+      "id" : "61E2E001-2F30-0000-0000-00000000000C",
+      "name" : "Configuration 1",
+      "options" : {
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:Furnit.xcodeproj",
+      "identifier" : "045F5BD82E6D302900C5585D",
+      "name" : "Furnit"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Furnit.xcodeproj",
+        "identifier" : "61A62FAC2F24C31500FE755A",
+        "name" : "FurnitTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:Furnit.xcodeproj",
+        "identifier" : "61E2E0012F30000000000008",
+        "name" : "FurnitUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

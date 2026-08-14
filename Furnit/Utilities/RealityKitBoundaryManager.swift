@@ -109,6 +109,7 @@ class RealityKitBoundaryManager {
     // Room boundary properties
     private var roomBounds: (min: SIMD3<Float>, max: SIMD3<Float>)?
     private(set) var usesCapturedPhotoFrustum = false
+    private var completedPhotoCameraBounds: (min: SIMD3<Float>, max: SIMD3<Float>)?
     /// Padding from walls when constraining camera (allow navigating close to walls; was 0.5)
     private let boundaryPadding: Float = 0.15
     
@@ -123,6 +124,7 @@ class RealityKitBoundaryManager {
     /// True only for geometry with a real three-dimensional interior. Depth Anything's immediate
     /// photo preview is a near-zero-depth plane and must retain exterior inspection controls.
     var hasNavigableInterior: Bool {
+        if completedPhotoCameraBounds != nil { return true }
         guard let bounds = roomBounds else { return false }
         let size = bounds.max - bounds.min
         return !usesCapturedPhotoFrustum &&
@@ -133,6 +135,30 @@ class RealityKitBoundaryManager {
 
     func setUsesCapturedPhotoFrustum(_ enabled: Bool) {
         usesCapturedPhotoFrustum = enabled
+    }
+
+    /// The capture eye is the rear edge of the completed-photo volume. Positive Z points from the
+    /// capture eye into the authored room, so the useful allowance is intentionally one-way.
+    func setCompletedPhotoCameraEnvelope(
+        forwardTranslation: Float?,
+        lateralTranslation: Float?,
+        backwardTranslation: Float?
+    ) {
+        guard let forwardTranslation,
+              forwardTranslation.isFinite,
+              forwardTranslation > 0 else {
+            completedPhotoCameraBounds = nil
+            return
+        }
+        // The minimum also repairs already-saved v4 assets authored with the old 8–22 cm sphere.
+        let forward = min(max(forwardTranslation, 0.45), 0.90)
+        let lateral = min(max(lateralTranslation ?? forward * 0.40, 0.18), 0.36)
+        let backward = min(max(backwardTranslation ?? 0.06, 0.03), 0.10)
+        let vertical = min(max(forward * 0.18, 0.08), 0.16)
+        completedPhotoCameraBounds = (
+            min: SIMD3<Float>(-lateral, -vertical, -backward),
+            max: SIMD3<Float>(lateral, vertical, forward)
+        )
     }
 
     func isInsideNavigableInterior(_ position: SIMD3<Float>) -> Bool {
@@ -242,6 +268,13 @@ class RealityKitBoundaryManager {
     
     // Constrain camera position to stay within room boundaries
     func constrainCameraPosition(_ position: SIMD3<Float>) -> SIMD3<Float> {
+        if let cameraBounds = completedPhotoCameraBounds {
+            return SIMD3<Float>(
+                min(max(position.x, cameraBounds.min.x), cameraBounds.max.x),
+                min(max(position.y, cameraBounds.min.y), cameraBounds.max.y),
+                min(max(position.z, cameraBounds.min.z), cameraBounds.max.z)
+            )
+        }
         guard let bounds = roomBounds else {
             return position // No constraints if bounds not calculated
         }
@@ -315,6 +348,11 @@ class RealityKitBoundaryManager {
     
     // Check if a point is within room boundaries
     func isPositionWithinBounds(_ position: SIMD3<Float>) -> Bool {
+        if let cameraBounds = completedPhotoCameraBounds {
+            return position.x >= cameraBounds.min.x && position.x <= cameraBounds.max.x &&
+                position.y >= cameraBounds.min.y && position.y <= cameraBounds.max.y &&
+                position.z >= cameraBounds.min.z && position.z <= cameraBounds.max.z
+        }
         guard let bounds = roomBounds else { return true }
         
         return position.x >= bounds.min.x && position.x <= bounds.max.x &&

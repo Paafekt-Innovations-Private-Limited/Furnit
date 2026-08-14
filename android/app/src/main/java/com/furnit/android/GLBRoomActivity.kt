@@ -257,6 +257,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // WebView for 3D rendering — full-bleed behind system bars; insets apply to chrome only.
         webView = WebView(this).apply {
+            contentDescription = "saved_room_viewport_loading"
             fitsSystemWindows = false
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -815,9 +816,14 @@ class GLBRoomActivity : AppCompatActivity() {
         return (dp * resources.displayMetrics.density).toInt()
     }
 
-    private fun createDpadCircleButton(label: String, onClick: () -> Unit): TextView {
+    private fun createDpadCircleButton(
+        label: String,
+        testName: String,
+        onClick: () -> Unit,
+    ): TextView {
         return TextView(this).apply {
             text = label
+            contentDescription = testName
             textSize = 20f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -851,18 +857,18 @@ class GLBRoomActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
             }
 
-            cluster.addView(createDpadCircleButton("←") { nudgeCameraLeft() })
+            cluster.addView(createDpadCircleButton("←", "camera_dpad_left") { nudgeCameraLeft() })
 
             val verticalPad = LinearLayout(this@GLBRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 val pad = dpToPx(8)
                 setPadding(pad, 0, pad, 0)
             }
-            verticalPad.addView(createDpadCircleButton("↑") { nudgeCameraUp() })
-            verticalPad.addView(createDpadCircleButton("↓") { nudgeCameraDown() })
+            verticalPad.addView(createDpadCircleButton("↑", "camera_dpad_up") { nudgeCameraUp() })
+            verticalPad.addView(createDpadCircleButton("↓", "camera_dpad_down") { nudgeCameraDown() })
             cluster.addView(verticalPad)
 
-            cluster.addView(createDpadCircleButton("→") { nudgeCameraRight() })
+            cluster.addView(createDpadCircleButton("→", "camera_dpad_right") { nudgeCameraRight() })
 
             addView(
                 cluster,
@@ -2417,6 +2423,14 @@ class GLBRoomActivity : AppCompatActivity() {
         let depthPhotoVerticalFovDegrees = 60;
         let depthPhotoTargetDistance = 2;
         let depthPhotoZoom = 1;
+        let isLayeredDepthPhoto = false;
+        let depthPhotoTranslationLimit = 0;
+        let depthPhotoLateralLimit = 0;
+        let depthPhotoBackwardLimit = 0;
+        let depthPhotoYawLimit = Math.PI / 6;
+        let depthPhotoPitchLimit = Math.PI / 5;
+        let depthPhotoSourceAspect = null;
+        let depthPhotoNearestReliableDepth = null;
 
         function isPhotoSurfaceMesh() {
             return isFlatPhotoMesh || isDepthPhotoMesh;
@@ -2537,8 +2551,17 @@ class GLBRoomActivity : AppCompatActivity() {
                 interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
                 interiorEuler.y -= (event.clientX - previousPoint.x) * 0.005;
                 interiorEuler.x -= (event.clientY - previousPoint.y) * 0.005;
-                const pitchLimit = Math.PI / 2 - 0.05;
-                interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x, -pitchLimit, pitchLimit);
+                if (navigationMode === 'photoDepth' && isLayeredDepthPhoto) {
+                    const coverage = currentDepthPhotoLookLimits();
+                    interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -coverage.yaw, coverage.yaw);
+                    interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x, -coverage.pitch, coverage.pitch);
+                } else {
+                    interiorEuler.x = THREE.MathUtils.clamp(
+                        interiorEuler.x,
+                        -(Math.PI / 2 - 0.05),
+                        Math.PI / 2 - 0.05,
+                    );
+                }
                 interiorEuler.z = 0;
                 camera.quaternion.setFromEuler(interiorEuler);
             } else if (points.length === 2 && previousInteriorCentroid) {
@@ -2552,18 +2575,29 @@ class GLBRoomActivity : AppCompatActivity() {
                 );
                 if (navigationMode === 'photoDepth') {
                     if (previousInteriorDistance !== null && previousInteriorDistance > 0) {
-                        const pinchRatio = distance / previousInteriorDistance;
-                        if (Number.isFinite(pinchRatio) && pinchRatio > 0) {
-                            depthPhotoZoom = THREE.MathUtils.clamp(
-                                depthPhotoZoom * pinchRatio,
-                                0.5,
-                                4.0
+                        if (isLayeredDepthPhoto) {
+                            const viewportSpan = Math.max(
+                                Math.min(renderer.domElement.clientWidth, renderer.domElement.clientHeight),
+                                1,
                             );
-                            updatePhotoProjection();
+                            const gestureFraction = (distance - previousInteriorDistance) / viewportSpan;
+                            const delta = gestureFraction * depthPhotoTranslationLimit * 2.25;
+                            camera.getWorldDirection(interiorForward);
+                            constrainToRoom(camera.position.addScaledVector(interiorForward, delta));
+                            const coverage = currentDepthPhotoLookLimits();
+                            interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+                            interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -coverage.yaw, coverage.yaw);
+                            interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x, -coverage.pitch, coverage.pitch);
+                            interiorEuler.z = 0;
+                            camera.quaternion.setFromEuler(interiorEuler);
+                        } else {
+                            const pinchRatio = distance / previousInteriorDistance;
+                            if (Number.isFinite(pinchRatio) && pinchRatio > 0) {
+                                depthPhotoZoom = THREE.MathUtils.clamp(depthPhotoZoom * pinchRatio, 0.5, 4.0);
+                                updatePhotoProjection();
+                            }
                         }
                     }
-                    // A projective depth mesh is only valid from its authored optical center.
-                    // Zoom changes projection while keeping foreground and background aligned.
                     previousInteriorCentroid = centroid;
                     previousInteriorDistance = distance;
                     syncFirstPersonTarget();
@@ -2633,9 +2667,18 @@ class GLBRoomActivity : AppCompatActivity() {
         function updatePhotoProjection() {
             const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
             if (isDepthPhotoMesh) {
-                const baseHalfFov = THREE.MathUtils.degToRad(depthPhotoVerticalFovDegrees) * 0.5;
+                const sourceHalfY = THREE.MathUtils.degToRad(depthPhotoVerticalFovDegrees) * 0.5;
+                const sourceHalfX = Number.isFinite(depthPhotoSourceAspect)
+                    ? Math.atan(Math.tan(sourceHalfY) * depthPhotoSourceAspect)
+                    : sourceHalfY;
+                // Aspect-fill parity with preview. Never reveal pixels beyond the captured frame
+                // just because the saved-room viewport is wider than the source photograph.
+                const coverHalfY = Math.min(
+                    sourceHalfY,
+                    Math.atan(Math.tan(sourceHalfX) / viewportAspect),
+                );
                 camera.fov = THREE.MathUtils.radToDeg(
-                    2 * Math.atan(Math.tan(baseHalfFov) / depthPhotoZoom)
+                    2 * Math.atan(Math.tan(coverHalfY) / depthPhotoZoom)
                 );
             } else if (!isPortrait) {
                 const verticalHalfFov = Math.atan(Math.tan(Math.PI / 6.0) / viewportAspect);
@@ -2645,6 +2688,29 @@ class GLBRoomActivity : AppCompatActivity() {
             }
             camera.aspect = viewportAspect;
             camera.updateProjectionMatrix();
+        }
+
+        function currentDepthPhotoLookLimits() {
+            if (!isLayeredDepthPhoto || !Number.isFinite(depthPhotoNearestReliableDepth) ||
+                    !Number.isFinite(depthPhotoSourceAspect)) {
+                return { yaw: depthPhotoYawLimit, pitch: depthPhotoPitchLimit };
+            }
+            const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
+            const sourceHalfY = THREE.MathUtils.degToRad(depthPhotoVerticalFovDegrees) * 0.5;
+            const sourceHalfX = Math.atan(Math.tan(sourceHalfY) * depthPhotoSourceAspect);
+            const cameraHalfY = THREE.MathUtils.degToRad(camera.fov) * 0.5;
+            const cameraHalfX = Math.atan(Math.tan(cameraHalfY) * viewportAspect);
+            const depth = Math.max(depthPhotoNearestReliableDepth, 0.2);
+            const forward = Math.max(0, depthPhotoCaptureOrigin.z - camera.position.z);
+            const remaining = Math.max(depth - forward, depth * 0.25);
+            const lateral = Math.abs(camera.position.x - depthPhotoCaptureOrigin.x);
+            const vertical = Math.abs(camera.position.y - depthPhotoCaptureOrigin.y);
+            const coveredHalfX = Math.atan(Math.max(Math.tan(sourceHalfX) * depth - lateral, 0.001) / remaining);
+            const coveredHalfY = Math.atan(Math.max(Math.tan(sourceHalfY) * depth - vertical, 0.001) / remaining);
+            return {
+                yaw: Math.max(0, Math.min(depthPhotoYawLimit, coveredHalfX - cameraHalfX - 0.01)),
+                pitch: Math.max(0, Math.min(depthPhotoPitchLimit, coveredHalfY - cameraHalfY - 0.01)),
+            };
         }
 
         function backCenterInsetFraction(depth) {
@@ -2734,16 +2800,21 @@ class GLBRoomActivity : AppCompatActivity() {
             initialCameraPosition = camera.position.clone();
             initialControlsTarget = controls.target.clone();
 
-            const lateralAllowance = Math.max(flatPhotoWidth * 0.12, 0.15);
-            const verticalAllowance = Math.max(flatPhotoHeight * 0.12, 0.15);
-            const depthAllowance = Math.max(depthPhotoTargetDistance * 0.15, 0.15);
+            const lateralAllowance = isLayeredDepthPhoto ? depthPhotoLateralLimit : 0.001;
+            const verticalAllowance = isLayeredDepthPhoto
+                ? THREE.MathUtils.clamp(depthPhotoTranslationLimit * 0.18, 0.10, 0.24)
+                : 0.001;
+            const forwardAllowance = isLayeredDepthPhoto ? depthPhotoTranslationLimit : 0.001;
+            const backwardAllowance = isLayeredDepthPhoto ? depthPhotoBackwardLimit : 0.001;
             roomBoundsForClamping = {
                 minX: depthPhotoCaptureOrigin.x - lateralAllowance,
                 maxX: depthPhotoCaptureOrigin.x + lateralAllowance,
                 minY: depthPhotoCaptureOrigin.y - verticalAllowance,
                 maxY: depthPhotoCaptureOrigin.y + verticalAllowance,
-                minZ: depthPhotoCaptureOrigin.z - depthAllowance,
-                maxZ: depthPhotoCaptureOrigin.z + depthAllowance
+                // The GLB camera looks down -Z. The capture point is the rear edge, not the
+                // centre of a tiny symmetric cage.
+                minZ: depthPhotoCaptureOrigin.z - forwardAllowance,
+                maxZ: depthPhotoCaptureOrigin.z + backwardAllowance
             };
             updateNavigationMode();
             console.log('[GLBViewer] Depth photo capture camera origin=',
@@ -2818,8 +2889,22 @@ class GLBRoomActivity : AppCompatActivity() {
             if (navigationMode === 'firstPerson' || navigationMode === 'photoDepth') {
                 interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
                 interiorEuler.y -= deltaX * 0.012;
-                const pitchLimit = Math.PI / 2 - 0.05;
-                interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x - deltaY * 0.012, -pitchLimit, pitchLimit);
+                if (navigationMode === 'photoDepth' && isLayeredDepthPhoto) {
+                    const coverage = currentDepthPhotoLookLimits();
+                    interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -coverage.yaw, coverage.yaw);
+                    interiorEuler.x = THREE.MathUtils.clamp(
+                        interiorEuler.x - deltaY * 0.012,
+                        -coverage.pitch,
+                        coverage.pitch,
+                    );
+                } else {
+                    const pitchLimit = Math.PI / 2 - 0.05;
+                    interiorEuler.x = THREE.MathUtils.clamp(
+                        interiorEuler.x - deltaY * 0.012,
+                        -pitchLimit,
+                        pitchLimit,
+                    );
+                }
                 interiorEuler.z = 0;
                 camera.quaternion.setFromEuler(interiorEuler);
                 syncFirstPersonTarget();
@@ -2939,6 +3024,51 @@ class GLBRoomActivity : AppCompatActivity() {
                         depthPhotoVerticalFovDegrees = Number.isFinite(authoredFov)
                             ? THREE.MathUtils.clamp(authoredFov, 10, 140)
                             : 60;
+                        const layeredVersion = Number(depthPhotoNode?.userData?.layeredDepthVersion);
+                        isLayeredDepthPhoto = Number.isFinite(layeredVersion) && layeredVersion >= 4;
+                        const authoredTranslation = Number(depthPhotoNode?.userData?.cameraTranslationLimitMeters);
+                        const authoredForward = Number(depthPhotoNode?.userData?.cameraForwardTranslationLimitMeters);
+                        const requestedForward = Number.isFinite(authoredForward) ? authoredForward : authoredTranslation;
+                        depthPhotoTranslationLimit = isLayeredDepthPhoto && Number.isFinite(requestedForward)
+                            ? THREE.MathUtils.clamp(requestedForward, 0.75, 1.40)
+                            : (isLayeredDepthPhoto ? 0.75 : 0);
+                        const authoredLateral = Number(depthPhotoNode?.userData?.cameraLateralTranslationLimitMeters);
+                        depthPhotoLateralLimit = isLayeredDepthPhoto && Number.isFinite(authoredLateral)
+                            ? THREE.MathUtils.clamp(authoredLateral, 0.24, 0.48)
+                            : (isLayeredDepthPhoto ? Math.min(depthPhotoTranslationLimit * 0.34, 0.48) : 0);
+                        const authoredBackward = Number(depthPhotoNode?.userData?.cameraBackwardTranslationLimitMeters);
+                        depthPhotoBackwardLimit = isLayeredDepthPhoto && Number.isFinite(authoredBackward)
+                            ? THREE.MathUtils.clamp(authoredBackward, 0.18, 0.32)
+                            : (isLayeredDepthPhoto ? Math.min(depthPhotoTranslationLimit * 0.25, 0.32) : 0);
+                        const authoredYaw = Number(depthPhotoNode?.userData?.cameraYawLimitRadians);
+                        if (Number.isFinite(authoredYaw)) depthPhotoYawLimit = THREE.MathUtils.clamp(authoredYaw, 0.1, Math.PI);
+                        const authoredPitch = Number(depthPhotoNode?.userData?.cameraPitchLimitRadians);
+                        if (Number.isFinite(authoredPitch)) depthPhotoPitchLimit = THREE.MathUtils.clamp(authoredPitch, 0.1, Math.PI / 2 - 0.05);
+                        const sourceTextureImage = depthPhotoNode?.material?.map?.image;
+                        const authoredSourceWidth = Number(depthPhotoNode?.userData?.cameraSourceImageWidth);
+                        const authoredSourceHeight = Number(depthPhotoNode?.userData?.cameraSourceImageHeight);
+                        const sourceWidth = Number.isFinite(authoredSourceWidth)
+                            ? authoredSourceWidth
+                            : Number(sourceTextureImage?.naturalWidth ?? sourceTextureImage?.width);
+                        const sourceHeight = Number.isFinite(authoredSourceHeight)
+                            ? authoredSourceHeight
+                            : Number(sourceTextureImage?.naturalHeight ?? sourceTextureImage?.height);
+                        depthPhotoSourceAspect = Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) && sourceHeight > 0
+                            ? sourceWidth / sourceHeight
+                            : null;
+                        const authoredNearestReliableDepth = Number(
+                            depthPhotoNode?.userData?.cameraNearestReliableDepthMeters
+                        );
+                        // Version-4 assets predate the explicit source/depth coverage metadata.
+                        // Their nearest visible point is still available from the authored mesh,
+                        // so use it to keep the old edge-extension triangles outside the frustum.
+                        const inferredNearestReliableDepth = depthPhotoCaptureOrigin.z - boxWorld.max.z;
+                        const nearestReliableDepth = Number.isFinite(authoredNearestReliableDepth)
+                            ? authoredNearestReliableDepth
+                            : inferredNearestReliableDepth;
+                        depthPhotoNearestReliableDepth = Number.isFinite(nearestReliableDepth) && nearestReliableDepth > 0.2
+                            ? nearestReliableDepth
+                            : null;
                         depthPhotoZoom = 1;
                     } else {
                         photoSurfaceFrontZ = boxWorld.max.z;
@@ -3032,7 +3162,11 @@ class GLBRoomActivity : AppCompatActivity() {
                         }
                     }
                     val measured = withContext(Dispatchers.Default) {
-                        DepthAnythingRoomMeasurer.measureFromFile(this@GLBRoomActivity, sourcePhoto)
+                        DepthAnythingRoomMeasurer.measureFromFile(
+                            this@GLBRoomActivity,
+                            sourcePhoto,
+                            includeForegroundMask = true,
+                        )
                     }
                     measuredForSavedMesh = measured
                     progressJob.cancel()
@@ -3047,6 +3181,8 @@ class GLBRoomActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     val roomsDir = File(filesDir, "rooms").apply { mkdirs() }
                     val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
+                    var savedProjectionVersion = 3
+                    var hasCompletedBackground = false
                     try {
                         previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
 
@@ -3068,8 +3204,24 @@ class GLBRoomActivity : AppCompatActivity() {
                                     depthHeight = depthMesh.imageHeight,
                                     focalXPixels = depthMesh.focalXPixels,
                                     focalYPixels = depthMesh.focalYPixels,
+                                    semanticForegroundMask = depthMesh.foregroundMask,
                                 )
-                                check(generated) { "Could not generate saved depth-room GLB" }
+                                if (generated) {
+                                    savedProjectionVersion = 5
+                                    hasCompletedBackground = true
+                                }
+                                if (!generated) {
+                                    val flatFallback = GlbGenerator().generateFlatPhotoGlb(
+                                        outputFile = File(savedRoomFolder, glbFile.name),
+                                        dimensions = GlbGenerator.RoomDimensions(
+                                            width = roomWidth,
+                                            height = roomHeight,
+                                            depth = roomDepth,
+                                        ),
+                                        photoTexture = texture,
+                                    )
+                                    check(flatFallback) { "Could not generate safe saved photo-room GLB" }
+                                }
                             } finally {
                                 texture.recycle()
                             }
@@ -3085,6 +3237,8 @@ class GLBRoomActivity : AppCompatActivity() {
                         metadata.append("roomHeight=$roomHeight\n")
                         metadata.append("roomDepth=$roomDepth\n")
                         metadata.append("photoOrientation=$photoOrientation\n")
+                        metadata.append("depthMeshProjectionVersion=$savedProjectionVersion\n")
+                        metadata.append("depthMeshHasCompletedBackground=$hasCompletedBackground\n")
                         metadataFile.writeText(metadata.toString())
                         val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
                             savedRoomFolder,
@@ -3102,6 +3256,8 @@ class GLBRoomActivity : AppCompatActivity() {
                                 roomSceneHeight = roomHeight,
                                 roomSceneDepth = roomDepth,
                                 previewOnly = false,
+                                depthMeshProjectionVersion = savedProjectionVersion,
+                                depthMeshHasCompletedBackground = hasCompletedBackground,
                             ),
                         )
                         RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
@@ -3177,6 +3333,7 @@ class GLBRoomActivity : AppCompatActivity() {
         fun onLoaded() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
+                webView.contentDescription = "saved_room_viewport"
                 ensureNavigationChromeOnTop()
                 notifyWebViewViewportChanged()
                 LogUtil.d(TAG, "WebGL viewer reported loaded")
@@ -3187,6 +3344,7 @@ class GLBRoomActivity : AppCompatActivity() {
         fun onError(message: String) {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
+                webView.contentDescription = "saved_room_viewport_error"
                 LogUtil.e(TAG, "WebGL error: $message")
                 Toast.makeText(
                     this@GLBRoomActivity,

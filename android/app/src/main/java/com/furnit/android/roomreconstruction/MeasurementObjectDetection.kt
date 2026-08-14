@@ -35,27 +35,72 @@ data class ObjectBBoxMeasurement(
     val bboxBottomY: Int,
 )
 
+data class MeasurementSceneAnalysis(
+    val objectRect: MeasurementObjectRect?,
+    val foregroundMask: ByteArray?,
+)
+
 object MeasurementObjectDetection {
     private const val TAG = "MeasurementObjectDetect"
 
     fun detectMeasurementObject(context: Context, image: Bitmap): MeasurementObjectRect? {
         val manager = FurnitureFitManager(context)
         val latch = CountDownLatch(1)
-        var segmentation: SegmentationResult? = null
+        var detected: SegmentationResult? = null
         manager.detectWithDetectionsAsync(image) { result ->
-            segmentation = result
+            detected = result
             latch.countDown()
         }
         if (!latch.await(45, TimeUnit.SECONDS)) {
             LogUtil.w(TAG, "RTMDet measurement detection timed out")
             return null
         }
-        val result = segmentation ?: return null
+        return detected?.let { measurementRect(it, image.width, image.height) }
+    }
+
+    fun analyzeMeasurementScene(context: Context, image: Bitmap): MeasurementSceneAnalysis {
+        val manager = FurnitureFitManager(context)
+        val latch = CountDownLatch(1)
+        var segmentation: SegmentationResult? = null
+        manager.detectWithDetectionsAsync(image) { detected ->
+            if (detected == null || detected.detections.isEmpty()) {
+                segmentation = detected
+                latch.countDown()
+            } else {
+                // The normal Furniture Fit default masks one selected affinity cluster. Room
+                // authoring needs the union of every detected foreground instance so a second
+                // copy cannot remain baked into the completed background.
+                manager.segmentSelectedInstancesAsync(image, detected.detections) { segmented ->
+                    segmentation = segmented ?: detected
+                    latch.countDown()
+                }
+            }
+        }
+        if (!latch.await(45, TimeUnit.SECONDS)) {
+            LogUtil.w(TAG, "RTMDet measurement detection timed out")
+            return MeasurementSceneAnalysis(null, null)
+        }
+        val result = segmentation ?: return MeasurementSceneAnalysis(null, null)
         val imageWidth = image.width
         val imageHeight = image.height
+        val foregroundMask = result.mask?.let { cutout ->
+            val pixels = IntArray(imageWidth * imageHeight)
+            cutout.getPixels(pixels, 0, imageWidth, 0, 0, imageWidth, imageHeight)
+            ByteArray(pixels.size) { index -> if (pixels[index] ushr 24 >= 64) 1 else 0 }
+        }
+        return MeasurementSceneAnalysis(
+            objectRect = measurementRect(result, imageWidth, imageHeight),
+            foregroundMask = foregroundMask,
+        )
+    }
+
+    private fun measurementRect(
+        result: SegmentationResult,
+        imageWidth: Int,
+        imageHeight: Int,
+    ): MeasurementObjectRect? {
         // FurnitureFitManager keeps Android UI detections in the square model coordinate space;
-        // Swift returns source-image coordinates. Normalize here before scoring/measuring so a
-        // portrait or landscape photo produces the same bbox geometry on both platforms.
+        // normalize them before scoring/measuring against the source image.
         val inputSize = result.inputSize.coerceAtLeast(1).toFloat()
         val detections = result.detections.map { detection ->
             detection.copy(

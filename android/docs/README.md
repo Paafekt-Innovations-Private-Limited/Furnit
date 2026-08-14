@@ -12,6 +12,7 @@ then use this index for implementation and operations.
 | [`ANDROID_ROOM_CREATION.md`](ANDROID_ROOM_CREATION.md) | Photo/manual room-generation flow, GLB output, packaged models, and viewer behavior. |
 | [`ANDROID_STUDIO_RUN.md`](ANDROID_STUDIO_RUN.md) | Open, build, run, device requirements, and log filters. |
 | [`TEST_AND_SETTINGS.md`](TEST_AND_SETTINGS.md) | Build and on-device smoke tests for room creation, Furniture Fit, and offline legal resources. |
+| [`ROOM_COMPLETION_NAVIGATION_HELP_REQUEST.md`](ROOM_COMPLETION_NAVIGATION_HELP_REQUEST.md) | Dated investigation record for the saved single-photo completion/navigation failure; its outcome header points to current behavior. |
 | [`DEFERRED.md`](DEFERRED.md) | Confirmed Android-only follow-ups and intentionally retained cleanup candidates. |
 | [`../README.md`](../README.md) | Compact Android architecture overview. |
 | [`../README_ANDROID.md`](../README_ANDROID.md) | Detailed build, signing, assets, and release notes. |

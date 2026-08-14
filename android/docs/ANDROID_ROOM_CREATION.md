@@ -10,9 +10,10 @@
 6. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true` and no artificial wait time.
 7. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB for the immediate preview, with an embedded JPEG texture at quality 95.
 8. Metadata is written beside the GLB, including room dimensions, depth, photo orientation, and preview state.
-9. Save reuses the metric measurement result to pinhole-unproject calibrated depth and writes a projective `photo_room_depth` GLB. Depth-discontinuity triangles are omitted, with a calibrated far-photo backing layer filling those openings.
-10. The completed folder is promoted to `files/rooms` transactionally; a failed depth export removes the incomplete saved folder.
-11. Saved rooms open through `GLBRoomActivity`, which restores the authored vertical field of view and capture optical center. Pinch changes field of view rather than translating the camera. Drag and D-pad look controls rotate at that fixed optical center with unrestricted yaw and near-vertical pitch, so navigation does not separate foreground depth from the backing photo.
+9. Save reruns metric measurement with foreground masks enabled. RTMDet mask unions and calibrated depth discontinuities form a conservative foreground layer; `LayeredDepthRoomCompletion` fills masked background color and inverse depth from nearby known structure.
+10. `GlbGenerator.generateDepthPhotoGlb` writes a version-5 `photo_room_depth` GLB with separate completed-background and foreground geometry. The old full-photo far backing plane is not emitted. If a reliable layered asset cannot be generated, Save writes a flat photo GLB instead.
+11. The completed folder is promoted to `files/rooms` transactionally; a failed export removes the incomplete saved folder. Metadata records projection version and whether the background is completed.
+12. Saved rooms open through `GLBRoomActivity`, which restores the authored field of view and camera-validity envelope. Pinch permits bounded forward/backward translation for version-5 assets; drag and D-pad look are clamped to source-image coverage. Flat fallback and legacy assets retain their compatible navigation paths.
 
 Manual setup still uses boundary-based texture crops and `GlbGenerator.generateGlb` (five-plane cuboid).
 
@@ -20,9 +21,11 @@ Manual setup still uses boundary-based texture crops and `GlbGenerator.generateG
 
 The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid planes, which produced visible **dragged pixels** on the front wall. The preview keeps the entire photo as one texture with clamp-to-edge sampling and unlit materials, matching the Swift single-photo preview while expensive metric generation remains deferred until Save.
 
-`GLBRoomActivity` detects thin preview meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid. Saved `photo_room_depth` meshes use their authored projection metadata. Volumetric/manual rooms switch from exterior orbit to turn-in-place navigation once the camera is inside; the Auto Orbit setting controls only the idle animation.
+`GLBRoomActivity` detects thin preview meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid. Saved `photo_room_depth` meshes use their authored projection and camera-envelope metadata. Volumetric/manual rooms switch from exterior orbit to turn-in-place navigation once the camera is inside; the Auto Orbit setting controls only the idle animation.
 
-The expanded saved projective-room look range is an unconfirmed candidate as of 2026-08-14. It was pushed at the user's request without a compile or final device visual confirmation; do not treat the chair/fan alignment and gray-trace issue as resolved until manual testing confirms it.
+The version-5 layered completion/navigation path is an unconfirmed candidate as of 2026-08-14.
+Automated build and test-target compilation are provisional; do not treat the chair/fan alignment,
+duplicate foreground, or gray-hole issue as resolved until manual device testing confirms it.
 
 The room viewer top controls mirror Swift: floating back, center ruler/pinch/tap helpers, recenter/save,
 and AR resize. The Android viewer no longer uses a full-width top band.
@@ -71,7 +74,13 @@ progress continues, and the generated room opens. For wide capture, verify the l
 capture-quality back camera and the saved JPEG dimensions are not from a low-resolution auxiliary
 sensor. Also confirm that portrait and landscape EXIF inputs remain upright, the picker appears
 before generation work, and the preview remains a sharp flat photo without dragged crops or an added
-perspective tilt. After Save, reopen the projective room, recenter, pinch in/out, rotate through the
-full horizontal range, and look nearly straight up/down; foreground objects must remain aligned and
-must not stretch or leave duplicate gray/photo traces. Confirm the
-top controls remain floating rather than a full-width band.
+perspective tilt. After Save, reopen the room and verify whether it is a layered version-5 asset or
+the flat fallback. For a layered asset, recenter, pinch within the authored movement envelope, and
+drag/D-pad toward each bounded look limit. Foreground objects must remain aligned; newly revealed
+background must not repeat foreground pixels, stretch at depth edges, or expose renderer-gray holes.
+Confirm the top controls remain floating rather than a full-width band.
+
+`SavedRoomNavigationE2ETest` provides a create → preview → save → reopen regression with a synthetic
+image generated at test runtime. It checks navigation frame changes and renderer-gray exposure, but
+must be run on a suitable arm64 Android device and does not replace manual judgment on the reported
+chair/fan photograph.

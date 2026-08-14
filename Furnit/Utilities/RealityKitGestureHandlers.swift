@@ -39,6 +39,17 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     /// geometry that the source photograph never observed.
     private var capturedPhotoOpticalCenter: SIMD3<Float>?
     private var usesFlatPhotoNavigation = false
+    private var layeredPhotoYawLimit: Float?
+    private var layeredPhotoPitchLimit: Float?
+    private var layeredPhotoBaseYaw: Float?
+    private var layeredPhotoBasePitch: Float?
+    private var layeredPhotoSourceHalfFovX: Float?
+    private var layeredPhotoSourceHalfFovY: Float?
+    private var layeredPhotoNearestDepth: Float?
+    private var layeredPhotoCapturePosition: SIMD3<Float>?
+    private var layeredPhotoCaptureForward: SIMD3<Float>?
+    private var layeredPhotoCaptureRight: SIMD3<Float>?
+    private var layeredPhotoCaptureUp: SIMD3<Float>?
 
     // Exterior inspection orbits around the framed model. Once the camera is within a genuine
     // room volume, single-finger drag becomes first-person yaw/pitch and keeps the eye fixed.
@@ -101,7 +112,14 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     /// mutable room bounds, so gesture setup order cannot accidentally re-enable translation.
     func setCapturedPhotoOpticalCenter(_ opticalCenter: SIMD3<Float>?) {
         capturedPhotoOpticalCenter = opticalCenter
-        if opticalCenter != nil { usesFlatPhotoNavigation = false }
+        if opticalCenter != nil {
+            usesFlatPhotoNavigation = false
+            layeredPhotoYawLimit = nil
+            layeredPhotoPitchLimit = nil
+            layeredPhotoBaseYaw = nil
+            layeredPhotoBasePitch = nil
+            clearLayeredPhotoCoverageContract()
+        }
         if let opticalCenter, let cameraAnchor {
             var transform = cameraAnchor.transform
             transform.translation = opticalCenter
@@ -112,32 +130,144 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
 
     func setFlatPhotoNavigationEnabled(_ enabled: Bool) {
         usesFlatPhotoNavigation = enabled
-        if enabled { capturedPhotoOpticalCenter = nil }
+        if enabled {
+            capturedPhotoOpticalCenter = nil
+            layeredPhotoYawLimit = nil
+            layeredPhotoPitchLimit = nil
+            layeredPhotoBaseYaw = nil
+            layeredPhotoBasePitch = nil
+            clearLayeredPhotoCoverageContract()
+        }
         initializeRotationFromCamera()
     }
 
-    /// Captured single-photo rooms cannot translate away from their authored optical center.
-    /// Reinterpret the D-pad as bounded look controls so every navigation path preserves the
-    /// pinhole reprojection, not only touch gestures.
+    func setLayeredPhotoLookLimits(
+        maximumYaw: Float?,
+        maximumPitch: Float?,
+        sourceHorizontalFieldOfView: Float? = nil,
+        sourceVerticalFieldOfView: Float? = nil,
+        nearestReliableDepth: Float? = nil
+    ) {
+        layeredPhotoYawLimit = maximumYaw.flatMap { $0.isFinite && $0 > 0 ? min($0, .pi) : nil }
+        layeredPhotoPitchLimit = maximumPitch.flatMap {
+            $0.isFinite && $0 > 0 ? min($0, Float.pi / 2 - 0.05) : nil
+        }
+        if layeredPhotoYawLimit != nil { capturedPhotoOpticalCenter = nil }
+        initializeRotationFromCamera()
+        if layeredPhotoYawLimit != nil {
+            // A Depth Anything room is authored looking toward +Z, which is world yaw π for a
+            // RealityKit camera. Limits are an envelope around that captured heading, not around
+            // world yaw zero; clamping around zero makes the first drag turn ~180° away.
+            layeredPhotoBaseYaw = accumulatedYaw
+            layeredPhotoBasePitch = accumulatedPitch
+            layeredPhotoSourceHalfFovX = sourceHorizontalFieldOfView.map { $0 * .pi / 360 }
+            layeredPhotoSourceHalfFovY = sourceVerticalFieldOfView.map { $0 * .pi / 360 }
+            layeredPhotoNearestDepth = nearestReliableDepth
+            if let cameraAnchor {
+                let rotation = cameraAnchor.transform.rotation
+                layeredPhotoCapturePosition = cameraAnchor.transform.translation
+                layeredPhotoCaptureForward = rotation.act(SIMD3<Float>(0, 0, -1))
+                layeredPhotoCaptureRight = rotation.act(SIMD3<Float>(1, 0, 0))
+                layeredPhotoCaptureUp = rotation.act(SIMD3<Float>(0, 1, 0))
+            }
+        } else {
+            layeredPhotoBaseYaw = nil
+            layeredPhotoBasePitch = nil
+            clearLayeredPhotoCoverageContract()
+        }
+    }
+
+    private func clearLayeredPhotoCoverageContract() {
+        layeredPhotoSourceHalfFovX = nil
+        layeredPhotoSourceHalfFovY = nil
+        layeredPhotoNearestDepth = nil
+        layeredPhotoCapturePosition = nil
+        layeredPhotoCaptureForward = nil
+        layeredPhotoCaptureRight = nil
+        layeredPhotoCaptureUp = nil
+    }
+
+    /// Reinterpret the D-pad as bounded look controls for captured-photo rooms so it follows the
+    /// same authored heading and disocclusion envelope as touch rotation.
     @discardableResult
     func nudgeCapturedPhotoView(yawDelta: Float, pitchDelta: Float) -> Bool {
-        guard let opticalCenter = capturedPhotoOpticalCenter,
-              let cameraAnchor else {
+        guard let cameraAnchor,
+              capturedPhotoOpticalCenter != nil || layeredPhotoYawLimit != nil else {
             return false
         }
         accumulatedYaw += yawDelta
-        let maxPitch = Float.pi / 2.0 - 0.05
-        accumulatedPitch = max(
-            -maxPitch,
-            min(maxPitch, accumulatedPitch + pitchDelta)
-        )
+        accumulatedPitch += pitchDelta
+        constrainLayeredPhotoLookIfNeeded()
+        if layeredPhotoPitchLimit == nil {
+            let maxPitch = Float.pi / 2.0 - 0.05
+            accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
+        }
         var transform = cameraAnchor.transform
-        transform.translation = opticalCenter
+        transform.translation = capturedPhotoOpticalCenter ?? transform.translation
         let yawRotation = simd_quatf(angle: accumulatedYaw, axis: SIMD3<Float>(0, 1, 0))
         let pitchRotation = simd_quatf(angle: accumulatedPitch, axis: SIMD3<Float>(1, 0, 0))
         transform.rotation = yawRotation * pitchRotation
         cameraAnchor.transform = transform
         return true
+    }
+
+    private func constrainLayeredPhotoLookIfNeeded() {
+        let coverageLimits = currentLayeredPhotoCoverageLimits()
+        if let authoredLimit = layeredPhotoYawLimit,
+           let base = layeredPhotoBaseYaw {
+            let limit = min(authoredLimit, coverageLimits?.yaw ?? authoredLimit)
+            accumulatedYaw = Self.angleNearest(accumulatedYaw, to: base)
+            accumulatedYaw = max(base - limit, min(base + limit, accumulatedYaw))
+        }
+        if let authoredLimit = layeredPhotoPitchLimit,
+           let base = layeredPhotoBasePitch {
+            let limit = min(authoredLimit, coverageLimits?.pitch ?? authoredLimit)
+            accumulatedPitch = max(base - limit, min(base + limit, accumulatedPitch))
+        }
+    }
+
+    /// Returns only the look margin actually covered by the captured image at the camera's current
+    /// zoom position. Moving forward creates overscan; at Fit the margin is zero on the limiting
+    /// axis. This prevents any camera action from revealing or stretching pixels outside the photo.
+    private func currentLayeredPhotoCoverageLimits() -> (yaw: Float, pitch: Float)? {
+        guard let cameraAnchor,
+              let cameraEntity,
+              let arView,
+              let sourceHalfX = layeredPhotoSourceHalfFovX,
+              let sourceHalfY = layeredPhotoSourceHalfFovY,
+              let nearestDepth = layeredPhotoNearestDepth,
+              let capturePosition = layeredPhotoCapturePosition,
+              let captureForward = layeredPhotoCaptureForward,
+              let captureRight = layeredPhotoCaptureRight,
+              let captureUp = layeredPhotoCaptureUp,
+              nearestDepth > 0.2,
+              arView.bounds.width > 1,
+              arView.bounds.height > 1 else { return nil }
+
+        let displacement = cameraAnchor.transform.translation - capturePosition
+        let forward = max(0, simd_dot(displacement, captureForward))
+        let lateral = abs(simd_dot(displacement, captureRight))
+        let vertical = abs(simd_dot(displacement, captureUp))
+        let remainingDepth = max(nearestDepth - forward, nearestDepth * 0.25)
+        let viewportAspect = Float(arView.bounds.width / arView.bounds.height)
+        let cameraHalfY = cameraEntity.camera.fieldOfViewInDegrees * .pi / 360
+        let cameraHalfX = atan(tan(cameraHalfY) * max(viewportAspect, 0.01))
+
+        let sourceHalfWidth = tan(sourceHalfX) * nearestDepth
+        let sourceHalfHeight = tan(sourceHalfY) * nearestDepth
+        let coveredHalfX = atan(max(sourceHalfWidth - lateral, 0.001) / remainingDepth)
+        let coveredHalfY = atan(max(sourceHalfHeight - vertical, 0.001) / remainingDepth)
+        return (
+            yaw: max(0, coveredHalfX - cameraHalfX - 0.01),
+            pitch: max(0, coveredHalfY - cameraHalfY - 0.01)
+        )
+    }
+
+    private static func angleNearest(_ angle: Float, to reference: Float) -> Float {
+        var delta = angle - reference
+        while delta > .pi { delta -= 2 * .pi }
+        while delta < -.pi { delta += 2 * .pi }
+        return reference + delta
     }
 
     /// Set the world-space point single-finger drag should swing the camera around.
@@ -477,7 +607,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             lastPanTranslation = translation
             activeRotationTurnsInPlace = boundaryManager?
                 .isInsideNavigableInterior(cameraAnchor.transform.translation) == true ||
-                capturedPhotoOpticalCenter != nil
+                capturedPhotoOpticalCenter != nil || layeredPhotoYawLimit != nil
             if !activeRotationTurnsInPlace {
                 beginOrbit(from: cameraAnchor)
             }
@@ -499,12 +629,16 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             accumulatedYaw += -deltaYaw  // Negative for natural direction
             accumulatedPitch += -deltaPitch // Negative for natural direction
 
+            constrainLayeredPhotoLookIfNeeded()
+
             // Prevent vertical inversion. Captured rooms allow near-vertical looking; normal
             // room navigation retains its tighter 45-degree pitch limit.
             let usesCapturedPhotoFrustum = capturedPhotoOpticalCenter != nil
             if usesCapturedPhotoFrustum {
                 let maxPitch = Float.pi / 2.0 - 0.05
                 accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
+            } else if layeredPhotoPitchLimit != nil {
+                constrainLayeredPhotoLookIfNeeded()
             } else {
                 let maxPitch = Float.pi / 4.0
                 accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
@@ -699,6 +833,14 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             var newTransform = cameraTransform
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
+            if layeredPhotoYawLimit != nil {
+                constrainLayeredPhotoLookIfNeeded()
+                var constrainedTransform = cameraAnchor.transform
+                let yawRotation = simd_quatf(angle: accumulatedYaw, axis: SIMD3<Float>(0, 1, 0))
+                let pitchRotation = simd_quatf(angle: accumulatedPitch, axis: SIMD3<Float>(1, 0, 0))
+                constrainedTransform.rotation = yawRotation * pitchRotation
+                cameraAnchor.transform = constrainedTransform
+            }
             lastPinchScale = gesture.scale
 
         case .ended, .cancelled:

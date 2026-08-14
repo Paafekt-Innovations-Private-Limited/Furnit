@@ -30,7 +30,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:../Furnit.xctestplan"
+            reference = "container:Furnit.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>
@@ -43,6 +43,17 @@
                BlueprintIdentifier = "61A62FAC2F24C31500FE755A"
                BuildableName = "FurnitTests.xctest"
                BlueprintName = "FurnitTests"
+               ReferencedContainer = "container:Furnit.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "61E2E0012F30000000000008"
+               BuildableName = "FurnitUITests.xctest"
+               BlueprintName = "FurnitUITests"
                ReferencedContainer = "container:Furnit.xcodeproj">
             </BuildableReference>
          </TestableReference>

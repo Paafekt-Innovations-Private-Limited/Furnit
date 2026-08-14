@@ -1258,6 +1258,7 @@ private struct DepthAnythingPreviewRoomView: View {
                 allowsSceneInteraction: !showingFurnitureFit
             )
             .allowsHitTesting(!showingFurnitureFit)
+            .accessibilityIdentifier("preview_room_viewport")
 
             if showingFurnitureFit {
                 FurnitureFitUIView(
@@ -2158,6 +2159,7 @@ struct SinglePhotoRoomView: View {
     @State private var photoLibraryAssetLocalId: String?
     @State private var supplementalCameraDoubles: [String: Double]?
     @State private var hasRequestedRTMDetPrewarm = false
+    @State private var didLoadUITestFixture = false
 
     struct IdentifiedImage: Identifiable {
         let id = UUID()
@@ -2221,6 +2223,7 @@ struct SinglePhotoRoomView: View {
                     }
                     .buttonStyle(PaafektCreationCardStyle(variant: .primary))
                     .padding(.horizontal)
+                    .accessibilityIdentifier("ai_room_option")
 
                     Button(action: {
                         guard let image = selectedImage else { return }
@@ -2491,6 +2494,7 @@ struct SinglePhotoRoomView: View {
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
+            loadUITestFixtureIfRequested()
         }
         .onChange(of: adjustedBoundaries) { _, newValue in
             guard let bounds = newValue else { return }
@@ -2545,6 +2549,58 @@ struct SinglePhotoRoomView: View {
     private func handlePhotoRoomBackTap() {
         dismiss()
     }
+
+    private func loadUITestFixtureIfRequested() {
+        #if DEBUG
+        guard !didLoadUITestFixture,
+              ProcessInfo.processInfo.arguments.contains("-PaafektSavedRoomE2E") else { return }
+        didLoadUITestFixture = true
+        let image = makeSyntheticUITestRoomImage()
+        selectedOrientation = PhotoOrientation.detect(from: image)
+        selectedImage = image
+        logDebug("[SavedRoomE2E] Generated synthetic fixture \(image.size)")
+        #endif
+    }
+
+    #if DEBUG
+    private func makeSyntheticUITestRoomImage() -> UIImage {
+        let size = CGSize(width: 960, height: 1280)
+        return UIGraphicsImageRenderer(size: size).image { renderer in
+            let context = renderer.cgContext
+            UIColor(red: 0.90, green: 0.91, blue: 0.92, alpha: 1).setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+
+            UIColor(red: 0.76, green: 0.72, blue: 0.66, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 905, width: size.width, height: 375))
+
+            UIColor(red: 0.18, green: 0.25, blue: 0.34, alpha: 1).setFill()
+            context.fill(CGRect(x: 145, y: 255, width: 670, height: 650))
+            UIColor(red: 0.72, green: 0.78, blue: 0.83, alpha: 1).setFill()
+            context.fill(CGRect(x: 145, y: 255, width: 670, height: 120))
+
+            UIColor(red: 0.10, green: 0.15, blue: 0.21, alpha: 1).setStroke()
+            context.setLineWidth(12)
+            for x in stride(from: CGFloat(160), through: 800, by: 54) {
+                context.move(to: CGPoint(x: x, y: 255))
+                context.addLine(to: CGPoint(x: x, y: 905))
+            }
+            context.strokePath()
+
+            UIColor(red: 0.32, green: 0.24, blue: 0.17, alpha: 1).setFill()
+            context.fill(CGRect(x: 610, y: 785, width: 240, height: 42))
+            context.fill(CGRect(x: 635, y: 827, width: 26, height: 260))
+            context.fill(CGRect(x: 802, y: 827, width: 26, height: 260))
+
+            UIColor(red: 0.16, green: 0.28, blue: 0.22, alpha: 1).setFill()
+            context.fillEllipse(in: CGRect(x: 665, y: 705, width: 110, height: 96))
+            UIColor(red: 0.12, green: 0.38, blue: 0.23, alpha: 1).setStroke()
+            context.setLineWidth(16)
+            context.move(to: CGPoint(x: 720, y: 785))
+            context.addLine(to: CGPoint(x: 720, y: 735))
+            context.strokePath()
+        }
+    }
+    #endif
 
     private func prewarmDepthAnythingModelIfNeeded() {
         DepthAnythingRoomReconstructor.prewarmSharedModelIfNeeded()

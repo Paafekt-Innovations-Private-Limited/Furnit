@@ -47,11 +47,16 @@ metadata. The saved viewer uses one-finger pan and field-of-view pinch zoom with
 plane. Projection metadata version 3 marks this contract. Older projective and legacy flat USDZ files
 remain readable; the sidecar-based X-aspect correction still applies only to legacy flat files.
 
-Older projective saved rooms keep the authored optical center while pinch changes field of view.
-Their drag and D-pad look controls now permit unrestricted yaw and near-vertical pitch without camera
-translation. This look-range change is an unconfirmed candidate as of 2026-08-14: it was requested
-for push without a compile or final device visual confirmation, so foreground alignment and gray-trace
-removal must still be checked manually.
+The active exporter was re-checked after a saved-room report showing torn, duplicated curtain/fan
+regions and remains the version-3 flat photo plane. The generic layered-depth helpers and viewer
+metadata compatibility code are not used by new iOS saves. A generic iPhoneOS Debug build succeeds,
+but the saved-room appearance is still device-unconfirmed as of 2026-08-14; test a newly saved room,
+because an older broken USDZ is not rewritten in place.
+
+`FurnitUITests/SavedRoomNavigationUITests.swift` adds a create → preview → save → reopen navigation
+regression using a programmatically generated synthetic room image. It checks zoom, pan and D-pad
+frame changes plus renderer-background exposure. The test target compiles independently of any
+private room-photo fixture; the visual test still requires an iOS device/test destination.
 
 ## Room viewer smoke test
 

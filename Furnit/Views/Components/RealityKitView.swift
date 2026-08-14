@@ -30,6 +30,8 @@ struct RealityKitView: UIViewRepresentable {
         
         // Use .nonAR mode for custom camera control that allows rotation without moving position
         let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
+        arView.isAccessibilityElement = true
+        arView.accessibilityIdentifier = "saved_room_viewport_loading"
         
         // ✅ NEW: Store ARView reference in Coordinator for snapshot
         context.coordinator.arView = arView
@@ -190,15 +192,45 @@ struct RealityKitView: UIViewRepresentable {
     private static func configureDepthAnythingCameraFieldOfView(
         _ cameraEntity: PerspectiveCamera?,
         model: USDZModel,
-        authoredVerticalFieldOfView: Float?
+        authoredVerticalFieldOfView: Float?,
+        viewportSize: CGSize?
     ) {
         guard let cameraEntity,
               model.roomCoordinateFrame == .depthAnythingImageDepthMeters else {
             return
         }
         if let authoredVerticalFieldOfView {
+            var displayVerticalFieldOfView = authoredVerticalFieldOfView
+            if let modelURL = model.temporaryURL,
+               let viewportSize,
+               viewportSize.width > 1,
+               viewportSize.height > 1 {
+                let metadata = CameraExifSidecar.load(roomURL: modelURL)
+                let imageWidth = metadata["depthMeshImageWidthPx"]
+                    ?? metadata["imageWidthPx"]
+                let imageHeight = metadata["depthMeshImageHeightPx"]
+                    ?? metadata["imageHeightPx"]
+                if let imageWidth, let imageHeight,
+                   imageWidth > 1, imageHeight > 1 {
+                    let sourceVerticalHalfFov = authoredVerticalFieldOfView * .pi / 360
+                    let sourceHorizontalHalfFov = atan(
+                        tan(sourceVerticalHalfFov) * Float(imageWidth / imageHeight)
+                    )
+                    let viewportAspect = Float(viewportSize.width / viewportSize.height)
+                    let horizontalCoverVerticalHalfFov = atan(
+                        tan(sourceHorizontalHalfFov) / max(viewportAspect, 0.01)
+                    )
+                    // Match preview's aspect-fill framing. A wide viewport must crop the top and
+                    // bottom of a 4:3 photo; showing the whole vertical FOV exposes nonexistent
+                    // pixels at the sides and was what made the extension skirt visible.
+                    displayVerticalFieldOfView = 2 * min(
+                        sourceVerticalHalfFov,
+                        horizontalCoverVerticalHalfFov
+                    ) * 180 / .pi
+                }
+            }
             cameraEntity.camera.fieldOfViewOrientation = .vertical
-            cameraEntity.camera.fieldOfViewInDegrees = authoredVerticalFieldOfView
+            cameraEntity.camera.fieldOfViewInDegrees = displayVerticalFieldOfView
         } else if model.photoOrientation == .landscape {
             cameraEntity.camera.fieldOfViewOrientation = .horizontal
             cameraEntity.camera.fieldOfViewInDegrees = 60.0
@@ -289,7 +321,8 @@ struct RealityKitView: UIViewRepresentable {
         configureDepthAnythingCameraFieldOfView(
             cameraEntity,
             model: model,
-            authoredVerticalFieldOfView: authoredVerticalFieldOfView
+            authoredVerticalFieldOfView: authoredVerticalFieldOfView,
+            viewportSize: boundaryManager.arView?.bounds.size
         )
         if authoredVerticalFieldOfView != nil {
             // Perspective depth meshes are authored around the original optical center. Keeping
@@ -448,14 +481,44 @@ struct RealityKitView: UIViewRepresentable {
 
         func configureNavigationContract(for model: USDZModel) {
             let metadata = model.temporaryURL.map { CameraExifSidecar.load(roomURL: $0) } ?? [:]
-            let usesFlatPhotoPlane = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+            let isFlatPhotoPlane = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
                 && metadata["depthMeshIsFlatPhotoPlane", default: 0] >= 0.5
-            gestureHandlers?.setFlatPhotoNavigationEnabled(usesFlatPhotoPlane)
+            let hasCompletedBackground = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                && metadata["depthMeshHasCompletedBackground", default: 0] >= 0.5
+            gestureHandlers?.setFlatPhotoNavigationEnabled(isFlatPhotoPlane)
             let opticalCenter = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
-                && !usesFlatPhotoPlane
+                && !isFlatPhotoPlane
+                && !hasCompletedBackground
                 ? cameraAnchor?.transform.translation
                 : nil
             gestureHandlers?.setCapturedPhotoOpticalCenter(opticalCenter)
+            let sourceVerticalFieldOfView = metadata["depthMeshVerticalFovDegrees"].map(Float.init)
+            let imageWidth = metadata["depthMeshImageWidthPx"] ?? metadata["imageWidthPx"]
+            let imageHeight = metadata["depthMeshImageHeightPx"] ?? metadata["imageHeightPx"]
+            let sourceHorizontalFieldOfView: Float? = {
+                guard let sourceVerticalFieldOfView,
+                      let imageWidth, let imageHeight,
+                      imageWidth > 1, imageHeight > 1 else { return nil }
+                let verticalHalfFov = sourceVerticalFieldOfView * .pi / 360
+                return 2 * atan(tan(verticalHalfFov) * Float(imageWidth / imageHeight)) * 180 / .pi
+            }()
+            gestureHandlers?.setLayeredPhotoLookLimits(
+                maximumYaw: hasCompletedBackground
+                    ? metadata["depthMeshMaxYawRadians"].map(Float.init)
+                    : nil,
+                maximumPitch: hasCompletedBackground
+                    ? metadata["depthMeshMaxPitchRadians"].map(Float.init)
+                    : nil,
+                sourceHorizontalFieldOfView: hasCompletedBackground
+                    ? sourceHorizontalFieldOfView
+                    : nil,
+                sourceVerticalFieldOfView: hasCompletedBackground
+                    ? sourceVerticalFieldOfView
+                    : nil,
+                nearestReliableDepth: hasCompletedBackground
+                    ? metadata["depthMeshNearestReliableDepthM"].map(Float.init)
+                    : nil
+            )
         }
 
         func shouldReframeForViewportChange(_ size: CGSize) -> Bool {
@@ -768,11 +831,30 @@ struct RealityKitView: UIViewRepresentable {
 
                 // Set up boundary manager for camera constraints
                 let boundaryManager = RealityKitBoundaryManager(arView: arView)
+                let navigationMetadata = model.temporaryURL.map {
+                    CameraExifSidecar.load(roomURL: $0)
+                } ?? [:]
+                let hasCompletedBackground = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                    && navigationMetadata["depthMeshHasCompletedBackground", default: 0] >= 0.5
                 boundaryManager.setUsesCapturedPhotoFrustum(
                     model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                        && !hasCompletedBackground
                 )
                 // Option B: Ensure fresh bounds per model load (avoid inheriting previous room bounds)
                 boundaryManager.reset()
+                boundaryManager.setCompletedPhotoCameraEnvelope(
+                    forwardTranslation: hasCompletedBackground
+                        ? navigationMetadata["depthMeshForwardTranslationM"]
+                            .map(Float.init)
+                            ?? navigationMetadata["depthMeshMaxTranslationM"].map(Float.init)
+                        : nil,
+                    lateralTranslation: hasCompletedBackground
+                        ? navigationMetadata["depthMeshLateralTranslationM"].map(Float.init)
+                        : nil,
+                    backwardTranslation: hasCompletedBackground
+                        ? navigationMetadata["depthMeshBackwardTranslationM"].map(Float.init)
+                        : nil
+                )
                 logDebug("🧹 [RealityKitView] Boundary manager reset before calculating new room bounds")
                 boundaryManager.calculateRoomBounds(from: modelEntity)
                 coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
@@ -830,6 +912,7 @@ struct RealityKitView: UIViewRepresentable {
 
                     // ✅ Sync gesture handler rotation state with camera's new orientation
                     coordinator.configureNavigationContract(for: model)
+                    arView.accessibilityIdentifier = "saved_room_viewport"
                     logDebug("✅ [RealityKitView] Camera ready - gestures synced with camera orientation")
                 } else if let cameraAnchor = coordinator.cameraAnchor {
                     // Fallback if no bounds - use default position
