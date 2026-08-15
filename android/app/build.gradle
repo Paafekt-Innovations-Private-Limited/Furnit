@@ -13,6 +13,13 @@ def hasPaafektUploadSigning = paafektUploadStoreFile &&
         paafektUploadKeyAlias &&
         paafektUploadKeyPassword
 
+def recaptchaVersion = "18.6.1"
+def generatedLegalAssetsDirectory = layout.buildDirectory.dir("generated/legalAssets")
+
+configurations {
+    recaptchaLegalSource
+}
+
 android {
     namespace 'com.furnit.android'
     compileSdk 36
@@ -88,6 +95,15 @@ android {
         pickFirst '**/libc++_shared.so'
     }
 
+    sourceSets {
+        main {
+            // The reCAPTCHA AAR ships its required SDK/third-party notices at its archive root,
+            // where Android packaging does not copy them automatically. Generate an app asset
+            // from the exact resolved AAR so the bundled notice cannot drift from the SDK.
+            assets.srcDir(generatedLegalAssetsDirectory)
+        }
+    }
+
     // ABI split: build only arm64-v8a APK (much smaller; works on almost all modern phones).
     splits {
         abi {
@@ -101,10 +117,58 @@ android {
 
 def apacheLicenseAsset = file("src/main/assets/legal/APACHE-2.0.txt")
 def liteRtLicenseAsset = file("src/main/assets/legal/LITERT-LICENSE.txt")
+def onnxRuntimeLicenseAsset = file("src/main/assets/legal/ONNXRUNTIME-MIT.txt")
+def onnxRuntimeNoticesAsset = file("src/main/assets/legal/ONNXRUNTIME-THIRD-PARTY-NOTICES.txt")
+def threeJsLicenseAsset = file("src/main/assets/legal/THREEJS-MIT.txt")
 def thirdPartyNoticesAsset = file("src/main/assets/legal/THIRD_PARTY_NOTICES.txt")
+def generatedRecaptchaLicenseAsset = generatedLegalAssetsDirectory.map {
+    it.file("legal/RECAPTCHA-THIRD-PARTY-LICENSES.txt")
+}
+
+def generateRecaptchaLegalAsset = tasks.register("generateRecaptchaLegalAsset") {
+    inputs.files(configurations.recaptchaLegalSource)
+    outputs.file(generatedRecaptchaLicenseAsset)
+    doLast {
+        def archives = configurations.recaptchaLegalSource.files
+        if (archives.size() != 1) {
+            throw new GradleException("Expected one resolved reCAPTCHA AAR, found ${archives.size()}.")
+        }
+        def sourceNotices = zipTree(archives.first()).matching {
+            include("third_party_licenses.txt")
+        }.files
+        if (sourceNotices.size() != 1) {
+            throw new GradleException("The resolved reCAPTCHA AAR does not contain exactly one third_party_licenses.txt.")
+        }
+        def outputFile = generatedRecaptchaLicenseAsset.get().asFile
+        outputFile.parentFile.mkdirs()
+        // The AAR marks this archive entry read-only. Remove any prior generated copy before
+        // copying so --rerun-tasks and dependency upgrades remain repeatable.
+        if (outputFile.exists()) {
+            outputFile.setWritable(true, false)
+            if (!outputFile.delete()) {
+                throw new GradleException("Could not replace the generated reCAPTCHA legal asset.")
+            }
+        }
+        project.copy {
+            from(sourceNotices.first())
+            into(outputFile.parentFile)
+            rename { outputFile.name }
+        }
+        outputFile.setWritable(true, false)
+    }
+}
 
 tasks.register("verifyLegalAssets") {
-    inputs.files(apacheLicenseAsset, liteRtLicenseAsset, thirdPartyNoticesAsset)
+    dependsOn(generateRecaptchaLegalAsset)
+    inputs.files(
+            apacheLicenseAsset,
+            liteRtLicenseAsset,
+            onnxRuntimeLicenseAsset,
+            onnxRuntimeNoticesAsset,
+            threeJsLicenseAsset,
+            thirdPartyNoticesAsset,
+            generatedRecaptchaLicenseAsset,
+    )
     doLast {
         if (!apacheLicenseAsset.isFile() ||
                 !apacheLicenseAsset.getText("UTF-8").contains("END OF TERMS AND CONDITIONS")) {
@@ -114,9 +178,28 @@ tasks.register("verifyLegalAssets") {
                 !liteRtLicenseAsset.getText("UTF-8").contains("Some of TensorFlow's code is derived from Caffe")) {
             throw new GradleException("The complete LiteRT license and Caffe attribution asset is missing or truncated.")
         }
+        if (!onnxRuntimeLicenseAsset.isFile() ||
+                !onnxRuntimeLicenseAsset.getText("UTF-8").contains("Copyright (c) Microsoft Corporation")) {
+            throw new GradleException("The complete ONNX Runtime MIT license asset is missing or truncated.")
+        }
+        if (!onnxRuntimeNoticesAsset.isFile() ||
+                onnxRuntimeNoticesAsset.length() < 300_000L ||
+                !onnxRuntimeNoticesAsset.getText("UTF-8").contains("THIRD PARTY SOFTWARE NOTICES AND INFORMATION")) {
+            throw new GradleException("The ONNX Runtime third-party notices asset is missing or truncated.")
+        }
+        if (!threeJsLicenseAsset.isFile() ||
+                !threeJsLicenseAsset.getText("UTF-8").contains("three.js authors")) {
+            throw new GradleException("The complete Three.js MIT license asset is missing or truncated.")
+        }
         if (!thirdPartyNoticesAsset.isFile() ||
                 !thirdPartyNoticesAsset.getText("UTF-8").contains("Model format modifications")) {
             throw new GradleException("The model modification notices are missing or truncated.")
+        }
+        def recaptchaLicenseAsset = generatedRecaptchaLicenseAsset.get().asFile
+        if (!recaptchaLicenseAsset.isFile() ||
+                recaptchaLicenseAsset.length() < 800_000L ||
+                !recaptchaLicenseAsset.getText("UTF-8").contains("ANDROID SOFTWARE DEVELOPMENT KIT")) {
+            throw new GradleException("The reCAPTCHA SDK and third-party license asset is missing or truncated.")
         }
     }
 }
@@ -172,7 +255,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 
-    // ONNX Runtime for Android model inference.
+    // Depth Anything and GeoCalib still use ONNX Runtime. RTMDet uses LiteRT only.
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.2'
 
     // RTMDet's FP16 LiteRT path runs the convolutional graph on the mobile GPU.
@@ -192,7 +275,10 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:33.16.0')
     implementation 'com.google.firebase:firebase-auth-ktx'
     // Force patched reCAPTCHA even if a transitive dep tries to pull an older line.
-    implementation 'com.google.android.recaptcha:recaptcha:18.6.1'
+    recaptchaLegalSource("com.google.android.recaptcha:recaptcha:${recaptchaVersion}@aar") {
+        transitive = false
+    }
+    implementation "com.google.android.recaptcha:recaptcha:${recaptchaVersion}"
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

@@ -126,12 +126,15 @@
     <string name="licenses_arcore">ஆதரிக்கப்படும் Android சாதனங்களில் விருப்பமான AR கேமரா மற்றும் ஆழம் தொடர்பான திறன். ARCore SDK விதிமுறைகள் மற்றும் பொருந்தக்கூடிய திறந்த மூல அறிவிப்புகளின் கீழ் Google ஆல் வழங்கப்படுகிறது.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">பதிப்புரிமை (இ) Google LLC. அப்பாச்சி உரிமம் 2.0 இன் கீழ் உரிமம் பெற்றது.</string>
+    <string name="licenses_recaptcha_title">Android-க்கான reCAPTCHA SDK</string>
+    <string name="licenses_recaptcha">Firebase தொலைபேசி அங்கீகாரம் reCAPTCHA 18.6.1 ஐப் பயன்படுத்துகிறது. இணைக்கப்பட்ட ஆவணம் அதே SDK பதிப்புடன் விநியோகிக்கப்படும் Android SDK விதிமுறைகளையும் மூன்றாம் தரப்பு உரிம உரைகளையும் வழங்குகிறது.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">தளபாடங்கள் கண்டறிதல் மற்றும் பிரித்தல் OpenMMLab MMDetection இலிருந்து RTMDet-Ins மாதிரியைப் பயன்படுத்துகிறது. பதிப்புரிமை © OpenMMLab. அப்பாச்சி உரிமம் 2.0 இன் கீழ் உரிமம் பெற்றது.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D அறை பார்வையாளர்களுக்கு தொகுக்கப்பட்ட WebGL ரெண்டரிங் ஆதரவு. பதிப்புரிமை © 2010–2024 three.js ஆசிரியர்கள். MIT உரிமத்தின் கீழ் உரிமம் பெற்றது.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">சாதனத்தில் நரம்பியல்-நெட்வொர்க் அனுமானம். பதிப்புரிமை Microsoft Corporation. MIT உரிமத்தின் கீழ் உரிமம் பெற்றது.</string>
+    <string name="licenses_onnx_runtime">சாதனத்தில் Depth Anything மற்றும் GeoCalib அனுமானம்; RTMDet இந்த இயக்கநேரத்தைப் பயன்படுத்தாது. பதிப்புரிமை Microsoft Corporation. MIT உரிமத்தின் கீழ் உரிமம் பெற்றது.</string>
+    <string name="licenses_document_unavailable">இணைக்கப்பட்ட சட்ட ஆவணத்தைத் திறக்க முடியவில்லை.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">SceneView மற்றும் Google Filament மூலம் நேட்டிவ் ஆண்ட்ராய்டு 3D ரெண்டரிங். அப்பாச்சி உரிமம் 2.0 இன் கீழ் உரிமம் பெற்றது.</string>
     <string name="licenses_coco_title">COCO தரவுத்தொகுப்பு</string>

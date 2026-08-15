@@ -96,8 +96,11 @@ links.
 - Version 1.2 source on both platforms exposes a readable third-party notice and the
   complete Apache License 2.0 text offline under Settings → Licenses.
 - **Android only** bundles the LiteRT combined license text, including the required
-  Caffe/BSD attribution, because only Android ships LiteRT. Android's
-  `verifyLegalAssets` is a `preBuild` dependency. iOS bundles no LiteRT license text.
+  Caffe/BSD attribution, because only Android ships LiteRT. Android also bundles the
+  ONNX Runtime MIT license and upstream notices, the Three.js MIT license, and the
+  exact reCAPTCHA SDK/third-party license document extracted from the resolved AAR.
+  Android's `verifyLegalAssets` is a `preBuild` dependency. iOS bundles no LiteRT
+  license text.
 - Notices identify the exact **Depth Anything V2 Metric Indoor Small** checkpoint and
   Paafekt's Core ML, ONNX, and LiteRT/TFLite model-format conversions. RTMDet-Ins-m is
   disclosed as Core ML on iOS and LiteRT/TFLite on Android.

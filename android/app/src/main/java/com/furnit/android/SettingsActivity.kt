@@ -48,8 +48,12 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(createRoomDefaultsSection())
 
         // Developer
-        if (BuildConfig.DEBUG) {
+        DebugLogger.init(this)
+        if (BuildConfig.DEBUG && authManager.canAccessDebugSettings()) {
             layout.addView(createDeveloperSection())
+        } else if (DebugLogger.isDebugMode) {
+            // Do not let a setting persisted by the test account remain active for another user.
+            DebugLogger.setDebugMode(false)
         }
 
         // Legal
@@ -166,7 +170,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun createDeveloperSection(): LinearLayout {
-        DebugLogger.init(this)
         return PaafektScreenViews.createSectionCard(this).apply {
             addView(PaafektScreenViews.createSectionLabel(this@SettingsActivity, getString(R.string.settings_developer)))
             addView(

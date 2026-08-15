@@ -126,12 +126,15 @@
     <string name="licenses_arcore">మద్దతు ఉన్న Android పరికరాలలో ఐచ్ఛిక AR కెమెరా మరియు డెప్త్-సంబంధిత సామర్థ్యం. ARCore SDK నిబంధనలు మరియు వర్తించే ఓపెన్ సోర్స్ నోటీసుల కింద Google అందించింది.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">కాపీరైట్ (సి) Google LLC. Apache లైసెన్స్ 2.0 ప్రకారం లైసెన్స్ పొందింది.</string>
+    <string name="licenses_recaptcha_title">Android కోసం reCAPTCHA SDK</string>
+    <string name="licenses_recaptcha">Firebase ఫోన్ ప్రమాణీకరణ reCAPTCHA 18.6.1ను ఉపయోగిస్తుంది. జతచేసిన పత్రం అదే SDK సంస్కరణతో పంపిణీ చేసిన Android SDK నిబంధనలు మరియు మూడవ పక్ష లైసెన్స్ పాఠాలను అందిస్తుంది.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">ఫర్నీచర్ డిటెక్షన్ మరియు సెగ్మెంటేషన్ OpenMMLab MMDdetection నుండి RTMDet-Ins మోడల్‌ని ఉపయోగిస్తుంది. కాపీరైట్ (సి) OpenMMLab. Apache లైసెన్స్ 2.0 ప్రకారం లైసెన్స్ పొందింది.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D గది వీక్షకుల కోసం బండిల్ చేయబడిన WebGL రెండరింగ్ మద్దతు. కాపీరైట్ (సి) 2010–2024 three.js రచయితలు. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">పరికరంలో నాడీ-నెట్‌వర్క్ అనుమితి. కాపీరైట్ మైక్రోసాఫ్ట్ కార్పొరేషన్. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.</string>
+    <string name="licenses_onnx_runtime">పరికరంలో Depth Anything మరియు GeoCalib అనుమితి; RTMDet ఈ రన్‌టైమ్‌ను ఉపయోగించదు. కాపీరైట్ మైక్రోసాఫ్ట్ కార్పొరేషన్. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.</string>
+    <string name="licenses_document_unavailable">జతచేసిన చట్టపరమైన పత్రాన్ని తెరవడం సాధ్యం కాలేదు.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">SceneView మరియు Google ఫిలమెంట్ ద్వారా స్థానిక Android 3D రెండరింగ్. Apache లైసెన్స్ 2.0 ప్రకారం లైసెన్స్ పొందింది.</string>
     <string name="licenses_coco_title">COCO డేటాసెట్</string>

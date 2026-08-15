@@ -126,12 +126,15 @@
     <string name="licenses_arcore">समर्थित एंड्रॉइड डिवाइस पर वैकल्पिक एआर कैमरा और गहराई से संबंधित क्षमता। Google द्वारा ARCore SDK शर्तों और लागू ओपन-सोर्स नोटिस के तहत प्रदान किया गया।</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">कॉपीराइट (सी) गूगल एलएलसी। अपाचे लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।</string>
+    <string name="licenses_recaptcha_title">Android के लिए reCAPTCHA SDK</string>
+    <string name="licenses_recaptcha">Firebase फ़ोन प्रमाणीकरण reCAPTCHA 18.6.1 का उपयोग करता है। बंडल किया गया दस्तावेज़ उसी SDK संस्करण के साथ वितरित Android SDK शर्तों और शामिल तृतीय-पक्ष लाइसेंस पाठों को पुनः प्रस्तुत करता है।</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">फर्नीचर का पता लगाने और विभाजन OpenMMLab MMडिटेक्शन से RTMDet-Ins मॉडल का उपयोग करते हैं। कॉपीराइट (सी) ओपनएमएमलैब। अपाचे लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3डी रूम दर्शकों के लिए बंडल वेबजीएल समर्थन प्रदान करता है। कॉपीराइट (सी) 2010–2024 तीन.जेएस लेखक। एमआईटी लाइसेंस के तहत लाइसेंस प्राप्त।</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">ऑन-डिवाइस न्यूरल-नेटवर्क अनुमान। कॉपीराइट माइक्रोसॉफ्ट कॉर्पोरेशन। एमआईटी लाइसेंस के तहत लाइसेंस प्राप्त।</string>
+    <string name="licenses_onnx_runtime">Depth Anything और GeoCalib का ऑन-डिवाइस अनुमान; RTMDet इस रनटाइम का उपयोग नहीं करता। कॉपीराइट माइक्रोसॉफ्ट कॉर्पोरेशन। एमआईटी लाइसेंस के तहत लाइसेंस प्राप्त।</string>
+    <string name="licenses_document_unavailable">बंडल किया गया कानूनी दस्तावेज़ खोला नहीं जा सका।</string>
     <string name="licenses_filament_title">SceneView और Filament</string>
     <string name="licenses_filament">सीनव्यू और गूगल फिलामेंट के माध्यम से नेटिव एंड्रॉइड 3डी रेंडरिंग। अपाचे लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।</string>
     <string name="licenses_coco_title">COCO डेटासेट</string>

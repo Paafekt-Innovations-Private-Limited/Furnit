@@ -3,6 +3,11 @@ Paafekt for Android - Third-Party Notices
 Paafekt Innovations Private Limited distributes this readable notice with the Android
 app. The complete Apache License 2.0 is bundled at legal/APACHE-2.0.txt. LiteRT's
 complete combined license and attribution text is bundled at legal/LITERT-LICENSE.txt.
+The ONNX Runtime MIT license and upstream third-party notices are bundled at
+legal/ONNXRUNTIME-MIT.txt and legal/ONNXRUNTIME-THIRD-PARTY-NOTICES.txt. The
+Three.js MIT license is bundled at legal/THREEJS-MIT.txt. The exact SDK and
+third-party license bundle supplied by the resolved reCAPTCHA artifact is generated
+at build time as legal/RECAPTCHA-THIRD-PARTY-LICENSES.txt.
 
 Android / Google platform components
 - AndroidX Core, AppCompat, Activity, Fragment, Lifecycle, WebKit, ExifInterface, CameraX,
@@ -14,14 +19,18 @@ Android / Google platform components
 - ARCore: Google ARCore SDK terms and Apache License 2.0 notices where applicable.
 - Firebase Authentication: Google Firebase terms; Firebase Android SDKs are licensed under
   Apache License 2.0.
+- reCAPTCHA Android SDK 18.6.1: Android SDK terms plus the complete incorporated
+  third-party license bundle supplied inside the resolved SDK artifact.
 
 Rendering and inference
 - SceneView and Google Filament: Apache License 2.0.
 - LiteRT 1.4.2 and its GPU delegate: Apache License 2.0. LiteRT's distributed license
   also contains the required Caffe/BSD copyright and attribution text; Paafekt
   reproduces that complete text in legal/LITERT-LICENSE.txt.
-- ONNX Runtime for Android: MIT License, Microsoft Corporation.
-- Three.js r170: MIT License, three.js authors.
+- ONNX Runtime for Android 1.24.2: MIT License, Microsoft Corporation. The complete
+  MIT license and upstream third-party notices are bundled with the app.
+- Three.js r170: MIT License, three.js authors. The complete MIT license is bundled
+  with the app.
 
 Model assets and datasets
 - RTMDet-Ins / MMDetection: Apache License 2.0, OpenMMLab.

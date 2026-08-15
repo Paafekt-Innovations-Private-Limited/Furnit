@@ -3,8 +3,9 @@
 ## Reviewer path
 - Fresh install → phone OTP sign-in with the Firebase test number.
 - Settings → confirm **Delete Account**, Privacy Policy, Terms, Credits, and Licenses.
-- With networking disabled, open the bundled third-party notice, Apache license, and
-  LiteRT combined license/Caffe attribution from Settings → Licenses.
+- With networking disabled, open the bundled third-party notice, Apache license,
+  LiteRT combined license/Caffe attribution, ONNX Runtime license/notices, Three.js
+  license, and reCAPTCHA license bundle from Settings → Licenses.
 - Create a room on device, open room viewers, capture/save a view, sign out, sign back in, delete account.
 
 ## Play Console
@@ -36,7 +37,7 @@ Delete Account: Settings → Delete Account.
 
 Core features run on-device after sign-in. Room generation uses Depth Anything, GeoCalib, and RTMDet on device. Network is used for Firebase phone authentication.
 
-Settings → Licenses contains offline third-party notices, the Apache License 2.0 text, and LiteRT's combined license/Caffe attribution.
+Settings → Licenses contains offline third-party notices, the Apache License 2.0 text, LiteRT's combined license/Caffe attribution, ONNX Runtime and Three.js MIT licenses, and the reCAPTCHA SDK license bundle.
 
 Permissions: Camera (room photos + AR furniture). Photos are picked via the system picker; screenshots save via MediaStore on modern Android.
 

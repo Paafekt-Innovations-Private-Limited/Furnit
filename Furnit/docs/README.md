@@ -77,19 +77,20 @@ Useful Xcode console filter: `FurnitureFit`, `BRAIN FLOW`, `RTMDet`.
 
 ## Settings licenses and attributions
 
-`LicensesView` in `Furnit/Views/ContentView.swift` exposes three bundled UTF-8 resources
+`LicensesView` in `Furnit/Views/ContentView.swift` exposes two bundled UTF-8 resources
 without requiring network access:
 
 - `Furnit/Licenses/APACHE-2.0.txt` — complete Apache License 2.0 text.
 - `Furnit/Licenses/THIRD_PARTY_NOTICES.txt` — shipped model/dataset attribution and
   notices for Paafekt's Core ML, ONNX, and LiteRT/TFLite format conversions.
-- `Furnit/Licenses/LITERT-LICENSE.txt` — complete LiteRT/TensorFlow Lite 2.17.0
-  combined license and attribution text for the C runtime and Metal delegate.
-
 The notice names the exact Depth Anything V2 Metric Indoor Small variant. All 14 iOS
 localizations provide the `licenses.viewNotices` link label. The current diligence and
 remaining Hypersim lawyer question live in
 [`../../docs/MODEL_LICENSE_AUDIT.md`](../../docs/MODEL_LICENSE_AUDIT.md).
+
+In debug builds, the Settings Developer section is additionally restricted to the
+authenticated Firebase test number `+1 650-555-3434`. Signing out or switching to a
+different identity hides the section and disables any persisted debug mode.
 
 ## Docs here
 - [`mask-head-accel.md`](mask-head-accel.md) — historical Core ML mask-head optimization

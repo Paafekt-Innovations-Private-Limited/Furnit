@@ -29,11 +29,21 @@ class AuthenticationManager: ObservableObject {
     private let maxOTPAttempts = 5
     private let maxOTPRequestsPerHour = 5
     private let lockoutDurationMinutes = 30.0
+    private static let debugSettingsPhoneDigits = "16505553434"
 
     struct User: Codable {
         let id: String
         let name: String
         let phoneNumber: String
+    }
+
+    static func isDebugSettingsPhoneNumber(_ phoneNumber: String?) -> Bool {
+        phoneNumber?.filter { $0.isNumber } == debugSettingsPhoneDigits
+    }
+
+    /// Developer Settings are restricted to the authenticated Firebase test identity.
+    var canAccessDebugSettings: Bool {
+        isAuthenticated && Self.isDebugSettingsPhoneNumber(Auth.auth().currentUser?.phoneNumber)
     }
 
     enum AccountDeletionError: LocalizedError {

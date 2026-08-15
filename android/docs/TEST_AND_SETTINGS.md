@@ -8,9 +8,11 @@ python3 scripts/verify_i18n.py
 ```
 
 `preBuild` depends on `verifyLegalAssets`, so normal debug and release builds fail if
-the required Apache, LiteRT/Caffe, or model-modification notice is missing or
-truncated. A release handoff should also run `./gradlew :app:bundleRelease --no-daemon`
-and verify the signed AAB.
+the required Apache, LiteRT/Caffe, ONNX Runtime, Three.js, reCAPTCHA, or
+model-modification notice is missing or truncated. The reCAPTCHA document is copied
+from the exact resolved 18.6.1 AAR into generated app assets so it cannot drift from
+the dependency. A release handoff should also run
+`./gradlew :app:bundleRelease --no-daemon` and verify the signed AAB.
 
 For Android Studio device testing, set **Run > Edit Configurations > app > Deploy** to
 **APK from app bundle**. The default APK-only deployment omits the install-time
@@ -60,7 +62,7 @@ For camera smoothness, color/orientation, AR sizing, thermal cadence, and frame-
 
 ## Settings
 
-The old backend selection and FurnitureFit tuning switches have been removed. Current settings focus on debug logging, the single-image furniture scan, room viewer behavior, and default manual/demo room dimensions.
+The old backend selection and FurnitureFit tuning switches have been removed. Current settings focus on debug logging, the single-image furniture scan, room viewer behavior, and default manual/demo room dimensions. In debug builds, the Developer section is visible only while the authenticated Firebase identity is the test number `+1 650-555-3434`; leaving that identity also disables any persisted debug-logging state.
 
 Full-video identification is controlled in `GLBRoomActivity` by the in-room **viewfinder** button, not by Settings.
 
@@ -74,6 +76,10 @@ Full-video identification is controlled in `GLBRoomActivity` by the in-room **vi
    text is readable.
 5. Under **Other Android runtime libraries**, open the LiteRT license and confirm the
    Caffe/BSD attribution follows the Apache text.
+6. Open both ONNX Runtime documents and confirm the MIT license and upstream
+   third-party notices are readable offline.
+7. Open the Three.js MIT license and the reCAPTCHA SDK/third-party license bundle
+   while the device remains offline.
 
 ## Asset Check
 
@@ -85,8 +91,11 @@ Expected today:
 - RTMDet FP16 LiteRT: present (GPU when supported, XNNPACK CPU otherwise).
 - RTMDet ONNX: absent; the retired fallback model must not be packaged.
 - GeoCalib pinhole CNN ONNX: present and loaded by `GeoCalibCalibrationService`; focal/gravity fallbacks remain available if inference cannot run.
-- Legal assets: `APACHE-2.0.txt`, `LITERT-LICENSE.txt`, and
-  `THIRD_PARTY_NOTICES.txt` present under `app/src/main/assets/legal/`.
+- Source legal assets: `APACHE-2.0.txt`, `LITERT-LICENSE.txt`,
+  `ONNXRUNTIME-MIT.txt`, `ONNXRUNTIME-THIRD-PARTY-NOTICES.txt`, `THREEJS-MIT.txt`,
+  and `THIRD_PARTY_NOTICES.txt` present under `app/src/main/assets/legal/`.
+- Generated legal asset: `RECAPTCHA-THIRD-PARTY-LICENSES.txt` is extracted from the
+  resolved reCAPTCHA AAR and packaged under the same `legal/` asset path.
 
 ## Authentication smoke test
 

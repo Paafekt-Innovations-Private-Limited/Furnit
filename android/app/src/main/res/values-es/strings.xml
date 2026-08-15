@@ -130,12 +130,15 @@
     <string name="licenses_arcore">Cámara AR opcional y capacidad relacionada con la profundidad en dispositivos Android compatibles. Proporcionado por Google según los términos del SDK de ARCore y los avisos de código abierto aplicables.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Derechos de autor © Google LLC. Licenciado bajo la Licencia Apache 2.0.</string>
+    <string name="licenses_recaptcha_title">SDK de reCAPTCHA para Android</string>
+    <string name="licenses_recaptcha">La autenticación telefónica de Firebase usa reCAPTCHA 18.6.1. El documento incluido reproduce los términos del SDK de Android y las licencias de terceros incorporadas que se distribuyen con esa versión exacta del SDK.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">La detección y segmentación de muebles utiliza el modelo RTMDet-Ins de OpenMMLab MMDetection. Copyright © OpenMMLab. Licenciado bajo la Licencia Apache 2.0.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">Soporte de renderizado WebGL incluido para visores de salas 3D. Copyright © 2010–2024 autores de three.js. Licenciado bajo la Licencia MIT.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">Inferencia de redes neuronales en el dispositivo. Copyright Microsoft Corporation. Licenciado bajo la Licencia MIT.</string>
+    <string name="licenses_onnx_runtime">Inferencia local de Depth Anything y GeoCalib; RTMDet no usa este entorno de ejecución. Copyright Microsoft Corporation. Licenciado bajo la Licencia MIT.</string>
+    <string name="licenses_document_unavailable">No se pudo abrir el documento legal incluido.</string>
     <string name="licenses_filament_title">SceneView y Filament</string>
     <string name="licenses_filament">Renderizado 3D nativo de Android a través de SceneView y Google Filament. Licenciado bajo la Licencia Apache 2.0.</string>
     <string name="licenses_coco_title">Conjunto de datos COCO</string>

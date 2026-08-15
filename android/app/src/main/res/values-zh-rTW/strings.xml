@@ -122,12 +122,15 @@
     <string name="licenses_arcore">支援的 Android 裝置上選購的 AR 相機和深度相關功能。由 Google 根據 ARCore SDK 條款和適用的開源聲明提供。</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">版權所有 © Google LLC。根據 Apache License 2.0 獲得許可。</string>
+    <string name="licenses_recaptcha_title">Android 版 reCAPTCHA SDK</string>
+    <string name="licenses_recaptcha">Firebase 電話驗證使用 reCAPTCHA 18.6.1。隨附文件完整收錄與該版本 SDK 一同散布的 Android SDK 條款及其中的第三方授權文字。</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">家具檢測和分割使用 OpenMMLab MMDetection 的 RTMDet-Ins 模型。版權所有 © OpenMMLab。根據 Apache License 2.0 獲得許可。</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">為 3D 房間檢視器提供捆綁的 WebGL 渲染支援。版權所有 © 2010–2024 Three.js 作者。根據 MIT 許可證獲得許可。</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">設備上神經網路推理。微軟公司版權所有。根據 MIT 許可證獲得許可。</string>
+    <string name="licenses_onnx_runtime">在裝置上執行 Depth Anything 和 GeoCalib 推論；RTMDet 不使用此執行階段。微軟公司版權所有。根據 MIT 許可證獲得許可。</string>
+    <string name="licenses_document_unavailable">無法開啟隨附的法律文件。</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">透過 SceneView 和 Google Filament 進行原生 Android 3D 渲染。根據 Apache License 2.0 獲得許可。</string>
     <string name="licenses_coco_title">COCO 資料集</string>

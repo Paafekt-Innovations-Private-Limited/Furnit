@@ -38,6 +38,7 @@ class AuthenticationManager private constructor(context: Context) {
         private const val MAX_OTP_REQUESTS_PER_HOUR = 5
         private const val LOCKOUT_DURATION_MS = 30 * 60 * 1000L // 30 minutes
         private const val HOUR_MS = 60 * 60 * 1000L
+        private const val DEBUG_SETTINGS_PHONE_DIGITS = "16505553434"
 
         // Set to true to bypass OTP authentication (for development/testing)
         const val BYPASS_AUTH = false
@@ -49,6 +50,10 @@ class AuthenticationManager private constructor(context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: AuthenticationManager(context.applicationContext).also { instance = it }
             }
+        }
+
+        internal fun isDebugSettingsPhoneNumber(phoneNumber: String?): Boolean {
+            return phoneNumber?.filter(Char::isDigit) == DEBUG_SETTINGS_PHONE_DIGITS
         }
     }
 
@@ -500,5 +505,10 @@ class AuthenticationManager private constructor(context: Context) {
      */
     fun getUserPhone(): String {
         return currentUser?.phoneNumber ?: prefs.getString(KEY_USER_PHONE, "") ?: ""
+    }
+
+    /** Developer Settings are restricted to the authenticated Firebase test identity. */
+    fun canAccessDebugSettings(): Boolean {
+        return isAuthenticated && isDebugSettingsPhoneNumber(auth.currentUser?.phoneNumber)
     }
 }

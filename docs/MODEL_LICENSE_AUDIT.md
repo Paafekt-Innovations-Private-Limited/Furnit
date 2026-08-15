@@ -190,19 +190,20 @@ Format: **License (SPDX)** · **Commercial** · **Attribution** · **Source** ·
 | Component | Version | License | Commercial | Attribution | Primary source | In app licences? | Date |
 |-----------|---------|---------|------------|-------------|----------------|------------------|------|
 | Core ML / RealityKit | System | Apple SDK terms | Per Apple agreement | — | Apple developer terms | — | — |
-| ONNX Runtime | 1.24.2 | MIT | YES | Copyright notice | https://github.com/microsoft/onnxruntime/blob/v1.24.2/LICENSE | **Yes** (Android) | 2026-07-18 |
+| ONNX Runtime | 1.24.2 | MIT | YES | Copyright notice + upstream third-party notices | https://github.com/microsoft/onnxruntime/blob/v1.24.2/LICENSE | **Yes — Android bundles both documents offline** | 2026-08-15 |
 | LiteRT | 1.4.2 | Apache-2.0 | YES | NOTICE + license copy | Published Maven POM for `com.google.ai.edge.litert:litert:1.4.2` | **Yes — Android combined license + Caffe/BSD attribution** | 2026-08-05 |
-| Three.js | r170 | MIT | YES | Copyright notice | Bundled header: `SPDX-License-Identifier: MIT`; https://github.com/mrdoob/three.js/blob/r170/LICENSE | **Yes** | 2026-07-11 |
+| Three.js | r170 | MIT | YES | Copyright notice | Bundled header: `SPDX-License-Identifier: MIT`; https://github.com/mrdoob/three.js/blob/r170/LICENSE | **Yes — Android bundles the complete MIT text offline** | 2026-08-15 |
 | Filament (via SceneView) | 2.0.3 | Apache-2.0 | YES | NOTICE | https://github.com/google/filament/blob/main/LICENSE | **Yes** (Android) | 2026-07-18 |
 | MetalSplatter | 1.0.1 | MIT | YES | Copyright notice | https://github.com/scier/MetalSplatter/blob/main/LICENSE | **Yes** (iOS) | 2026-07-11 |
 | spz-swift | 2.1.0 | MIT | YES | Niantic + Sean Cier notice | https://github.com/scier/spz-swift/blob/main/LICENSE | **Yes** (iOS) | 2026-07-18 |
 | Draco | — | Apache-2.0 (typical) | YES | NOTICE | Google Draco (loader support only; Android GLB avoids Draco compression) | **No** | — |
 | Firebase | 12.11.0 (iOS SPM) | Apache-2.0 | Per Google ToS | Yes | Firebase SDK | **Yes** | 2026-07-11 |
 
-**Attribution packaging current as of 2026-08-05:** ONNX Runtime, Filament/SceneView,
-spz-swift, COCO annotations, the full Apache text, LiteRT's combined license/Caffe attribution,
-and readable notices for converted model formats are represented in the app UI or bundled legal
-documents.
+**Attribution packaging current as of 2026-08-15:** ONNX Runtime (MIT plus upstream
+notices), Three.js, Filament/SceneView, spz-swift, COCO annotations, the full Apache
+text, LiteRT's combined license/Caffe attribution, and readable notices for converted
+model formats are represented in the app UI or bundled legal documents. Android also
+extracts the exact reCAPTCHA SDK/third-party license bundle from its resolved AAR.
 
 ---
 
@@ -255,5 +256,6 @@ Licenses that **prohibit commercial distribution**, or research-only / GPL-AGPL 
 - [ ] M-LSD, Whisper, SHARP, or ExecuTorch promoted on-device
 - [x] Full Apache license and model-format modification notices bundled on iOS + Android (2026-08-05)
 - [x] LiteRT 1.4.2 combined license and Caffe/BSD attribution bundled on Android (2026-08-05)
+- [x] ONNX Runtime MIT/upstream notices, Three.js MIT, and resolved reCAPTCHA license bundle available offline on Android (2026-08-15)
 - [x] `phase1Notice` removed from license UI; commercial-release wording belongs in product terms (2026-07-18)
 - [x] SparkJS bundle removed — iOS + Android (2026-07-11)

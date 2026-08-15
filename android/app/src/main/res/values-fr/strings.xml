@@ -130,12 +130,15 @@
     <string name="licenses_arcore">Caméra AR en option et fonctionnalités liées à la profondeur sur les appareils Android pris en charge. Fourni par Google selon les conditions du SDK ARCore et les avis open source applicables.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Droit d\'auteur © Google LLC. Sous licence Apache License 2.0.</string>
+    <string name="licenses_recaptcha_title">SDK reCAPTCHA pour Android</string>
+    <string name="licenses_recaptcha">L\'authentification téléphonique Firebase utilise reCAPTCHA 18.6.1. Le document intégré reproduit les conditions du SDK Android et les licences tierces incluses distribuées avec cette version exacte du SDK.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">La détection et la segmentation des meubles utilisent le modèle RTMDet-Ins d\'OpenMMLab MMDetection. Droit d\'auteur © OpenMMLab. Sous licence Apache License 2.0.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">Prise en charge du rendu WebGL intégré pour les visionneuses de salle 3D. Copyright © 2010–2024 auteurs three.js. Sous licence MIT.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">Inférence de réseau neuronal sur l\'appareil. Copyright Microsoft Corporation. Sous licence MIT.</string>
+    <string name="licenses_onnx_runtime">Inférence locale de Depth Anything et GeoCalib ; RTMDet n\'utilise pas ce moteur. Copyright Microsoft Corporation. Sous licence MIT.</string>
+    <string name="licenses_document_unavailable">Le document juridique intégré n\'a pas pu être ouvert.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">Rendu 3D natif Android via SceneView et Google Filament. Sous licence Apache License 2.0.</string>
     <string name="licenses_coco_title">Jeu de données COCO</string>

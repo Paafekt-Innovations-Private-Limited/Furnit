@@ -126,12 +126,15 @@
     <string name="licenses_arcore">সমর্থিত অ্যান্ড্রয়েড ডিভাইসে ঐচ্ছিক AR ক্যামেরা এবং গভীরতা-সম্পর্কিত ক্ষমতা। ARCore SDK শর্তাবলী এবং প্রযোজ্য ওপেন সোর্স বিজ্ঞপ্তির অধীনে Google দ্বারা সরবরাহ করা হয়েছে।</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">কপিরাইট © Google LLC। Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
+    <string name="licenses_recaptcha_title">Android-এর জন্য reCAPTCHA SDK</string>
+    <string name="licenses_recaptcha">Firebase ফোন প্রমাণীকরণে reCAPTCHA 18.6.1 ব্যবহৃত হয়। সংযুক্ত নথিতে একই SDK সংস্করণের সঙ্গে বিতরণ করা Android SDK শর্তাবলি এবং অন্তর্ভুক্ত তৃতীয়-পক্ষের লাইসেন্সের পাঠ দেওয়া হয়েছে।</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">আসবাবপত্র সনাক্তকরণ এবং বিভাজন OpenMMLab MMDetection থেকে RTMDet-Ins মডেল ব্যবহার করে। কপিরাইট © OpenMMLab. Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D রুম দর্শকদের জন্য একত্রিত WebGL রেন্ডারিং সমর্থন। কপিরাইট © 2010–2024 three.js লেখক। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">অন-ডিভাইস নিউরাল-নেটওয়ার্ক ইনফারেন্স। কপিরাইট মাইক্রোসফ্ট কর্পোরেশন। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।</string>
+    <string name="licenses_onnx_runtime">ডিভাইসে Depth Anything ও GeoCalib ইনফারেন্স; RTMDet এই রানটাইম ব্যবহার করে না। কপিরাইট মাইক্রোসফ্ট কর্পোরেশন। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।</string>
+    <string name="licenses_document_unavailable">সংযুক্ত আইনি নথিটি খোলা যায়নি।</string>
     <string name="licenses_filament_title">SceneView ও Filament</string>
     <string name="licenses_filament">SceneView এবং Google Filament এর মাধ্যমে নেটিভ অ্যান্ড্রয়েড 3D রেন্ডারিং। Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_coco_title">COCO ডেটাসেট</string>

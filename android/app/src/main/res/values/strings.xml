@@ -153,12 +153,15 @@
     <string name="licenses_arcore">Optional AR camera and depth-related capability on supported Android devices. Provided by Google under ARCore SDK terms and applicable open-source notices.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright © Google LLC. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_recaptcha_title">reCAPTCHA Android SDK</string>
+    <string name="licenses_recaptcha">Firebase phone authentication uses reCAPTCHA 18.6.1. The bundled document reproduces the Android SDK terms and incorporated third-party license texts distributed with that exact SDK artifact.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright © OpenMMLab. Licensed under the Apache License 2.0.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">Bundled WebGL rendering support for 3D room viewers. Copyright © 2010–2024 three.js authors. Licensed under the MIT License.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">On-device neural-network inference. Copyright Microsoft Corporation. Licensed under the MIT License.</string>
+    <string name="licenses_onnx_runtime">On-device Depth Anything and GeoCalib inference; RTMDet does not use this runtime. Copyright Microsoft Corporation. Licensed under the MIT License.</string>
+    <string name="licenses_document_unavailable">The bundled legal document could not be opened.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">Native Android 3D rendering through SceneView and Google Filament. Licensed under the Apache License 2.0.</string>
     <string name="licenses_coco_title">COCO Dataset</string>

@@ -18,6 +18,14 @@ struct SettingsView: View {
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
+    private var canShowDeveloperSettings: Bool {
+        #if DEBUG
+        return authManager.canAccessDebugSettings
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
         NavigationView {
             Form {
@@ -135,26 +143,28 @@ struct SettingsView: View {
 
                 #if DEBUG
                 // Developer Settings Section
-                Section {
-                    Toggle(isOn: $appState.qualitySettings.debugMode) {
-                        HStack {
-                            Image(systemName: "ladybug.fill")
-                                .foregroundStyle(Theme.Palette.textPrimary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.debugMode)
-                                    .font(.headline)
-                                Text(L10n.Settings.debugModeDescription)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                if canShowDeveloperSettings {
+                    Section {
+                        Toggle(isOn: $appState.qualitySettings.debugMode) {
+                            HStack {
+                                Image(systemName: "ladybug.fill")
+                                    .foregroundStyle(Theme.Palette.textPrimary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(L10n.Settings.debugMode)
+                                        .font(.headline)
+                                    Text(L10n.Settings.debugModeDescription)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
+                        .tint(Theme.Palette.accent)
+                    } header: {
+                        Text(L10n.Settings.developer)
+                    } footer: {
+                        Text(L10n.Settings.developerFooter)
+                            .font(.footnote)
                     }
-                    .tint(Theme.Palette.accent)
-                } header: {
-                    Text(L10n.Settings.developer)
-                } footer: {
-                    Text(L10n.Settings.developerFooter)
-                        .font(.footnote)
                 }
                 #endif
 
@@ -277,6 +287,10 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .paafektScreenBackground()
             .navigationTitle(L10n.Settings.title)
+            .onAppear(perform: enforceDebugSettingsAccess)
+            .onChange(of: authManager.currentUser?.phoneNumber) { _, _ in
+                enforceDebugSettingsAccess()
+            }
             .alert(L10n.Profile.logoutConfirmTitle, isPresented: $showLogoutConfirmation) {
                 Button(L10n.Common.cancel, role: .cancel) { }
                 Button(L10n.Profile.logout, role: .destructive) {
@@ -331,6 +345,12 @@ struct SettingsView: View {
                 accountDeletionErrorMessage = error.localizedDescription
             }
             isDeletingAccount = false
+        }
+    }
+
+    private func enforceDebugSettingsAccess() {
+        if !canShowDeveloperSettings && appState.qualitySettings.debugMode {
+            appState.qualitySettings.debugMode = false
         }
     }
 }

@@ -126,12 +126,15 @@
     <string name="licenses_arcore">ಬೆಂಬಲಿತ Android ಸಾಧನಗಳಲ್ಲಿ ಐಚ್ಛಿಕ AR ಕ್ಯಾಮರಾ ಮತ್ತು ಆಳ-ಸಂಬಂಧಿತ ಸಾಮರ್ಥ್ಯ. ARCore SDK ನಿಯಮಗಳು ಮತ್ತು ಅನ್ವಯವಾಗುವ ಓಪನ್ ಸೋರ್ಸ್ ಸೂಚನೆಗಳ ಅಡಿಯಲ್ಲಿ Google ನಿಂದ ಒದಗಿಸಲಾಗಿದೆ.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">ಹಕ್ಕುಸ್ವಾಮ್ಯ (ಸಿ) Google LLC. ಅಪಾಚೆ ಪರವಾನಗಿ 2.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿದೆ.</string>
+    <string name="licenses_recaptcha_title">Android ಗಾಗಿ reCAPTCHA SDK</string>
+    <string name="licenses_recaptcha">Firebase ಫೋನ್ ದೃಢೀಕರಣವು reCAPTCHA 18.6.1 ಅನ್ನು ಬಳಸುತ್ತದೆ. ಸಂಯೋಜಿತ ದಾಖಲೆಯು ಅದೇ SDK ಆವೃತ್ತಿಯೊಂದಿಗೆ ವಿತರಿಸಲಾದ Android SDK ನಿಯಮಗಳು ಮತ್ತು ಒಳಗೊಂಡ ಮೂರನೇ ವ್ಯಕ್ತಿಯ ಪರವಾನಗಿ ಪಠ್ಯಗಳನ್ನು ಒದಗಿಸುತ್ತದೆ.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">ಪೀಠೋಪಕರಣಗಳ ಪತ್ತೆ ಮತ್ತು ವಿಭಜನೆಯು OpenMMLab MMDetection ನಿಂದ RTMDet-Ins ಮಾದರಿಯನ್ನು ಬಳಸುತ್ತದೆ. ಹಕ್ಕುಸ್ವಾಮ್ಯ (ಸಿ) OpenMMLab. ಅಪಾಚೆ ಪರವಾನಗಿ 2.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿದೆ.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D ಕೊಠಡಿ ವೀಕ್ಷಕರಿಗೆ ಬಂಡಲ್ ಮಾಡಿದ WebGL ರೆಂಡರಿಂಗ್ ಬೆಂಬಲ. ಕೃತಿಸ್ವಾಮ್ಯ (ಸಿ) 2010–2024 three.js ಲೇಖಕರು. MIT ಪರವಾನಗಿ ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿದೆ.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">ಸಾಧನದಲ್ಲಿ ನರ-ನೆಟ್‌ವರ್ಕ್ ತೀರ್ಮಾನ. ಕೃತಿಸ್ವಾಮ್ಯ Microsoft Corporation. MIT ಪರವಾನಗಿ ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿದೆ.</string>
+    <string name="licenses_onnx_runtime">ಸಾಧನದಲ್ಲೇ Depth Anything ಮತ್ತು GeoCalib ನಿರ್ಣಯ; RTMDet ಈ ರನ್‌ಟೈಮ್ ಬಳಸುವುದಿಲ್ಲ. ಕೃತಿಸ್ವಾಮ್ಯ Microsoft Corporation. MIT ಪರವಾನಗಿ ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿದೆ.</string>
+    <string name="licenses_document_unavailable">ಸಂಯೋಜಿತ ಕಾನೂನು ದಾಖಲೆಯನ್ನು ತೆರೆಯಲಾಗಲಿಲ್ಲ.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">SceneView ಮತ್ತು Google Filament ಮೂಲಕ ಸ್ಥಳೀಯ Android 3D ರೆಂಡರಿಂಗ್. ಅಪಾಚೆ ಪರವಾನಗಿ 2.0 ಅಡಿಯಲ್ಲಿ ಪರವಾನಗಿ ಪಡೆದಿದೆ.</string>
     <string name="licenses_coco_title">COCO ಡೇಟಾಸೆಟ್</string>

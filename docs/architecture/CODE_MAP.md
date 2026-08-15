@@ -66,7 +66,7 @@ owned by `android/docs/AUTHENTICATION.md`.
 | Android generated room | `room.glb` plus `metadata.txt` |
 | Android model delivery | Install-time Play Asset Delivery modules `room_generation_models` and `rtmdet_models` |
 | iOS legal resources | `Furnit/Licenses/APACHE-2.0.txt`, `Furnit/Licenses/THIRD_PARTY_NOTICES.txt` |
-| Android legal resources | `android/app/src/main/assets/legal/APACHE-2.0.txt`, `LITERT-LICENSE.txt`, `THIRD_PARTY_NOTICES.txt` |
+| Android legal resources | `android/app/src/main/assets/legal/` source documents plus the generated reCAPTCHA license asset; enforced by `android/app/build.gradle` (`verifyLegalAssets`) |
 | Firebase config | `Furnit/Authentication/GoogleService-Info.plist`, `android/app/google-services.json` |
 
 Never commit local signing credentials, keystores, downloaded tokens, or generated

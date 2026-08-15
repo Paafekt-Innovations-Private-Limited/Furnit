@@ -457,7 +457,8 @@ class GLBRoomActivity : AppCompatActivity() {
         if (!isPreviewMode) {
             warmRoomMeasurementInBackgroundIfNeeded()
         }
-        // Match iOS: preload RTMDet when the room opens so the first Fit tap is camera+frame, not OrtSession create.
+        // Match iOS: preload RTMDet when the room opens so the first Fit tap is camera+frame,
+        // not LiteRT model/interpreter setup.
         preloadFurnitureFitModelInBackground()
     }
 

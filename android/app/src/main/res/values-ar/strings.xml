@@ -142,12 +142,15 @@
     <string name="licenses_arcore">كاميرا AR اختيارية وإمكانات متعلقة بالعمق على أجهزة Android المدعومة. مقدمة من Google بموجب شروط ARCore SDK والإشعارات مفتوحة المصدر المعمول بها.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">حقوق الطبع والنشر (ج) لشركة Google LLC. مرخص بموجب ترخيص أباتشي 2.0.</string>
+    <string name="licenses_recaptcha_title">حزمة تطوير reCAPTCHA لنظام Android</string>
+    <string name="licenses_recaptcha">تستخدم مصادقة الهاتف عبر Firebase الإصدار 18.6.1 من reCAPTCHA. يعيد المستند المضمّن إنتاج شروط حزمة تطوير Android ونصوص تراخيص الجهات الخارجية الموزعة مع إصدار الحزمة نفسه.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">يستخدم اكتشاف الأثاث وتقسيمه نموذج RTMDet-Ins من OpenMMLab MMDetection. حقوق الطبع والنشر (ج) OpenMMLab. مرخص بموجب ترخيص أباتشي 2.0.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">دعم عرض WebGL المجمع لمشاهدي الغرف ثلاثية الأبعاد. حقوق الطبع والنشر (ج) 2010–2024 لمؤلفي three.js. مرخص بموجب ترخيص MIT.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">استنتاج الشبكة العصبية على الجهاز. حقوق الطبع والنشر لشركة مايكروسوفت. مرخص بموجب ترخيص MIT.</string>
+    <string name="licenses_onnx_runtime">استنتاج Depth Anything وGeoCalib على الجهاز؛ لا يستخدم RTMDet وقت التشغيل هذا. حقوق الطبع والنشر لشركة مايكروسوفت. مرخص بموجب ترخيص MIT.</string>
+    <string name="licenses_document_unavailable">تعذر فتح مستند الترخيص المضمّن.</string>
     <string name="licenses_filament_title">SceneView وFilament</string>
     <string name="licenses_filament">عرض Android ثلاثي الأبعاد الأصلي من خلال SceneView وGoogle Filament. مرخص بموجب ترخيص أباتشي 2.0.</string>
     <string name="licenses_coco_title">مجموعة بيانات COCO</string>

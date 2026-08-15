@@ -126,12 +126,15 @@
     <string name="licenses_arcore">പിന്തുണയ്‌ക്കുന്ന Android ഉപകരണങ്ങളിൽ ഓപ്‌ഷണൽ AR ക്യാമറയും ആഴവുമായി ബന്ധപ്പെട്ട ശേഷിയും. ARCore SDK നിബന്ധനകൾക്കും ബാധകമായ ഓപ്പൺ സോഴ്‌സ് അറിയിപ്പുകൾക്കും കീഴിൽ Google നൽകുന്നത്.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">പകർപ്പവകാശം (സി) Google LLC. അപ്പാച്ചെ ലൈസൻസ് 2.0 പ്രകാരം ലൈസൻസ്.</string>
+    <string name="licenses_recaptcha_title">Android-നുള്ള reCAPTCHA SDK</string>
+    <string name="licenses_recaptcha">Firebase ഫോൺ പ്രാമാണീകരണം reCAPTCHA 18.6.1 ഉപയോഗിക്കുന്നു. ഉൾപ്പെടുത്തിയ പ്രമാണം അതേ SDK പതിപ്പിനൊപ്പം വിതരണം ചെയ്യുന്ന Android SDK നിബന്ധനകളും മൂന്നാം കക്ഷി ലൈസൻസ് പാഠങ്ങളും പുനഃസൃഷ്ടിക്കുന്നു.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">ഫർണിച്ചർ കണ്ടെത്തലും സെഗ്മെൻ്റേഷനും OpenMMLab MMDetection-ൽ നിന്നുള്ള RTMDet-Ins മോഡൽ ഉപയോഗിക്കുന്നു. പകർപ്പവകാശം (സി) OpenMMLab. അപ്പാച്ചെ ലൈസൻസ് 2.0 പ്രകാരം ലൈസൻസ്.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">3D റൂം കാഴ്‌ചക്കാർക്കായി ബണ്ടിൽ ചെയ്‌ത WebGL റെൻഡറിംഗ് പിന്തുണ. പകർപ്പവകാശം (സി) 2010–2024 three.js രചയിതാക്കൾ. MIT ലൈസൻസിന് കീഴിൽ ലൈസൻസ് ചെയ്‌തിരിക്കുന്നു.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">ഉപകരണത്തിലെ ന്യൂറൽ നെറ്റ്‌വർക്ക് അനുമാനം. പകർപ്പവകാശം Microsoft Corporation. MIT ലൈസൻസിന് കീഴിൽ ലൈസൻസ് ചെയ്‌തിരിക്കുന്നു.</string>
+    <string name="licenses_onnx_runtime">ഉപകരണത്തിലെ Depth Anything, GeoCalib അനുമാനം; RTMDet ഈ റൺടൈം ഉപയോഗിക്കുന്നില്ല. പകർപ്പവകാശം Microsoft Corporation. MIT ലൈസൻസിന് കീഴിൽ ലൈസൻസ് ചെയ്‌തിരിക്കുന്നു.</string>
+    <string name="licenses_document_unavailable">ഉൾപ്പെടുത്തിയ നിയമ പ്രമാണം തുറക്കാനായില്ല.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">SceneView, Google Filament എന്നിവയിലൂടെ പ്രാദേശിക Android 3D റെൻഡറിംഗ്. അപ്പാച്ചെ ലൈസൻസ് 2.0 പ്രകാരം ലൈസൻസ്.</string>
     <string name="licenses_coco_title">COCO ഡാറ്റാസെറ്റ്</string>

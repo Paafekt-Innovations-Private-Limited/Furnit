@@ -76,6 +76,15 @@ the SMS Retriever path. Device services, keyboard settings, message format, and 
 Play services can still affect whether a suggestion appears; the app cannot force the
 user's keyboard to show one.
 
+## Debug Settings test identity
+
+Developer Settings are compiled only into debug builds and are additionally visible
+only when the authenticated Firebase phone number normalizes to `+1 650-555-3434`.
+Formatting characters are ignored, but the country code is required. If a different
+user opens Settings, the app hides the Developer section and clears any debug mode
+previously persisted by the test identity. This gate does not bypass Firebase Auth or
+change manual OTP entry.
+
 ## Production smoke test
 
 Use a fresh Google Play install, not a locally signed APK:

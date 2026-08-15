@@ -126,12 +126,15 @@
     <string name="licenses_arcore">Optionale AR-Kamera und tiefenbezogene Funktion auf unterstützten Android-Geräten. Bereitgestellt von Google gemäß den ARCore SDK-Bedingungen und den geltenden Open-Source-Hinweisen.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Urheberrecht © Google LLC. Lizenziert unter der Apache-Lizenz 2.0.</string>
+    <string name="licenses_recaptcha_title">reCAPTCHA-SDK für Android</string>
+    <string name="licenses_recaptcha">Die Firebase-Telefonauthentifizierung verwendet reCAPTCHA 18.6.1. Das gebündelte Dokument gibt die Android-SDK-Bedingungen und die eingebundenen Drittanbieterlizenzen wieder, die mit genau dieser SDK-Version geliefert werden.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
     <string name="licenses_rtmdet">Die Möbelerkennung und -segmentierung nutzt das RTMDet-Ins-Modell von OpenMMLab MMDetection. Urheberrecht © OpenMMLab. Lizenziert unter der Apache-Lizenz 2.0.</string>
     <string name="licenses_three_title">Three.js</string>
     <string name="licenses_three">Gebündelte WebGL-Rendering-Unterstützung für 3D-Raumbetrachter. Copyright © 2010–2024 Three.js-Autoren. Lizenziert unter der MIT-Lizenz.</string>
     <string name="licenses_onnx_runtime_title">ONNX Runtime</string>
-    <string name="licenses_onnx_runtime">Inferenz über ein neuronales Netzwerk auf dem Gerät. Copyright Microsoft Corporation. Lizenziert unter der MIT-Lizenz.</string>
+    <string name="licenses_onnx_runtime">Lokale Inferenz für Depth Anything und GeoCalib; RTMDet verwendet diese Laufzeit nicht. Copyright Microsoft Corporation. Lizenziert unter der MIT-Lizenz.</string>
+    <string name="licenses_document_unavailable">Das gebündelte Rechtsdokument konnte nicht geöffnet werden.</string>
     <string name="licenses_filament_title">SceneView &amp; Filament</string>
     <string name="licenses_filament">Natives Android 3D-Rendering über SceneView und Google Filament. Lizenziert unter der Apache-Lizenz 2.0.</string>
     <string name="licenses_coco_title">COCO-Datensatz</string>
