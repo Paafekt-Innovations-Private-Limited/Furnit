@@ -67,7 +67,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     // Note: Using total translation from gesture start instead of cumulative tracking for smoother rotation
     
     // Pan gesture configuration
-    private let panSensitivity: Float = 0.005
+    private let panSensitivity = DepthAnythingPhotoCameraInteraction.positionTranslationMetersPerPoint
     private let rotationSensitivity: Float = 0.01
     
     init(arView: ARView) {
@@ -621,13 +621,13 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
                 y: translation.y - lastPanTranslation.y
             )
 
-            // Convert delta to rotation increments
-            let deltaYaw = Float(deltaTranslation.x) * rotationSensitivity * 0.5   // Horizontal rotation
-            let deltaPitch = Float(deltaTranslation.y) * rotationSensitivity * 0.5 // Vertical rotation
+            let rotationDelta = DepthAnythingPhotoCameraInteraction.rotationDelta(
+                for: deltaTranslation
+            )
 
             // Update accumulated rotation values
-            accumulatedYaw += -deltaYaw  // Negative for natural direction
-            accumulatedPitch += -deltaPitch // Negative for natural direction
+            accumulatedYaw += rotationDelta.yaw
+            accumulatedPitch += rotationDelta.pitch
 
             constrainLayeredPhotoLookIfNeeded()
 
@@ -808,7 +808,8 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             // with pinch instead of each recognizer restoring its own gesture-start transform.
             let safePreviousScale = max(lastPinchScale, 0.001)
             let scaleDelta = gesture.scale / safePreviousScale
-            let zoomFactor = (scaleDelta - 1.0) * 2.5
+            let zoomFactor = Float(scaleDelta - 1.0)
+                * DepthAnythingPhotoCameraInteraction.pinchDollyMetersPerScaleDelta
             
             // Get camera's current transform for directional reference
             let cameraTransform = cameraAnchor.transform
@@ -821,7 +822,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             ))
             
             // Camera moves forward/backward for zoom effect
-            let cameraMovement = forward * Float(zoomFactor)
+            let cameraMovement = forward * zoomFactor
             var newPosition = cameraTransform.translation + cameraMovement
             
             // Apply boundary constraints

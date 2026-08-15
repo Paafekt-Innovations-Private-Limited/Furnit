@@ -10,11 +10,10 @@ and [`../../docs/architecture/CODE_MAP.md`](../../docs/architecture/CODE_MAP.md)
 Real SVG flow diagrams (open in any browser / Xcode preview):
 
 - [`room-generation-flow.svg`](../diagrams/room-generation-flow.svg) — default
-  **Photo → 3D** flow (two-phase): home toolbar → photo capture or library image → camera metadata
-  sidecar → **instant preview** (`PreviewFast`, no ML, placeholder dims) in
-  `DepthAnythingPreviewRoomView` → **first save** runs GeoCalib + Depth Anything + RTMDet object
-  anchor → measurement grid → version-5 single-surface projective USDZ → saved room in
-  `ModelViewerView` (or reopen from home).
+  **Photo → 3D** flow: home toolbar → photo capture or library image → camera metadata sidecar →
+  GeoCalib + Depth Anything + RTMDet object anchor → measurement grid → version-5 single-surface
+  projective USDZ → exact RealityKit preview in `DepthAnythingPreviewRoomView` → Save promotes the
+  inspected USDZ to `ModelViewerView`/home without reconstructing it again.
   Other viewers: `GLBRoomView` (GLB), `MeshRoomView` (manual path), `SplatRoomView` (saved PLY via
   MetalSplatter + SplatIO).
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance segmentation
@@ -24,9 +23,10 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
   LiteRT's mandatory fully audited Metal delegate (`cpuNodes=0`) → raw-head decode →
   confidence-first NMS → mask affinity → pixel-union cutout.
 
-Room generation (default AI path): **instant preview (no ML)** then **GeoCalib + Depth Anything +
-RTMDet object anchor → measured single-surface projective USDZ on first save**. Swift entry points: `SinglePhotoRoomViewer.swift`
-(`makeDepthAnythingPreviewDestination` for preview; `reconstructWithResult` on save) →
+Room generation (default AI path): **GeoCalib + Depth Anything + RTMDet object anchor → measured
+single-surface projective USDZ before preview**, followed by an exact RealityKit preview and
+byte-preserving Save promotion. Swift entry points: `SinglePhotoRoomViewer.swift`
+(`makeDepthAnythingPreviewDestination` generates the preview artifact; Save copies it) →
 `CameraExifSidecar.swift` → `DepthAnythingRoomReconstructor.swift` → `USDZModel` /
 `ModelViewerView`.
 
@@ -39,8 +39,9 @@ processing, and enables virtual-device fusion so Apple can apply its multi-frame
 reduction instead of passing a noisier physical ultra-wide frame directly. Standard capture is
 unchanged.
 
-The immediate Depth Anything preview remains a flat, pixel-correct photo. New saves depth-unproject
-the displayed pixels into one continuous perspective surface. They do not add a second
+The Depth Anything preview displays the generated final USDZ, so preview and reopened saved rooms
+share the same continuous perspective surface. Generation depth-unprojects the displayed pixels
+before preview and does not add a second
 completed-background enclosure; keeping one opaque surface avoids the prior translucent shell while
 limited capture-eye translation and look-around expose the metric depth shape. A single photograph
 still contains no true hidden pixels, so off-axis views are reprojections rather than newly observed
@@ -48,13 +49,13 @@ content. Inferred W×H×D remains authoritative measurement metadata. Projection
 marks this contract. Older projective and legacy flat USDZ files remain readable; the sidecar-based
 X-aspect correction still applies only to legacy flat files.
 
-The current saved-room appearance candidate uses a single opaque, unlit texture without interpolated
+The current preview/save appearance candidate uses a single opaque, unlit texture without interpolated
 vertex color, stages `room.jpg` through `SCNSceneExportDelegate`, and normalizes imported photo-room
 materials in RealityKit with a neutral black background and no image-based lighting. The camera and
 movement envelope use the same capture convention as Android/glTF (forward is negative Z). A generic
-iPhoneOS Debug build succeeds, but the saved-room appearance is still device-unconfirmed as of
-2026-08-14. Test a newly saved room for the export/UV path; opening an older room exercises only the
-viewer-side material normalization and does not rewrite its USDZ.
+iPhoneOS Debug build succeeds, but preview-versus-reopen appearance remains device-unconfirmed as of
+2026-08-15. Test a newly generated room through preview → Save → reopen; opening an older room
+exercises only viewer-side compatibility and does not rewrite its USDZ.
 
 `FurnitUITests/SavedRoomNavigationUITests.swift` adds a create → preview → save → reopen navigation
 regression using a programmatically generated synthetic room image. It checks zoom, pan and D-pad
@@ -63,8 +64,8 @@ private room-photo fixture; the visual test still requires an iOS device/test de
 
 ## Room viewer smoke test
 
-1. Home → **Photo → 3D** → capture or pick a room photo → AI path opens preview instantly → tap
-   **Save** to run metric generation → room appears in home list.
+1. Home → **Photo → 3D** → capture or pick a room photo → wait for metric generation → inspect the
+   exact USDZ preview → tap **Save** → reopen it from the home list and compare framing/appearance.
 2. Tap **brain** (bottom-left). Default mode should auto-segment the highest-confidence item over the 3D room.
 3. Use the top controls for ruler/pinch/tap guidance, then tap **text.viewfinder** while brain is active. Live camera preview should appear with cluster boxes.
 4. Tap two or more furniture clusters.

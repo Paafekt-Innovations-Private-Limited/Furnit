@@ -54,11 +54,12 @@ the resolved cause.
 ### iOS
 
 - Swift/SwiftUI/UIKit app under [`../Furnit/`](../Furnit/).
-- Default Photo → 3D is two-phase: an immediate flat-photo preview, then GeoCalib +
-  Depth Anything V2 Metric Indoor + RTMDet measurement and a version-5 single-surface
-  projective USDZ export on first save. It has limited capture-eye navigation and no
+- Default Photo → 3D runs GeoCalib + Depth Anything V2 Metric Indoor + RTMDet measurement
+  and exports a version-5 single-surface projective USDZ before preview. The preview opens
+  that final USDZ and Save promotes the same artifact without reconstruction. It has limited
+  capture-eye navigation and no
   secondary completed-background shell; one photograph still cannot supply true hidden
-  pixels. Saved-room appearance remains device-unconfirmed as of 2026-08-14.
+  pixels. Preview/save appearance remains device-unconfirmed as of 2026-08-15.
 - The manual boundary path uses `SinglePhotoRoomReconstructor` and
   `SyntheticDepthEstimator`, then opens `MeshRoomView`.
 - Furniture Fit runs RTMDet-Ins-m as **Core ML** (`rtmdet-ins-m.mlpackage`, `RTMDetModel`
@@ -75,11 +76,11 @@ the resolved cause.
 ### Android
 
 - Kotlin app under [`../android/`](../android/), target/compile SDK 36, arm64 runtime.
-- Photo → 3D shows the AI/manual picker before heavy decode work. The default AI
-  preview is an optimized flat full-photo GLB. Save attempts a version-5 layered
-  projective GLB with foreground separation and deterministic background appearance
-  completion; if that representation cannot be produced safely, Save emits a flat
-  photo GLB instead. The layered result remains device-unconfirmed as of 2026-08-14.
+- Photo → 3D shows the AI/manual picker before heavy work. The default AI path runs metric
+  measurement once, authors one opaque version-5 continuous projective GLB, and previews that
+  final artifact. Save transactionally promotes the byte-identical preview GLB instead of rerunning
+  inference; a flat photo GLB remains only as generation-failure fallback. Portrait/landscape
+  preview/save parity remains device-unconfirmed as of 2026-08-15.
   Manual setup produces a textured five-plane GLB.
 - Depth Anything and GeoCalib ONNX models plus one RTMDet FP16 LiteRT model ship in install-time
   Play Asset Delivery packs and are loaded through Android's `AssetManager`.

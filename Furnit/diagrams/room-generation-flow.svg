@@ -23,12 +23,12 @@
   </defs>
 
   <text x="32" y="40" class="title">Photo → 3D Room — iOS (Swift)</text>
-  <text x="32" y="62" class="sub">Two-phase AI path: instant preview (no ML) on create · GeoCalib + Depth Anything + RTMDet on first save → USDZ.</text>
+  <text x="32" y="62" class="sub">One generation pass before preview · RealityKit previews the final USDZ · Save promotes the same artifact.</text>
 
   <rect x="570" y="78" width="14" height="14" rx="3" class="ane"/><text x="590" y="90" class="legtxt">Core ML</text>
   <rect x="652" y="78" width="14" height="14" rx="3" class="cpu"/><text x="672" y="90" class="legtxt">CPU math</text>
   <rect x="740" y="78" width="14" height="14" rx="3" class="io"/><text x="760" y="90" class="legtxt">file/export</text>
-  <rect x="48" y="78" width="14" height="14" rx="3" class="preview"/><text x="68" y="90" class="legtxt">preview (no ML)</text>
+  <rect x="48" y="78" width="14" height="14" rx="3" class="preview"/><text x="68" y="90" class="legtxt">preview UI</text>
 
   <g>
     <rect x="270" y="112" width="360" height="56" class="box cam"/>
@@ -45,27 +45,27 @@
   </g>
   <path class="edge" d="M450,278 L450,308" marker-end="url(#arrow)"/>
 
-  <text x="48" y="328" class="phase">Phase 1 — Instant preview (no ML)</text>
+  <text x="48" y="328" class="phase">Photo-ready UI</text>
   <rect x="48" y="338" width="804" height="196" rx="14" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="8 5"/>
 
   <g>
     <rect x="270" y="358" width="360" height="72" class="box preview"/>
-    <text x="450" y="382" text-anchor="middle" class="bt">PreviewFast</text>
-    <text x="450" y="401" text-anchor="middle" class="bs">skip GeoCalib · Depth Anything · RTMDet · USDZ export</text>
-    <text x="450" y="419" text-anchor="middle" class="bs">placeholder dims: W=2 m · H=aspect×W · D=3 m</text>
+    <text x="450" y="382" text-anchor="middle" class="bt">AI generation requested</text>
+    <text x="450" y="401" text-anchor="middle" class="bs">show progress while the final room is generated</text>
+    <text x="450" y="419" text-anchor="middle" class="bs">no temporary flat-room artifact</text>
   </g>
   <path class="edge" d="M450,430 L450,468" marker-end="url(#arrow)"/>
 
   <g>
     <rect x="270" y="468" width="360" height="56" class="box disp"/>
-    <text x="450" y="491" text-anchor="middle" class="bt">DepthAnythingPreviewRoomView</text>
-    <text x="450" y="510" text-anchor="middle" class="bs">flat photo plane · explore · brain/segment · tap Save to run ML</text>
+    <text x="450" y="491" text-anchor="middle" class="bt">SinglePhotoRoomView progress</text>
+    <text x="450" y="510" text-anchor="middle" class="bs">preserve selected photo/orientation while generation runs</text>
   </g>
 
   <path class="edge" d="M450,534 L450,574" marker-end="url(#arrow)"/>
-  <text x="450" y="562" text-anchor="middle" class="bs" fill="#6b7280">User taps Save</text>
+  <text x="450" y="562" text-anchor="middle" class="bs" fill="#6b7280">Generation pipeline</text>
 
-  <text x="48" y="598" class="phase">Phase 2 — First save (full ML stack)</text>
+  <text x="48" y="598" class="phase">Final artifact generation before preview</text>
   <rect x="48" y="608" width="804" height="648" rx="14" fill="none" stroke="#1ea64a" stroke-width="1.2"/>
 
   <g>
@@ -84,7 +84,7 @@
     <rect x="606" y="628" width="246" height="86" class="box ane"/>
     <text x="729" y="652" text-anchor="middle" class="bt">RTMDet anchor</text>
     <text x="729" y="671" text-anchor="middle" class="bs">object bbox for scale/mask</text>
-    <text x="729" y="689" text-anchor="middle" class="bs">one-shot on save (not preview)</text>
+    <text x="729" y="689" text-anchor="middle" class="bs">one-shot during generation</text>
   </g>
   <path class="edge" d="M171,714 C171,750 450,740 450,778" marker-end="url(#arrow)"/>
   <path class="edge" d="M450,714 L450,778" marker-end="url(#arrow)"/>
@@ -122,8 +122,8 @@
 
   <g>
     <rect x="270" y="1188" width="360" height="56" class="box disp"/>
-    <text x="450" y="1211" text-anchor="middle" class="bt">Saved room → ModelViewerView</text>
-    <text x="450" y="1230" text-anchor="middle" class="bs">RealityKit USDZ · measured dims in .usdz.meta</text>
+    <text x="450" y="1211" text-anchor="middle" class="bt">Exact preview → Save promotion</text>
+    <text x="450" y="1230" text-anchor="middle" class="bs">RealityKit previews this USDZ · Save copies it with measured metadata</text>
   </g>
 
   <g>
@@ -134,7 +134,7 @@
 
   <g>
     <rect x="78" y="1340" width="744" height="58" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
-    <text x="96" y="1363" class="bt">User-facing progress copy (save only)</text>
+    <text x="96" y="1363" class="bt">User-facing progress copy (generation)</text>
     <text x="96" y="1383" class="bs">"Measuring room…" / "Generating 3D Model" / "Saving room…". Backend names stay out of the UI.</text>
   </g>
 

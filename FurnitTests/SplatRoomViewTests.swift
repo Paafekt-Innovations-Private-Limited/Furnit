@@ -79,6 +79,38 @@ final class SplatRoomViewTests: XCTestCase {
         XCTAssertEqual(dimensions.width / dimensions.height, 900.0 / 1600.0, accuracy: 0.0001)
     }
 
+    func testDepthMaskPrecomputedP98MatchesFallbackSort() {
+        let width = 24
+        let height = 20
+        let depth = (0..<(width * height)).map { index in
+            1.0 + Float((index * 37) % 211) / 50.0
+        }
+        let sorted = depth.sorted()
+        let p98Index = Int(Double(sorted.count - 1) * 0.98)
+        let expected = RoomExtent.buildInvalidDepthMask(
+            depth: depth,
+            width: width,
+            height: height,
+            detections: [],
+            focalPx: 320,
+            cx: Float(width - 1) * 0.5,
+            cy: Float(height - 1) * 0.5
+        )
+        let optimized = RoomExtent.buildInvalidDepthMask(
+            depth: depth,
+            width: width,
+            height: height,
+            detections: [],
+            focalPx: 320,
+            cx: Float(width - 1) * 0.5,
+            cy: Float(height - 1) * 0.5,
+            depthP98: sorted[p98Index]
+        )
+
+        XCTAssertEqual(optimized.valid, expected.valid)
+        XCTAssertEqual(optimized.debug, expected.debug)
+    }
+
     private func makeImage(width: CGFloat, height: CGFloat) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { context in
             UIColor.black.setFill()

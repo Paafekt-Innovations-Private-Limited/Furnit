@@ -24,11 +24,11 @@ For Android Studio device testing, set **Run > Edit Configurations > app > Deplo
 4. Confirm the AI/manual method picker appears immediately, then choose AI generation.
 5. Confirm choosing AI generation requests RTMDet for the upcoming preview; selecting a photo or
    launching the app must not request it.
-6. Confirm a GLB preview opens with a **flat full-photo** wall (no dragged/stretch artifacts on the front texture).
+6. Confirm generation completes before a version-5 continuous-depth GLB preview opens. The preview must contain one opaque photo surface without a duplicate foreground/background layer.
 7. Confirm `GLBRoomActivity` uses floating top controls (back, ruler/pinch/tap helpers, recenter/save, AR), not a full-width band.
 8. Save the room.
-9. Confirm the saved room appears in the home room list and opens in `GLBRoomActivity` as either a version-5 layered depth asset or the safe flat fallback.
-10. For a layered asset, recenter, pinch within the bounded forward/backward envelope, and use drag plus D-pad toward each coverage limit. Confirm foreground objects stay in place and the completed background does not repeat foreground pixels, stretch, or reveal renderer-gray holes. This candidate still requires manual device confirmation as of 2026-08-14.
+9. Confirm the saved room appears in the home room list and reopens with the same framing, geometry, texture, and initial camera position as the preview. Save must promote the preview GLB rather than rerun inference.
+10. Recenter, pinch within the bounded forward/backward envelope, and use drag plus D-pad toward each coverage limit. Confirm foreground objects stay in place without duplicated layers, edge stretching, fog shells, or renderer-gray holes. Repeat with fresh portrait and landscape inputs. This candidate still requires manual device confirmation as of 2026-08-15.
 
 The large `SavedRoomNavigationE2ETest` exercises the same create/save/reopen/navigation sequence with
 a synthetic image generated at runtime. Compile it with `:app:assembleAndroidTest`; run it only on a

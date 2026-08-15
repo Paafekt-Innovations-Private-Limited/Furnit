@@ -81,7 +81,8 @@ struct RealityKitView: UIViewRepresentable {
                     cameraAnchor: cameraAnchor,
                     cameraEntity: context.coordinator.cameraEntity,
                     boundaryManager: boundaryManager,
-                    model: model
+                    model: model,
+                    cameraMetadata: context.coordinator.depthCameraMetadata
                 )
                 context.coordinator.configureNavigationContract(for: model)
 
@@ -102,7 +103,8 @@ struct RealityKitView: UIViewRepresentable {
                     cameraAnchor: cameraAnchor,
                     cameraEntity: context.coordinator.cameraEntity,
                     boundaryManager: boundaryManager,
-                    model: model
+                    model: model,
+                    cameraMetadata: context.coordinator.depthCameraMetadata
                 )
                 context.coordinator.configureNavigationContract(for: model)
             }
@@ -134,7 +136,8 @@ struct RealityKitView: UIViewRepresentable {
                     cameraAnchor: cameraAnchor,
                     cameraEntity: context.coordinator.cameraEntity,
                     boundaryManager: boundaryManager,
-                    model: model
+                    model: model,
+                    cameraMetadata: context.coordinator.depthCameraMetadata
                 )
                 context.coordinator.configureNavigationContract(for: model)
 
@@ -193,7 +196,8 @@ struct RealityKitView: UIViewRepresentable {
         _ cameraEntity: PerspectiveCamera?,
         model: USDZModel,
         authoredVerticalFieldOfView: Float?,
-        viewportSize: CGSize?
+        viewportSize: CGSize?,
+        cameraMetadata: [String: Double]?
     ) {
         guard let cameraEntity,
               model.roomCoordinateFrame == .depthAnythingImageDepthMeters else {
@@ -201,32 +205,30 @@ struct RealityKitView: UIViewRepresentable {
         }
         if let authoredVerticalFieldOfView {
             var displayVerticalFieldOfView = authoredVerticalFieldOfView
-            if let modelURL = model.temporaryURL,
-               let viewportSize,
+            if let viewportSize,
                viewportSize.width > 1,
                viewportSize.height > 1 {
-                let metadata = CameraExifSidecar.load(roomURL: modelURL)
+                let metadata = cameraMetadata ?? model.temporaryURL.map {
+                    CameraExifSidecar.load(roomURL: $0)
+                } ?? [:]
                 let imageWidth = metadata["depthMeshImageWidthPx"]
                     ?? metadata["imageWidthPx"]
                 let imageHeight = metadata["depthMeshImageHeightPx"]
                     ?? metadata["imageHeightPx"]
                 if let imageWidth, let imageHeight,
                    imageWidth > 1, imageHeight > 1 {
-                    let sourceVerticalHalfFov = authoredVerticalFieldOfView * .pi / 360
-                    let sourceHorizontalHalfFov = atan(
-                        tan(sourceVerticalHalfFov) * Float(imageWidth / imageHeight)
-                    )
-                    let viewportAspect = Float(viewportSize.width / viewportSize.height)
-                    let horizontalCoverVerticalHalfFov = atan(
-                        tan(sourceHorizontalHalfFov) / max(viewportAspect, 0.01)
-                    )
                     // Match preview's aspect-fill framing. A wide viewport must crop the top and
                     // bottom of a 4:3 photo; showing the whole vertical FOV exposes nonexistent
                     // pixels at the sides and was what made the extension skirt visible.
-                    displayVerticalFieldOfView = 2 * min(
-                        sourceVerticalHalfFov,
-                        horizontalCoverVerticalHalfFov
-                    ) * 180 / .pi
+                    displayVerticalFieldOfView = Float(
+                        DepthAnythingFlatPhotoCameraFraming.projectiveDisplayVerticalFieldOfViewDegrees(
+                            authoredVerticalFieldOfViewDegrees: authoredVerticalFieldOfView,
+                            imageWidth: Int(imageWidth.rounded()),
+                            imageHeight: Int(imageHeight.rounded()),
+                            photoOrientation: model.photoOrientation,
+                            viewportSize: viewportSize
+                        )
+                    )
                 }
             }
             cameraEntity.camera.fieldOfViewOrientation = .vertical
@@ -240,12 +242,16 @@ struct RealityKitView: UIViewRepresentable {
         }
     }
 
-    private static func authoredDepthCaptureVerticalFieldOfView(for model: USDZModel) -> Float? {
-        guard model.roomCoordinateFrame == .depthAnythingImageDepthMeters,
-              let modelURL = model.temporaryURL else {
+    private static func authoredDepthCaptureVerticalFieldOfView(
+        for model: USDZModel,
+        cameraMetadata: [String: Double]?
+    ) -> Float? {
+        guard model.roomCoordinateFrame == .depthAnythingImageDepthMeters else {
             return nil
         }
-        let metadata = CameraExifSidecar.load(roomURL: modelURL)
+        let metadata = cameraMetadata ?? model.temporaryURL.map {
+            CameraExifSidecar.load(roomURL: $0)
+        } ?? [:]
         guard metadata["depthMeshProjectionVersion", default: 0] >= 1,
               metadata["depthMeshIsFlatPhotoPlane", default: 0] < 0.5,
               let fieldOfView = metadata["depthMeshVerticalFovDegrees"].map(Float.init),
@@ -262,11 +268,12 @@ struct RealityKitView: UIViewRepresentable {
     private static func restoreDepthAnythingPhotoAspectIfNeeded(
         _ entity: ModelEntity,
         modelURL: URL,
-        photoOrientation: PhotoOrientation
+        photoOrientation: PhotoOrientation,
+        cameraMetadata: [String: Double]?
     ) {
-        let cameraMetadata = CameraExifSidecar.load(roomURL: modelURL)
-        guard var pixelWidth = cameraMetadata["imageWidthPx"].map(Float.init),
-              var pixelHeight = cameraMetadata["imageHeightPx"].map(Float.init),
+        let metadata = cameraMetadata ?? CameraExifSidecar.load(roomURL: modelURL)
+        guard var pixelWidth = metadata["imageWidthPx"].map(Float.init),
+              var pixelHeight = metadata["imageHeightPx"].map(Float.init),
               pixelWidth > 1,
               pixelHeight > 1 else {
             return
@@ -314,15 +321,20 @@ struct RealityKitView: UIViewRepresentable {
         cameraAnchor: AnchorEntity,
         cameraEntity: PerspectiveCamera?,
         boundaryManager: RealityKitBoundaryManager,
-        model: USDZModel
+        model: USDZModel,
+        cameraMetadata: [String: Double]?
     ) -> SIMD3<Float>? {
         guard let bounds = boundaryManager.bounds else { return nil }
-        let authoredVerticalFieldOfView = authoredDepthCaptureVerticalFieldOfView(for: model)
+        let authoredVerticalFieldOfView = authoredDepthCaptureVerticalFieldOfView(
+            for: model,
+            cameraMetadata: cameraMetadata
+        )
         configureDepthAnythingCameraFieldOfView(
             cameraEntity,
             model: model,
             authoredVerticalFieldOfView: authoredVerticalFieldOfView,
-            viewportSize: boundaryManager.arView?.bounds.size
+            viewportSize: boundaryManager.arView?.bounds.size,
+            cameraMetadata: cameraMetadata
         )
         if authoredVerticalFieldOfView != nil {
             // Perspective depth meshes are authored around the original optical center. Keeping
@@ -403,6 +415,7 @@ struct RealityKitView: UIViewRepresentable {
         // ✅ Track current model to detect room changes
         var currentModelID: UUID?
         var boundaryManager: RealityKitBoundaryManager?
+        var depthCameraMetadata: [String: Double]?
         /// Point used for exterior orbit framing. The gesture handler independently switches to
         /// turn-in-place navigation whenever the camera lies inside a volumetric room.
         var cameraLookAtTarget: SIMD3<Float>? {
@@ -412,10 +425,6 @@ struct RealityKitView: UIViewRepresentable {
         }
         var lastViewportSize: CGSize = .zero
         private var cameraMoveNotificationTokens: [NSObjectProtocol] = []
-        // GLB D-pad parity: moveCamera(±8, 0) at 0.03 m/step; moveCameraUp(±0.2).
-        private let dPadHorizontalStep: Float = 0.24
-        private let dPadVerticalStep: Float = 0.2
-
         deinit {
             removeCameraMoveObservers()
         }
@@ -424,10 +433,22 @@ struct RealityKitView: UIViewRepresentable {
             removeCameraMoveObservers()
             let nc = NotificationCenter.default
             let namesAndDeltas: [(NSNotification.Name, SIMD3<Float>)] = [
-                (NSNotification.Name("WebGLCameraMoveLeft"), SIMD3<Float>(-dPadHorizontalStep, 0, 0)),
-                (NSNotification.Name("WebGLCameraMoveRight"), SIMD3<Float>(dPadHorizontalStep, 0, 0)),
-                (NSNotification.Name("WebGLCameraMoveUp"), SIMD3<Float>(0, dPadVerticalStep, 0)),
-                (NSNotification.Name("WebGLCameraMoveDown"), SIMD3<Float>(0, -dPadVerticalStep, 0)),
+                (
+                    PaafektViewerCameraMoveNotification.left,
+                    SIMD3<Float>(-DepthAnythingPhotoCameraInteraction.dPadHorizontalStep, 0, 0)
+                ),
+                (
+                    PaafektViewerCameraMoveNotification.right,
+                    SIMD3<Float>(DepthAnythingPhotoCameraInteraction.dPadHorizontalStep, 0, 0)
+                ),
+                (
+                    PaafektViewerCameraMoveNotification.up,
+                    SIMD3<Float>(0, DepthAnythingPhotoCameraInteraction.dPadVerticalStep, 0)
+                ),
+                (
+                    PaafektViewerCameraMoveNotification.down,
+                    SIMD3<Float>(0, -DepthAnythingPhotoCameraInteraction.dPadVerticalStep, 0)
+                ),
             ]
             for (name, delta) in namesAndDeltas {
                 let token = nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -449,9 +470,12 @@ struct RealityKitView: UIViewRepresentable {
         private func nudgeCamera(by worldDelta: SIMD3<Float>) {
             guard let cameraAnchor else { return }
 
+            let rotationNudge = DepthAnythingPhotoCameraInteraction.rotationNudge(
+                forWorldDelta: worldDelta
+            )
             let didTurn = gestureHandlers?.nudgeCapturedPhotoView(
-                yawDelta: -worldDelta.x * 0.4,
-                pitchDelta: worldDelta.y * 0.48
+                yawDelta: rotationNudge.yaw,
+                pitchDelta: rotationNudge.pitch
             ) == true
             if didTurn { return }
 
@@ -672,6 +696,9 @@ struct RealityKitView: UIViewRepresentable {
             logDebug("   - Is saved room: \(model.isSavedRoom)")
             return
         }
+        coordinator.depthCameraMetadata = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+            ? CameraExifSidecar.load(roomURL: modelURL)
+            : nil
         
         logDebug("🎨 [RealityKitView.loadModel] Got model URL: \(modelURL.path)")
         logDebug("   - Last path component: \(modelURL.lastPathComponent)")
@@ -725,7 +752,8 @@ struct RealityKitView: UIViewRepresentable {
                     Self.restoreDepthAnythingPhotoAspectIfNeeded(
                         modelEntity,
                         modelURL: modelURL,
-                        photoOrientation: model.photoOrientation
+                        photoOrientation: model.photoOrientation,
+                        cameraMetadata: coordinator.depthCameraMetadata
                     )
                 }
 
@@ -836,9 +864,7 @@ struct RealityKitView: UIViewRepresentable {
 
                 // Set up boundary manager for camera constraints
                 let boundaryManager = RealityKitBoundaryManager(arView: arView)
-                let navigationMetadata = model.temporaryURL.map {
-                    CameraExifSidecar.load(roomURL: $0)
-                } ?? [:]
+                let navigationMetadata = coordinator.depthCameraMetadata ?? [:]
                 let hasCompletedBackground = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
                     && navigationMetadata["depthMeshHasCompletedBackground", default: 0] >= 0.5
                 let hasNavigableDepthSurface = hasCompletedBackground
@@ -898,7 +924,8 @@ struct RealityKitView: UIViewRepresentable {
                         cameraAnchor: cameraAnchor,
                         cameraEntity: coordinator.cameraEntity,
                         boundaryManager: boundaryManager,
-                        model: model
+                        model: model,
+                        cameraMetadata: coordinator.depthCameraMetadata
                     )
                     coordinator.lastViewportSize = arView.bounds.size
                     let lookAt = coordinator.cameraLookAtTarget ?? SIMD3<Float>(

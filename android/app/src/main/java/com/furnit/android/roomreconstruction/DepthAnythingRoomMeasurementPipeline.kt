@@ -35,7 +35,7 @@ data class DepthMeshData(
 
 object DepthAnythingRoomMeasurementPipeline {
     private const val TAG = "RoomMeasurementPipeline"
-    private const val AUTHORITATIVE_HEIGHT_CONFIDENCE = 0.7f
+    private const val AUTHORITATIVE_HEIGHT_CONFIDENCE = 0.5f
 
     fun measure(
         context: Context,
@@ -122,6 +122,9 @@ object DepthAnythingRoomMeasurementPipeline {
                 depthRows = depthRows,
             )
             val measurementDepth = RoomMath.scaleDepthFlat(rawDepth, measurementCalibration.depthScale)
+            // Match iOS mesh authoring: rendering uses the metric depth calibration and metric
+            // focal length. The independent camera-height scale/focal pair is measurement-only.
+            val metricDepth = RoomMath.scaleDepthFlat(rawDepth, metricCalibration.depthScale)
 
             val wallMeasured = WallMeasurementMeasure.measureWall(
                 depth = measurementDepth,
@@ -198,7 +201,7 @@ object DepthAnythingRoomMeasurementPipeline {
             ) {
                 roomHeightMeasured.height
             } else {
-                RoomDefaults.DEFAULT_HEIGHT_M
+                roomExtentMeasured.height.coerceIn(2.0f, 3.6f)
             }
             val authoritativeHeightSource = if (
                 roomHeightMeasured.confidence >= AUTHORITATIVE_HEIGHT_CONFIDENCE &&
@@ -236,19 +239,19 @@ object DepthAnythingRoomMeasurementPipeline {
                     "W=${measured.width} H=${measured.height} D=${measured.depth} meshW=$meshWidth",
             )
             RoomMeasurementPipelineResult(
-                width = meshWidth,
+                width = measured.width,
                 height = measured.height,
                 depth = measured.depth,
                 measured = true,
                 source = "depth_anything_metric_ios_pipeline",
                 focalSource = measurementFocal.source,
                 depthMesh = DepthMeshData(
-                    calibratedDepth = measurementDepth,
+                    calibratedDepth = metricDepth,
                     imageWidth = imageWidth,
                     imageHeight = imageHeight,
-                    focalXPixels = measurementFocal.fx,
-                    focalYPixels = measurementFocal.fy,
-                    foregroundMask = sceneAnalysis.foregroundMask,
+                    focalXPixels = focalPx,
+                    focalYPixels = focalPx,
+                    foregroundMask = null,
                 ),
             )
         } catch (error: Exception) {

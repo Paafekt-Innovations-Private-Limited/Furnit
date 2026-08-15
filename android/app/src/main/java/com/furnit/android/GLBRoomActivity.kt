@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -73,7 +74,7 @@ import com.furnit.android.models.roomintelligence.StraightSrgbColor
 import com.furnit.android.models.roomintelligence.SurfacePalette
 import com.furnit.android.services.DepthAnythingRoomMeasurer
 import com.furnit.android.services.FurnitureFitManager
-import com.furnit.android.services.GlbGenerator
+import com.furnit.android.services.RoomArtifactPromoter
 import com.furnit.android.services.RoomMeasurementDisplay
 import com.furnit.android.services.SegmentationResult
 import kotlinx.coroutines.Dispatchers
@@ -647,6 +648,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun loadRoomMetadataFromFolder() {
         val folder = glbPath?.let { File(it).parentFile } ?: return
         val snapshot = RoomFolderMetadata.readFromFolder(folder) ?: return
+        photoOrientation = snapshot.normalizedOrientation()
         snapshot.roomWidth?.takeIf { it > 0.05f && it.isFinite() }?.let {
             roomWidth = it
             hasRoomWidthSignal = true
@@ -664,6 +666,13 @@ class GLBRoomActivity : AppCompatActivity() {
             snapshot.roomDimsApproach == "depth_anything_metric" ||
             roomDepth < 0.05f
         hasCalculatedRoomMeasurements = snapshot.roomDimsApproach == "depth_anything_metric"
+        LogUtil.d(
+            TAG,
+            "Canonical room metadata orientation=$photoOrientation preview=$isPreviewMode " +
+                "projection=${snapshot.depthMeshProjectionVersion} " +
+                "completedBackground=${snapshot.depthMeshHasCompletedBackground} " +
+                "continuous=${snapshot.depthMeshUsesContinuousSurface}",
+        )
     }
 
     private fun warmRoomMeasurementInBackgroundIfNeeded() {
@@ -2146,7 +2155,10 @@ class GLBRoomActivity : AppCompatActivity() {
         // Serve GLB from cache via WebViewAssetLoader instead of inlining base64 in HTML.
         // Portrait photos embed a full JPEG in the GLB; base64 in loadData() often truncates
         // on Android WebView and produces a corrupt buffer that GLTFLoader cannot parse.
-        val viewerDir = File(cacheDir, "glb_web_viewer").apply {
+        val viewerDir = File(
+            cacheDir,
+            "glb_web_viewer_${Integer.toHexString(System.identityHashCode(this))}",
+        ).apply {
             deleteRecursively()
             mkdirs()
         }
@@ -2643,9 +2655,19 @@ class GLBRoomActivity : AppCompatActivity() {
             };
         }
 
+        // Keep cover-framing stable while Android is between configuration and WebView resize
+        // callbacks. This mirrors the iOS orientation-locked photo-room viewport fallback.
+        function photoProjectionAspect() {
+            const viewport = viewportSize();
+            const liveAspect = Math.max(viewport.width / viewport.height, 0.01);
+            if (!isPortrait && liveAspect < 1.05) return 19.5 / 9.0;
+            if (isPortrait && liveAspect > 0.95) return 9.0 / 19.5;
+            return liveAspect;
+        }
+
         function depthAnythingImagePlaneStandoff(width, height) {
             const halfFovRad = Math.PI / 6.0;
-            const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
+            const viewportAspect = photoProjectionAspect();
             const planeWidth = Math.max(width, 0.05);
             const planeHeight = Math.max(height, 0.05);
             let fitWidth;
@@ -2665,7 +2687,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
 
         function updatePhotoProjection() {
-            const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
+            const viewportAspect = photoProjectionAspect();
             if (isDepthPhotoMesh) {
                 const sourceHalfY = THREE.MathUtils.degToRad(depthPhotoVerticalFovDegrees) * 0.5;
                 const sourceHalfX = Number.isFinite(depthPhotoSourceAspect)
@@ -2686,7 +2708,8 @@ class GLBRoomActivity : AppCompatActivity() {
             } else {
                 camera.fov = 60;
             }
-            camera.aspect = viewportAspect;
+            const viewport = viewportSize();
+            camera.aspect = Math.max(viewport.width / viewport.height, 0.01);
             camera.updateProjectionMatrix();
         }
 
@@ -2695,7 +2718,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     !Number.isFinite(depthPhotoSourceAspect)) {
                 return { yaw: depthPhotoYawLimit, pitch: depthPhotoPitchLimit };
             }
-            const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
+            const viewportAspect = photoProjectionAspect();
             const sourceHalfY = THREE.MathUtils.degToRad(depthPhotoVerticalFovDegrees) * 0.5;
             const sourceHalfX = Math.atan(Math.tan(sourceHalfY) * depthPhotoSourceAspect);
             const cameraHalfY = THREE.MathUtils.degToRad(camera.fov) * 0.5;
@@ -3025,7 +3048,10 @@ class GLBRoomActivity : AppCompatActivity() {
                             ? THREE.MathUtils.clamp(authoredFov, 10, 140)
                             : 60;
                         const layeredVersion = Number(depthPhotoNode?.userData?.layeredDepthVersion);
-                        isLayeredDepthPhoto = Number.isFinite(layeredVersion) && layeredVersion >= 4;
+                        const usesContinuousSurface =
+                            depthPhotoNode?.userData?.usesContinuousSurface === true;
+                        isLayeredDepthPhoto = usesContinuousSurface ||
+                            (Number.isFinite(layeredVersion) && layeredVersion >= 4);
                         const authoredTranslation = Number(depthPhotoNode?.userData?.cameraTranslationLimitMeters);
                         const authoredForward = Number(depthPhotoNode?.userData?.cameraForwardTranslationLimitMeters);
                         const requestedForward = Number.isFinite(authoredForward) ? authoredForward : authoredTranslation;
@@ -3122,14 +3148,6 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveProgressSubtitle(progress: Float): String {
-        return when {
-            progress < 0.58f -> getString(R.string.room_viewer_measuring_room)
-            progress < 0.85f -> getString(R.string.generation_progress_generating_3d_model)
-            else -> getString(R.string.room_viewer_saving_room_ellipsis)
-        }
-    }
-
     private fun saveRoom(name: String) {
         val path = glbPath ?: return
         if (!ModelManager.isRoomNameAvailable(this, name)) {
@@ -3139,7 +3157,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
         val overlay = PaafektSavingRoomOverlay.show(rootLayout)
         overlay.setTitle(getString(R.string.room_viewer_saving_room))
-        overlay.setProgress(0.02f, getString(R.string.room_viewer_measuring_room))
+        overlay.setProgress(0.02f, getString(R.string.room_viewer_saving_room_ellipsis))
 
         saveRoomJob?.cancel()
         saveRoomJob = lifecycleScope.launch {
@@ -3149,121 +3167,78 @@ class GLBRoomActivity : AppCompatActivity() {
                 val glbFile = File(path)
                 val previewRoomFolder = glbFile.parentFile
                     ?: throw IllegalStateException("Missing room folder")
-
-                val sourcePhoto = resolveSourcePhotoFile()
-                var measuredForSavedMesh: DepthAnythingRoomMeasurer.Result? = null
-                if (sourcePhoto != null) {
-                    val progressJob = launch {
-                        var progress = 0.05f
-                        while (progress < 0.85f && isActive) {
-                            overlay.setProgress(progress, saveProgressSubtitle(progress))
-                            delay(100)
-                            progress += 0.02f
-                        }
-                    }
-                    val measured = withContext(Dispatchers.Default) {
-                        DepthAnythingRoomMeasurer.measureFromFile(
-                            this@GLBRoomActivity,
-                            sourcePhoto,
-                            includeForegroundMask = true,
-                        )
-                    }
-                    measuredForSavedMesh = measured
-                    progressJob.cancel()
-                    if (measured.measured) {
-                        applyMeasuredDimensions(measured, persist = false)
-                    }
-                    overlay.setProgress(0.88f, getString(R.string.room_viewer_saving_room_ellipsis))
-                } else {
-                    overlay.setProgress(0.35f, getString(R.string.room_viewer_saving_room_ellipsis))
-                }
+                overlay.setProgress(0.35f, getString(R.string.room_viewer_saving_room_ellipsis))
 
                 withContext(Dispatchers.IO) {
                     val roomsDir = File(filesDir, "rooms").apply { mkdirs() }
                     val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
-                    var savedProjectionVersion = 3
-                    var hasCompletedBackground = false
+                    val destinationAlreadyExisted = savedRoomFolder.exists()
                     try {
-                        previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
-
-                        val depthMesh = measuredForSavedMesh?.depthMesh
-                        if (sourcePhoto != null && depthMesh != null) {
-                            val texture = DepthAnythingRoomMeasurer.decodeOrientedBitmap(sourcePhoto)
-                                ?: throw IllegalStateException("Could not decode saved-room source photo")
-                            try {
-                                val generated = GlbGenerator().generateDepthPhotoGlb(
-                                    outputFile = File(savedRoomFolder, glbFile.name),
-                                    dimensions = GlbGenerator.RoomDimensions(
-                                        width = roomWidth,
-                                        height = roomHeight,
-                                        depth = roomDepth,
-                                    ),
-                                    photoTexture = texture,
-                                    depthMap = depthMesh.calibratedDepth,
-                                    depthWidth = depthMesh.imageWidth,
-                                    depthHeight = depthMesh.imageHeight,
-                                    focalXPixels = depthMesh.focalXPixels,
-                                    focalYPixels = depthMesh.focalYPixels,
-                                    semanticForegroundMask = depthMesh.foregroundMask,
-                                )
-                                if (generated) {
-                                    savedProjectionVersion = 5
-                                    hasCompletedBackground = true
-                                }
-                                if (!generated) {
-                                    val flatFallback = GlbGenerator().generateFlatPhotoGlb(
-                                        outputFile = File(savedRoomFolder, glbFile.name),
-                                        dimensions = GlbGenerator.RoomDimensions(
-                                            width = roomWidth,
-                                            height = roomHeight,
-                                            depth = roomDepth,
-                                        ),
-                                        photoTexture = texture,
-                                    )
-                                    check(flatFallback) { "Could not generate safe saved photo-room GLB" }
-                                }
-                            } finally {
-                                texture.recycle()
-                            }
-                        }
+                        val savedGlb = RoomArtifactPromoter.copyPreviewArtifact(
+                            previewRoomFolder = previewRoomFolder,
+                            savedRoomFolder = savedRoomFolder,
+                            glbFileName = glbFile.name,
+                        )
 
                         val createdAtMillis = System.currentTimeMillis()
+                        val previewMetadata = RoomFolderMetadata.readFromFolder(savedRoomFolder)
+                            ?: RoomFolderMetadata.Snapshot()
+                        val committedType = previewMetadata.type
+                            ?: if (isFlatPhotoRoomMesh) "photo" else "manual"
                         val metadataFile = File(savedRoomFolder, "metadata.txt")
-                        val metadata = StringBuilder()
-                        metadata.append("name=$name\n")
-                        metadata.append("created=$createdAtMillis\n")
-                        metadata.append("type=photo\n")
-                        metadata.append("roomWidth=$roomWidth\n")
-                        metadata.append("roomHeight=$roomHeight\n")
-                        metadata.append("roomDepth=$roomDepth\n")
-                        metadata.append("photoOrientation=$photoOrientation\n")
-                        metadata.append("depthMeshProjectionVersion=$savedProjectionVersion\n")
-                        metadata.append("depthMeshHasCompletedBackground=$hasCompletedBackground\n")
-                        metadataFile.writeText(metadata.toString())
+                        metadataFile.writeText(
+                            buildString {
+                                append("name=$name\n")
+                                append("created=$createdAtMillis\n")
+                                append("type=$committedType\n")
+                                append("glb=${savedGlb.name}\n")
+                                append("roomWidth=$roomWidth\n")
+                                append("roomHeight=$roomHeight\n")
+                                append("roomDepth=$roomDepth\n")
+                                append("photoOrientation=${previewMetadata.normalizedOrientation()}\n")
+                                append("photoWideAngle=${previewMetadata.photoWideAngle}\n")
+                                previewMetadata.roomDimsApproach?.let {
+                                    append("roomDimsApproach=$it\n")
+                                }
+                                append("previewOnly=false\n")
+                                previewMetadata.depthMeshProjectionVersion?.let {
+                                    append("depthMeshProjectionVersion=$it\n")
+                                }
+                                previewMetadata.depthMeshHasCompletedBackground?.let {
+                                    append("depthMeshHasCompletedBackground=$it\n")
+                                }
+                                previewMetadata.depthMeshUsesContinuousSurface?.let {
+                                    append("depthMeshUsesContinuousSurface=$it\n")
+                                }
+                            },
+                        )
                         val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
                             savedRoomFolder,
-                            RoomFolderMetadata.Snapshot(
+                            previewMetadata.copy(
                                 name = name,
                                 createdAt = createdAtMillis,
-                                type = "photo",
-                                photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
-                                photoWideAngle = false,
+                                type = committedType,
                                 roomWidth = roomWidth,
                                 roomHeight = roomHeight,
                                 roomDepth = roomDepth,
-                                roomDimsApproach = roomDimsApproach ?: "depth_anything_metric",
-                                roomSceneWidth = roomWidth,
-                                roomSceneHeight = roomHeight,
-                                roomSceneDepth = roomDepth,
+                                roomDimsApproach = previewMetadata.roomDimsApproach ?: roomDimsApproach,
+                                roomSceneWidth = previewMetadata.roomSceneWidth ?: roomWidth,
+                                roomSceneHeight = previewMetadata.roomSceneHeight ?: roomHeight,
+                                roomSceneDepth = previewMetadata.roomSceneDepth ?: roomDepth,
                                 previewOnly = false,
-                                depthMeshProjectionVersion = savedProjectionVersion,
-                                depthMeshHasCompletedBackground = hasCompletedBackground,
                             ),
                         )
                         RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
+                        LogUtil.i(
+                            TAG,
+                            "Promoted exact preview GLB bytes=${savedGlb.length()} " +
+                                "projection=${glbSnapshot.depthMeshProjectionVersion} " +
+                                "completedBackground=${glbSnapshot.depthMeshHasCompletedBackground} " +
+                                "continuous=${glbSnapshot.depthMeshUsesContinuousSurface}",
+                        )
                         previewRoomFolder.parentFile?.deleteRecursively()
                     } catch (error: Exception) {
-                        savedRoomFolder.deleteRecursively()
+                        if (!destinationAlreadyExisted) savedRoomFolder.deleteRecursively()
                         throw error
                     }
                 }
@@ -3399,6 +3374,20 @@ class GLBRoomActivity : AppCompatActivity() {
         enterImmersiveMode()
         notifyWebViewViewportChanged()
         inlineBrainArCameraController?.onHostResume()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        LogUtil.d(
+            TAG,
+            "Viewer configuration changed orientation=${newConfig.orientation} " +
+                "viewport=${resources.displayMetrics.widthPixels}x${resources.displayMetrics.heightPixels}",
+        )
+        rootLayout.post {
+            enterImmersiveMode()
+            notifyWebViewViewportChanged()
+            ensureNavigationChromeOnTop()
+        }
     }
 
     override fun onPause() {

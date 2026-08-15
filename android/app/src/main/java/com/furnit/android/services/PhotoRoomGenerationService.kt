@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Generic Android photo-to-room generation path.
  *
- * Runs the Swift-parity Depth Anything room measurement pipeline during flat-photo GLB generation.
+ * Runs measurement and final GLB generation before preview so Save can promote the inspected artifact.
  */
 class PhotoRoomGenerationService private constructor(private val context: Context) {
 
@@ -29,6 +29,9 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
         val photoOrientation: String,
         val photoWideAngle: Boolean,
         val previewOnly: Boolean,
+        val depthMeshProjectionVersion: Int?,
+        val depthMeshHasCompletedBackground: Boolean?,
+        val depthMeshUsesContinuousSurface: Boolean?,
     )
 
     interface ProgressCallback {
@@ -133,9 +136,11 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
 
         val roomsDir = File(context.filesDir, ROOMS_DIR).apply { mkdirs() }
         val destination = uniqueRoomFolder(roomsDir, result.roomFolder.name)
-        result.roomFolder.copyRecursively(destination, overwrite = false)
-
-        val glbFile = File(destination, result.glbFile.name)
+        val glbFile = RoomArtifactPromoter.copyPreviewArtifact(
+            previewRoomFolder = result.roomFolder,
+            savedRoomFolder = destination,
+            glbFileName = result.glbFile.name,
+        )
         writeMetadata(
             folder = destination,
             name = RoomDisplayName.myRoomWithTimestamp(context),
@@ -147,6 +152,9 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
             photoOrientation = result.photoOrientation,
             photoWideAngle = result.photoWideAngle,
             previewOnly = false,
+            depthMeshProjectionVersion = result.depthMeshProjectionVersion,
+            depthMeshHasCompletedBackground = result.depthMeshHasCompletedBackground,
+            depthMeshUsesContinuousSurface = result.depthMeshUsesContinuousSurface,
         )
 
         if (result.roomFolder.parentFile?.name == PREVIEW_DIR) {
@@ -205,6 +213,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
         val folder = glbFile.parentFile ?: error("Room GLB has no folder")
         val createdAt = System.currentTimeMillis()
         val roomName = RoomDisplayName.myRoomWithTimestamp(context, Date(createdAt))
+        val generatedMetadata = RoomFolderMetadata.readFromFolder(folder)
         writeMetadata(
             folder = folder,
             name = roomName,
@@ -216,6 +225,9 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
             photoOrientation = photoOrientation,
             photoWideAngle = photoWideAngle,
             previewOnly = true,
+            depthMeshProjectionVersion = generatedMetadata?.depthMeshProjectionVersion,
+            depthMeshHasCompletedBackground = generatedMetadata?.depthMeshHasCompletedBackground,
+            depthMeshUsesContinuousSurface = generatedMetadata?.depthMeshUsesContinuousSurface,
         )
         if (sourcePhotoUri != null) {
             runCatching {
@@ -231,7 +243,18 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
             photoOrientation = photoOrientation,
             photoWideAngle = photoWideAngle,
             previewOnly = true,
-        )
+            depthMeshProjectionVersion = generatedMetadata?.depthMeshProjectionVersion,
+            depthMeshHasCompletedBackground = generatedMetadata?.depthMeshHasCompletedBackground,
+            depthMeshUsesContinuousSurface = generatedMetadata?.depthMeshUsesContinuousSurface,
+        ).also { result ->
+            LogUtil.i(
+                TAG,
+                "Final preview artifact projection=${result.depthMeshProjectionVersion} " +
+                    "completedBackground=${result.depthMeshHasCompletedBackground} " +
+                    "continuous=${result.depthMeshUsesContinuousSurface} " +
+                    "bytes=${result.glbFile.length()}",
+            )
+        }
     }
 
     private fun writeMetadata(
@@ -245,6 +268,9 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
         photoOrientation: String,
         photoWideAngle: Boolean,
         previewOnly: Boolean,
+        depthMeshProjectionVersion: Int?,
+        depthMeshHasCompletedBackground: Boolean?,
+        depthMeshUsesContinuousSurface: Boolean?,
     ) {
         val normalizedOrientation = normalizedOrientation(photoOrientation)
         File(folder, "metadata.txt").writeText(
@@ -259,6 +285,15 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
                 append("photoOrientation=").append(normalizedOrientation).append('\n')
                 append("photoWideAngle=").append(photoWideAngle).append('\n')
                 append("previewOnly=").append(previewOnly).append('\n')
+                depthMeshProjectionVersion?.let {
+                    append("depthMeshProjectionVersion=").append(it).append('\n')
+                }
+                depthMeshHasCompletedBackground?.let {
+                    append("depthMeshHasCompletedBackground=").append(it).append('\n')
+                }
+                depthMeshUsesContinuousSurface?.let {
+                    append("depthMeshUsesContinuousSurface=").append(it).append('\n')
+                }
             },
         )
         RoomFolderMetadata.writeToFolder(
@@ -277,6 +312,9 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
                 roomSceneHeight = roomHeight,
                 roomSceneDepth = roomDepth,
                 previewOnly = previewOnly,
+                depthMeshProjectionVersion = depthMeshProjectionVersion,
+                depthMeshHasCompletedBackground = depthMeshHasCompletedBackground,
+                depthMeshUsesContinuousSurface = depthMeshUsesContinuousSurface,
             ),
         )
     }

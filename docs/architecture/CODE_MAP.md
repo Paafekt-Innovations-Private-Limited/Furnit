@@ -20,7 +20,7 @@ document.
 |---|---|
 | App shell/navigation | `Furnit/FurnitApp.swift`, `Furnit/Views/ContentView.swift` |
 | Phone login | `Furnit/Authentication/LoginView.swift`, `AuthenticationManager.swift`, `OTPVerificationView.swift` |
-| Photo → 3D UI and two-phase dispatch | `Furnit/Views/Components/SinglePhotoRoomViewer.swift` |
+| Photo → 3D generation, exact preview, and artifact promotion | `Furnit/Views/Components/SinglePhotoRoomViewer.swift` |
 | Default metric room reconstruction | `Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift`, `GeoCalibCalibrationService.swift`, `FocalResolver.swift`, `ScaleEstimator.swift`, `RoomHeight.swift`, `RoomExtent.swift` |
 | Manual boundary reconstruction | `Furnit/Services/RoomReconstruction/SinglePhotoRoomReconstructor.swift`, `SyntheticDepthEstimator.swift` |
 | Capture/calibration sidecars | `Furnit/Services/OnDevice/CameraExifSidecar.swift`, `RoomGenerationCameraSidecar.swift`, `Furnit/Views/Components/ARRoomPhotoCaptureView.swift` |

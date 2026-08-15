@@ -7,19 +7,17 @@ Branch: `main`
 Last pushed commit: `316aa0bcadc9e5f45cac4bd868a7f7ae0979c43e`
 Platforms: iOS and Android
 
-## Outcome recorded before the requested push
+## Current outcome pointer (2026-08-15 push candidate)
 
-- New iOS saves use the established version-3 flat photo-plane USDZ. The torn/duplicated saved-room
-  screenshot came from the unfinished layered exporter path; that path is no longer active. A generic
-  iPhoneOS Debug build succeeds, but a newly saved room still needs device confirmation.
-- Android now has a version-5 layered candidate: foreground masks combine RTMDet union output with
-  calibrated depth discontinuities, masked background color/inverse depth is completed
-  deterministically, foreground and background are exported separately, and navigation is limited by
-  an authored camera/coverage envelope. Save falls back to a flat GLB if layered generation fails.
+- iOS and Android now generate one opaque version-5 continuous depth surface before preview. Neither
+  active path emits the investigated completed-background/foreground enclosure.
+- Each platform previews its generated final artifact and Save promotes that same USDZ/GLB instead
+  of rerunning inference or rebuilding geometry. Android additionally checks byte identity while
+  promoting the preview GLB.
 - Both platforms include synthetic-fixture UI regression coverage. No private room photograph is
   included in the test targets.
-- Neither platform's visible result is documented as resolved. Manual testing with a newly saved
-  chair/fan room remains required.
+- Neither platform's visible result is documented as resolved. Fresh portrait/landscape manual tests,
+  including preview → save → reopen comparison with the chair/fan room, remain required.
 
 The remainder of this document preserves the pre-implementation problem statement and alternatives
 for engineering history. For current behavior use `Furnit/docs/README.md` and

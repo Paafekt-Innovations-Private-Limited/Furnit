@@ -3,6 +3,68 @@ import SceneKit
 import simd
 import UIKit
 
+/// One-finger look contract shared by the immediate preview and the reconstructed photo room.
+enum DepthAnythingPhotoCameraInteraction {
+    static let dragRotationRadiansPerPoint: Float = 0.005
+    static let maximumYawRadians: Float = .pi / 6
+    static let maximumPitchRadians: Float = .pi / 5
+    static let dPadHorizontalStep: Float = 0.24
+    static let dPadVerticalStep: Float = 0.20
+    static let positionTranslationMetersPerPoint: Float = 0.005
+    static let pinchDollyMetersPerScaleDelta: Float = 2.5
+
+    static func rotationDelta(for translation: CGPoint) -> (yaw: Float, pitch: Float) {
+        (
+            yaw: -Float(translation.x) * dragRotationRadiansPerPoint,
+            pitch: -Float(translation.y) * dragRotationRadiansPerPoint
+        )
+    }
+
+    static func clampedPreviewRotation(yaw: Float, pitch: Float) -> (yaw: Float, pitch: Float) {
+        (
+            yaw: max(-maximumYawRadians, min(maximumYawRadians, yaw)),
+            pitch: max(-maximumPitchRadians, min(maximumPitchRadians, pitch))
+        )
+    }
+
+    /// The saved-room D-pad is expressed as world-space movement notifications. Projective photo
+    /// rooms reinterpret those inputs as bounded look steps; the immediate preview does the same.
+    static func rotationNudge(forWorldDelta delta: SIMD3<Float>) -> (yaw: Float, pitch: Float) {
+        (
+            yaw: -delta.x * 0.4,
+            pitch: delta.y * 0.48
+        )
+    }
+
+    /// Before depth exists, use the same envelope formula as the saved projective room with the
+    /// preview's placeholder representative depth. First-save reconstruction replaces these
+    /// provisional limits with limits derived from the inferred depth distribution.
+    static func movementEnvelope(
+        representativeDepth: Float
+    ) -> (forward: Float, lateral: Float, backward: Float, vertical: Float) {
+        let safeDepth = max(representativeDepth, 0.2)
+        let forward = min(max(safeDepth * 0.35, 0.75), 1.40)
+        return (
+            forward: forward,
+            lateral: min(max(safeDepth * 0.12, 0.24), 0.48),
+            backward: min(max(safeDepth * 0.08, 0.18), 0.32),
+            vertical: min(max(forward * 0.18, 0.10), 0.24)
+        )
+    }
+
+    static func constrainedPreviewPosition(
+        _ position: SIMD3<Float>,
+        representativeDepth: Float
+    ) -> SIMD3<Float> {
+        let envelope = movementEnvelope(representativeDepth: representativeDepth)
+        return SIMD3<Float>(
+            min(max(position.x, -envelope.lateral), envelope.lateral),
+            min(max(position.y, -envelope.vertical), envelope.vertical),
+            min(max(position.z, -envelope.forward), envelope.backward)
+        )
+    }
+}
+
 /// Shared cover camera math for Depth Anything flat-photo rooms (RealityKit list viewer + SceneKit preview).
 enum DepthAnythingFlatPhotoCameraFraming {
     static func viewportAspect(
@@ -99,6 +161,61 @@ enum DepthAnythingFlatPhotoCameraFraming {
         let lookAt = SCNVector3(centerX, centerY, planeZ)
         let position = SCNVector3(centerX, centerY, planeZ + standoff)
         return (position, lookAt, verticalFOV)
+    }
+
+    /// Match `RealityKitView.configureDepthAnythingCameraFieldOfView`: preserve the authored
+    /// capture projection, then crop only the axis required to aspect-fill the live viewport.
+    static func projectiveDisplayVerticalFieldOfViewDegrees(
+        projection: DepthAnythingProjectionCamera,
+        photoOrientation: PhotoOrientation,
+        viewportSize: CGSize
+    ) -> CGFloat {
+        projectiveDisplayVerticalFieldOfViewDegrees(
+            authoredVerticalFieldOfViewDegrees: projection.verticalFieldOfViewDegrees,
+            imageWidth: projection.imageWidth,
+            imageHeight: projection.imageHeight,
+            photoOrientation: photoOrientation,
+            viewportSize: viewportSize
+        )
+    }
+
+    static func projectiveDisplayVerticalFieldOfViewDegrees(
+        authoredVerticalFieldOfViewDegrees: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        photoOrientation: PhotoOrientation,
+        viewportSize: CGSize
+    ) -> CGFloat {
+        let sourceVerticalHalfFOV = CGFloat(authoredVerticalFieldOfViewDegrees) * .pi / 360
+        let imageAspect = CGFloat(imageWidth) / CGFloat(max(imageHeight, 1))
+        let sourceHorizontalHalfFOV = atan(tan(sourceVerticalHalfFOV) * imageAspect)
+        let liveViewportAspect = CGFloat(
+            viewportAspect(photoOrientation: photoOrientation, viewportSize: viewportSize)
+        )
+        let horizontalCoverVerticalHalfFOV = atan(
+            tan(sourceHorizontalHalfFOV) / max(liveViewportAspect, 0.01)
+        )
+        return 2 * min(sourceVerticalHalfFOV, horizontalCoverVerticalHalfFOV) * 180 / .pi
+    }
+
+    /// SceneKit equivalent of the saved room's capture camera: eye at the authored optical origin,
+    /// forward along -Z, with the preview proxy sized from the same pixel focal lengths.
+    static func sceneKitProjectivePreviewCameraPose(
+        projection: DepthAnythingProjectionCamera,
+        photoOrientation: PhotoOrientation,
+        viewportSize: CGSize,
+        cameraYaw: Float,
+        cameraPitch: Float,
+        cameraPosition: SIMD3<Float>
+    ) -> (position: SIMD3<Float>, rotation: simd_quatf, verticalFieldOfViewDegrees: CGFloat) {
+        let yawRotation = simd_quatf(angle: cameraYaw, axis: SIMD3<Float>(0, 1, 0))
+        let pitchRotation = simd_quatf(angle: cameraPitch, axis: SIMD3<Float>(1, 0, 0))
+        let verticalFOV = projectiveDisplayVerticalFieldOfViewDegrees(
+            projection: projection,
+            photoOrientation: photoOrientation,
+            viewportSize: viewportSize
+        )
+        return (cameraPosition, yawRotation * pitchRotation, verticalFOV)
     }
 }
 

@@ -33,7 +33,8 @@ enum RoomExtent {
         detections: [(cls: Int, box: (x0: Int, y0: Int, x1: Int, y1: Int), conf: Float)],
         focalPx: Float,
         cx: Float,
-        cy: Float
+        cy: Float,
+        depthP98: Float? = nil
     ) -> DepthMaskResult {
         let pixelCount = max(0, width * height)
         var valid = [Bool](repeating: true, count: pixelCount)
@@ -63,17 +64,25 @@ enum RoomExtent {
             beyond += 1
         }
 
-        var sorted = depth.filter { $0.isFinite && $0 > 0 }.sorted()
         var window = 0
-        if !sorted.isEmpty {
-            let p98Index = min(sorted.count - 1, max(0, Int(Double(sorted.count - 1) * 0.98)))
-            let p98 = sorted[p98Index]
+        let p98: Float?
+        if let depthP98 {
+            p98 = depthP98
+        } else {
+            let sorted = depth.filter { $0.isFinite && $0 > 0 }.sorted()
+            if sorted.isEmpty {
+                p98 = nil
+            } else {
+                let p98Index = min(sorted.count - 1, max(0, Int(Double(sorted.count - 1) * 0.98)))
+                p98 = sorted[p98Index]
+            }
+        }
+        if let p98 {
             for i in 0..<pixelCount where depth[i].isFinite && depth[i] >= p98 {
                 if valid[i] { window += 1 }
                 valid[i] = false
             }
         }
-        sorted.removeAll(keepingCapacity: false)
 
         var mirror = 0
         for detection in detections {
@@ -182,8 +191,7 @@ enum RoomExtent {
             )
         }
 
-        let metricPoints = points.map { Point3(x: $0.x * scale, y: $0.y * scale, z: $0.z * scale) }
-        let ys = metricPoints.map(\.y).sorted()
+        let ys = points.map { $0.y * scale }.sorted()
         let floorY = percentile(ys, fraction: 0.05)
         let ceilingY = percentile(ys, fraction: 0.95)
         var ceilingClearance = ceilingY - floorY - cameraHeight
@@ -192,11 +200,30 @@ enum RoomExtent {
 
         let lowBand = floorY + 0.4
         let highBand = ceilingY - 0.4
-        let slab = metricPoints.filter { $0.y > lowBand && $0.y < highBand }
-        let sourcePoints = slab.count > 300 ? slab : metricPoints
+        var slabX: [Float] = []
+        var slabZ: [Float] = []
+        slabX.reserveCapacity(points.count / 2)
+        slabZ.reserveCapacity(points.count / 2)
+        for point in points {
+            let metricY = point.y * scale
+            if metricY > lowBand, metricY < highBand {
+                slabX.append(point.x * scale)
+                slabZ.append(point.z * scale)
+            }
+        }
+        let slabCount = slabX.count
+        let sourceX: [Float]
+        let sourceZ: [Float]
+        if slabCount > 300 {
+            sourceX = slabX
+            sourceZ = slabZ
+        } else {
+            sourceX = points.map { $0.x * scale }
+            sourceZ = points.map { $0.z * scale }
+        }
 
-        let xSpan = robustSpan(sourcePoints.map(\.x))
-        let zSpan = robustSpan(sourcePoints.map(\.z))
+        let xSpan = robustSpan(sourceX)
+        let zSpan = robustSpan(sourceZ)
         var width = xSpan.high - xSpan.low
         var depth = zSpan.high - zSpan.low
 
@@ -226,7 +253,7 @@ enum RoomExtent {
                 floorY,
                 ceilingY,
                 ceilingClearance,
-                slab.count,
+                slabCount,
                 points.count,
                 width,
                 depth,

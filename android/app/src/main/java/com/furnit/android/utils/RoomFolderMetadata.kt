@@ -51,6 +51,7 @@ object RoomFolderMetadata {
         val previewOnly: Boolean? = null,
         val depthMeshProjectionVersion: Int? = null,
         val depthMeshHasCompletedBackground: Boolean? = null,
+        val depthMeshUsesContinuousSurface: Boolean? = null,
     ) {
         fun normalizedOrientation(): String =
             if (photoOrientation.trim().lowercase() == "landscape") "landscape" else "portrait"
@@ -98,6 +99,8 @@ object RoomFolderMetadata {
             depthMeshProjectionVersion = newSnapshot.depthMeshProjectionVersion ?: prev.depthMeshProjectionVersion,
             depthMeshHasCompletedBackground = newSnapshot.depthMeshHasCompletedBackground
                 ?: prev.depthMeshHasCompletedBackground,
+            depthMeshUsesContinuousSurface = newSnapshot.depthMeshUsesContinuousSurface
+                ?: prev.depthMeshUsesContinuousSurface,
         )
         if (!hadCalibrationWork) return withAdditiveRoomFields
         return withAdditiveRoomFields.copy(
@@ -143,6 +146,7 @@ object RoomFolderMetadata {
         }
         snapshot.depthMeshProjectionVersion?.let { jo.put("depthMeshProjectionVersion", it) }
         snapshot.depthMeshHasCompletedBackground?.let { jo.put("depthMeshHasCompletedBackground", it) }
+        snapshot.depthMeshUsesContinuousSurface?.let { jo.put("depthMeshUsesContinuousSurface", it) }
         File(folder, JSON_FILE_NAME).writeText(jo.toString())
     }
 
@@ -184,6 +188,9 @@ object RoomFolderMetadata {
             } else null,
             depthMeshHasCompletedBackground = if (jo.has("depthMeshHasCompletedBackground")) {
                 jo.optBoolean("depthMeshHasCompletedBackground", false)
+            } else null,
+            depthMeshUsesContinuousSurface = if (jo.has("depthMeshUsesContinuousSurface")) {
+                jo.optBoolean("depthMeshUsesContinuousSurface", false)
             } else null,
         )
     }
@@ -246,6 +253,7 @@ object RoomFolderMetadata {
             },
             depthMeshProjectionVersion = map["depthMeshProjectionVersion"]?.toIntOrNull(),
             depthMeshHasCompletedBackground = map["depthMeshHasCompletedBackground"]?.toBooleanStrictOrNull(),
+            depthMeshUsesContinuousSurface = map["depthMeshUsesContinuousSurface"]?.toBooleanStrictOrNull(),
         )
     }
 }

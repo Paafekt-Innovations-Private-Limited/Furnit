@@ -879,7 +879,7 @@ private enum DepthAnythingPreviewPlacementIntelligenceRoomStub {
 
 private struct USDZViewerDestination: Identifiable, Hashable {
     let id = UUID()
-    let measurementImageURL: URL
+    let generatedModelURL: URL
     let photoOrientation: PhotoOrientation
     let roomCoordinateFrame: RoomCoordinateFrame
     let summary: String
@@ -892,7 +892,7 @@ private struct USDZViewerDestination: Identifiable, Hashable {
 }
 
 private struct DepthAnythingPreparedPreview: Sendable {
-    let measurementImageURL: URL
+    let generatedModelURL: URL
     let imageWidth: Int
     let imageHeight: Int
     let roomWidthMeters: Float
@@ -907,7 +907,7 @@ private struct DepthAnythingPreparedPreview: Sendable {
             roomWidthMeters,
             roomHeightMeters,
             roomDepthMeters,
-            measurementImageURL.lastPathComponent
+            generatedModelURL.lastPathComponent
         )
     }
 }
@@ -926,41 +926,46 @@ private enum DepthAnythingPreviewPrepareError: LocalizedError {
 private func makeDepthAnythingPreviewDestination(
     image: UIImage,
     cameraMetadata: [String: Double],
-    photoOrientation _: PhotoOrientation
-) throws -> DepthAnythingPreparedPreview {
+    photoOrientation _: PhotoOrientation,
+    progressHandler: DepthAnythingReconstructionProgressHandler? = nil
+) async throws -> DepthAnythingPreparedPreview {
     let fixed = image.fixedOrientation()
     let previewImage = downsampleDepthAnythingPreviewImage(fixed, maxDimension: 1600)
-    guard let data = previewImage.jpegData(compressionQuality: 0.92),
-          let cgImage = previewImage.cgImage else {
+    guard let cgImage = previewImage.cgImage else {
         throw DepthAnythingPreviewPrepareError.invalidImage
-    }
-
-    let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    let directory = documentsURL.appendingPathComponent("DepthAnythingRooms", isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let url = directory.appendingPathComponent("DepthAnythingPreview_\(UUID().uuidString).jpg")
-    try data.write(to: url, options: [.atomic])
-    if !cameraMetadata.isEmpty {
-        CameraExifSidecar.mergeDerivedValues(roomURL: url, additions: cameraMetadata)
     }
 
     let width = max(1, cgImage.width)
     let height = max(1, cgImage.height)
-    let roomWidth: Float = 2.0
-    let roomHeight = max(1.8, roomWidth * Float(height) / Float(width))
-    let roomDepth: Float = 3.0
+    let reconstructor = try DepthAnythingRoomReconstructor()
+    let reconstructed = try await reconstructor.reconstructWithResult(
+        image: previewImage,
+        cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata,
+        progressHandler: progressHandler
+    )
+    var generatedMetadata = cameraMetadata
+    for (key, value) in reconstructed.calibrationMetadata {
+        generatedMetadata[key] = value
+    }
+    if !generatedMetadata.isEmpty {
+        CameraExifSidecar.mergeDerivedValues(
+            roomURL: reconstructed.usdzURL,
+            additions: generatedMetadata
+        )
+    }
     logDebug(
-        "[DepthAnythingRoom][PreviewFast] skipping depth_anything/geocalib/rtmdet/room_height/usdz_export during creation " +
-        "image=\(width)x\(height) W=\(String(format: "%.3f", roomWidth)) " +
-        "H=\(String(format: "%.3f", roomHeight)) D=\(String(format: "%.3f", roomDepth))"
+        "[DepthAnythingRoom][PreviewExact] generated the same USDZ shown after save " +
+        "image=\(width)x\(height) W=\(String(format: "%.3f", reconstructed.roomWidthMeters)) " +
+        "H=\(String(format: "%.3f", reconstructed.roomHeightMeters)) " +
+        "D=\(String(format: "%.3f", reconstructed.roomDepthMeters))"
     )
     return DepthAnythingPreparedPreview(
-        measurementImageURL: url,
+        generatedModelURL: reconstructed.usdzURL,
         imageWidth: width,
         imageHeight: height,
-        roomWidthMeters: roomWidth,
-        roomHeightMeters: roomHeight,
-        roomDepthMeters: roomDepth
+        roomWidthMeters: reconstructed.roomWidthMeters,
+        roomHeightMeters: reconstructed.roomHeightMeters,
+        roomDepthMeters: reconstructed.roomDepthMeters
     )
 }
 
@@ -981,14 +986,19 @@ private func downsampleUIImageForDisplay(_ image: UIImage, maxDimension: CGFloat
 }
 
 private func downsampleDepthAnythingPreviewImage(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
-    let maxSide = max(image.size.width, image.size.height)
+    guard let cgImage = image.cgImage else { return image }
+    let pixelWidth = CGFloat(cgImage.width)
+    let pixelHeight = CGFloat(cgImage.height)
+    let maxSide = max(pixelWidth, pixelHeight)
     guard maxSide > maxDimension, maxSide > 0 else { return image }
     let scale = maxDimension / maxSide
     let targetSize = CGSize(
-        width: max(1, floor(image.size.width * scale)),
-        height: max(1, floor(image.size.height * scale))
+        width: max(1, floor(pixelWidth * scale)),
+        height: max(1, floor(pixelHeight * scale))
     )
-    let renderer = UIGraphicsImageRenderer(size: targetSize)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
     return renderer.image { _ in
         image.draw(in: CGRect(origin: .zero, size: targetSize))
     }
@@ -1013,11 +1023,12 @@ private final class DepthAnythingPreviewSCNView: SCNView {
 
 private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
     let imageURL: URL
-    let roomWidthMeters: Float
-    let roomHeightMeters: Float
+    let projectionCamera: DepthAnythingProjectionCamera
+    let representativeDepthMeters: Float
     let photoOrientation: PhotoOrientation
-    @Binding var cameraOffset: CGSize
-    @Binding var cameraZoom: CGFloat
+    @Binding var cameraYaw: Float
+    @Binding var cameraPitch: Float
+    @Binding var cameraPosition: SIMD3<Float>
     @Binding var shouldResetCamera: Bool
     var allowsSceneInteraction: Bool = true
 
@@ -1030,8 +1041,14 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         view.backgroundColor = UIColor(white: 0.12, alpha: 1.0)
         view.allowsCameraControl = false
         view.autoenablesDefaultLighting = false
-        context.coordinator.configure(cameraOffset: $cameraOffset, cameraZoom: $cameraZoom)
+        context.coordinator.configure(
+            cameraYaw: $cameraYaw,
+            cameraPitch: $cameraPitch,
+            cameraPosition: $cameraPosition,
+            representativeDepthMeters: representativeDepthMeters
+        )
         context.coordinator.installGestureRecognizersIfNeeded(on: view)
+        context.coordinator.installCameraMoveObserversIfNeeded()
         view.scene = makeScene(context: context)
         view.pointOfView = context.coordinator.cameraNode
         view.onViewportSizeChanged = { [weak cameraNode = context.coordinator.cameraNode] size in
@@ -1043,7 +1060,18 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
 
     func updateUIView(_ view: SCNView, context: Context) {
         view.pointOfView = context.coordinator.cameraNode
-        context.coordinator.configure(cameraOffset: $cameraOffset, cameraZoom: $cameraZoom)
+        context.coordinator.configure(
+            cameraYaw: $cameraYaw,
+            cameraPitch: $cameraPitch,
+            cameraPosition: $cameraPosition,
+            representativeDepthMeters: representativeDepthMeters
+        )
+        if let plane = context.coordinator.planeNode?.geometry as? SCNPlane {
+            let proxyDepth = max(representativeDepthMeters, 0.2)
+            plane.width = CGFloat(max(projectionCamera.unitDepthPlaneWidth * proxyDepth, 0.05))
+            plane.height = CGFloat(max(projectionCamera.unitDepthPlaneHeight * proxyDepth, 0.05))
+            context.coordinator.planeNode?.position.z = -proxyDepth
+        }
         if let previewView = view as? DepthAnythingPreviewSCNView {
             previewView.onViewportSizeChanged = { [weak cameraNode = context.coordinator.cameraNode] size in
                 applyCameraPose(cameraNode, viewportSize: size)
@@ -1061,8 +1089,9 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
     private func makeScene(context: Context) -> SCNScene {
         let scene = SCNScene()
         let image = UIImage(contentsOfFile: imageURL.path)
-        let width = CGFloat(max(roomWidthMeters, 0.05))
-        let height = CGFloat(max(roomHeightMeters, 0.05))
+        let proxyDepth = max(representativeDepthMeters, 0.2)
+        let width = CGFloat(max(projectionCamera.unitDepthPlaneWidth * proxyDepth, 0.05))
+        let height = CGFloat(max(projectionCamera.unitDepthPlaneHeight * proxyDepth, 0.05))
         let plane = SCNPlane(width: width, height: height)
         let material = SCNMaterial()
         material.diffuse.contents = image
@@ -1075,13 +1104,16 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
 
         let planeNode = SCNNode(geometry: plane)
         planeNode.name = "DepthAnythingPreviewImagePlane"
+        planeNode.position = SCNVector3(0, 0, -proxyDepth)
         scene.rootNode.addChildNode(planeNode)
+        context.coordinator.planeNode = planeNode
 
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
+        cameraNode.camera?.projectionDirection = .vertical
         cameraNode.camera?.fieldOfView = 60
         cameraNode.camera?.zNear = 0.001
-        cameraNode.camera?.zFar = Double(max(roomWidthMeters, roomHeightMeters, 1.0) * 12)
+        cameraNode.camera?.zFar = 100
         scene.rootNode.addChildNode(cameraNode)
         context.coordinator.cameraNode = cameraNode
         return scene
@@ -1089,37 +1121,55 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
 
     private func applyCameraPose(_ cameraNode: SCNNode?, viewportSize: CGSize) {
         guard let cameraNode else { return }
-        let pose = DepthAnythingFlatPhotoCameraFraming.sceneKitPreviewCameraPose(
-            planeWidthMeters: max(roomWidthMeters, 0.05),
-            planeHeightMeters: max(roomHeightMeters, 0.05),
+        let pose = DepthAnythingFlatPhotoCameraFraming.sceneKitProjectivePreviewCameraPose(
+            projection: projectionCamera,
             photoOrientation: photoOrientation,
             viewportSize: viewportSize,
-            cameraOffset: cameraOffset,
-            cameraZoom: cameraZoom
+            cameraYaw: cameraYaw,
+            cameraPitch: cameraPitch,
+            cameraPosition: cameraPosition
         )
         cameraNode.camera?.fieldOfView = pose.verticalFieldOfViewDegrees
-        cameraNode.position = pose.position
-        cameraNode.look(at: pose.lookAt)
+        cameraNode.simdPosition = pose.position
+        cameraNode.simdOrientation = pose.rotation
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var cameraNode: SCNNode?
-        private var cameraOffset: Binding<CGSize>?
-        private var cameraZoom: Binding<CGFloat>?
-        private var panStartOffset: CGSize = .zero
-        private var pinchStartZoom: CGFloat = 1
+        var planeNode: SCNNode?
+        private var cameraYaw: Binding<Float>?
+        private var cameraPitch: Binding<Float>?
+        private var cameraPosition: Binding<SIMD3<Float>>?
+        private var representativeDepthMeters: Float = 3
+        private var lastPanTranslation: CGPoint = .zero
+        private var lastPositionPanTranslation: CGPoint = .zero
+        private var lastPinchScale: CGFloat = 1
         private var panRecognizer: UIPanGestureRecognizer?
+        private var positionPanRecognizer: UIPanGestureRecognizer?
         private var pinchRecognizer: UIPinchGestureRecognizer?
         private var didInstallGestureRecognizers = false
+        private var cameraMoveNotificationTokens: [NSObjectProtocol] = []
 
-        func configure(cameraOffset: Binding<CGSize>, cameraZoom: Binding<CGFloat>) {
-            self.cameraOffset = cameraOffset
-            self.cameraZoom = cameraZoom
+        deinit {
+            removeCameraMoveObservers()
+        }
+
+        func configure(
+            cameraYaw: Binding<Float>,
+            cameraPitch: Binding<Float>,
+            cameraPosition: Binding<SIMD3<Float>>,
+            representativeDepthMeters: Float
+        ) {
+            self.cameraYaw = cameraYaw
+            self.cameraPitch = cameraPitch
+            self.cameraPosition = cameraPosition
+            self.representativeDepthMeters = representativeDepthMeters
         }
 
         func setSceneInteractionEnabled(_ enabled: Bool, on view: SCNView) {
             view.isUserInteractionEnabled = enabled
             panRecognizer?.isEnabled = enabled
+            positionPanRecognizer?.isEnabled = enabled
             pinchRecognizer?.isEnabled = enabled
         }
 
@@ -1134,38 +1184,161 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
             view.addGestureRecognizer(panRecognizer)
             self.panRecognizer = panRecognizer
 
+            let positionPanRecognizer = UIPanGestureRecognizer(
+                target: self,
+                action: #selector(handlePositionPan(_:))
+            )
+            positionPanRecognizer.minimumNumberOfTouches = 2
+            positionPanRecognizer.maximumNumberOfTouches = 2
+            positionPanRecognizer.delegate = self
+            view.addGestureRecognizer(positionPanRecognizer)
+            self.positionPanRecognizer = positionPanRecognizer
+
             let pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
             pinchRecognizer.delegate = self
             view.addGestureRecognizer(pinchRecognizer)
             self.pinchRecognizer = pinchRecognizer
         }
 
+        func installCameraMoveObserversIfNeeded() {
+            guard cameraMoveNotificationTokens.isEmpty else { return }
+            let namesAndDeltas: [(NSNotification.Name, SIMD3<Float>)] = [
+                (
+                    PaafektViewerCameraMoveNotification.left,
+                    SIMD3<Float>(-DepthAnythingPhotoCameraInteraction.dPadHorizontalStep, 0, 0)
+                ),
+                (
+                    PaafektViewerCameraMoveNotification.right,
+                    SIMD3<Float>(DepthAnythingPhotoCameraInteraction.dPadHorizontalStep, 0, 0)
+                ),
+                (
+                    PaafektViewerCameraMoveNotification.up,
+                    SIMD3<Float>(0, DepthAnythingPhotoCameraInteraction.dPadVerticalStep, 0)
+                ),
+                (
+                    PaafektViewerCameraMoveNotification.down,
+                    SIMD3<Float>(0, -DepthAnythingPhotoCameraInteraction.dPadVerticalStep, 0)
+                ),
+            ]
+            for (name, delta) in namesAndDeltas {
+                let token = NotificationCenter.default.addObserver(
+                    forName: name,
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.nudgeCamera(by: delta)
+                }
+                cameraMoveNotificationTokens.append(token)
+            }
+        }
+
+        private func removeCameraMoveObservers() {
+            for token in cameraMoveNotificationTokens {
+                NotificationCenter.default.removeObserver(token)
+            }
+            cameraMoveNotificationTokens.removeAll()
+        }
+
+        private func nudgeCamera(by worldDelta: SIMD3<Float>) {
+            guard let cameraYaw, let cameraPitch else { return }
+            let delta = DepthAnythingPhotoCameraInteraction.rotationNudge(
+                forWorldDelta: worldDelta
+            )
+            let rotation = DepthAnythingPhotoCameraInteraction.clampedPreviewRotation(
+                yaw: cameraYaw.wrappedValue + delta.yaw,
+                pitch: cameraPitch.wrappedValue + delta.pitch
+            )
+            cameraYaw.wrappedValue = rotation.yaw
+            cameraPitch.wrappedValue = rotation.pitch
+        }
+
         @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
-            guard let cameraOffset else { return }
+            guard let cameraYaw, let cameraPitch else { return }
             guard let view = recognizer.view else { return }
             switch recognizer.state {
             case .began:
-                panStartOffset = cameraOffset.wrappedValue
+                lastPanTranslation = recognizer.translation(in: view)
             case .changed:
                 let translation = recognizer.translation(in: view)
-                let horizontalUnits = (translation.x / max(view.bounds.width, 1)) * 6
-                let verticalUnits = (translation.y / max(view.bounds.height, 1)) * 6
-                cameraOffset.wrappedValue = CGSize(
-                    width: panStartOffset.width - horizontalUnits,
-                    height: panStartOffset.height + verticalUnits
+                let deltaTranslation = CGPoint(
+                    x: translation.x - lastPanTranslation.x,
+                    y: translation.y - lastPanTranslation.y
                 )
+                let rotationDelta = DepthAnythingPhotoCameraInteraction.rotationDelta(
+                    for: deltaTranslation
+                )
+                let rotation = DepthAnythingPhotoCameraInteraction.clampedPreviewRotation(
+                    yaw: cameraYaw.wrappedValue + rotationDelta.yaw,
+                    pitch: cameraPitch.wrappedValue + rotationDelta.pitch
+                )
+                cameraYaw.wrappedValue = rotation.yaw
+                cameraPitch.wrappedValue = rotation.pitch
+                lastPanTranslation = translation
+            case .ended, .cancelled:
+                lastPanTranslation = .zero
             default:
                 break
             }
         }
 
         @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
-            guard let cameraZoom else { return }
+            guard let cameraPosition, let cameraYaw, let cameraPitch else { return }
             switch recognizer.state {
             case .began:
-                pinchStartZoom = cameraZoom.wrappedValue
+                lastPinchScale = 1
             case .changed:
-                cameraZoom.wrappedValue = min(max(pinchStartZoom * recognizer.scale, 0.55), 4.0)
+                let safePreviousScale = max(lastPinchScale, 0.001)
+                let scaleDelta = recognizer.scale / safePreviousScale
+                let zoomFactor = Float(scaleDelta - 1)
+                    * DepthAnythingPhotoCameraInteraction.pinchDollyMetersPerScaleDelta
+                let yawRotation = simd_quatf(
+                    angle: cameraYaw.wrappedValue,
+                    axis: SIMD3<Float>(0, 1, 0)
+                )
+                let pitchRotation = simd_quatf(
+                    angle: cameraPitch.wrappedValue,
+                    axis: SIMD3<Float>(1, 0, 0)
+                )
+                let forward = (yawRotation * pitchRotation).act(SIMD3<Float>(0, 0, -1))
+                cameraPosition.wrappedValue = DepthAnythingPhotoCameraInteraction.constrainedPreviewPosition(
+                    cameraPosition.wrappedValue + forward * zoomFactor,
+                    representativeDepth: representativeDepthMeters
+                )
+                lastPinchScale = recognizer.scale
+            case .ended, .cancelled:
+                lastPinchScale = 1
+            default:
+                break
+            }
+        }
+
+        @objc private func handlePositionPan(_ recognizer: UIPanGestureRecognizer) {
+            guard let cameraPosition, let cameraYaw, let view = recognizer.view else { return }
+            let translation = recognizer.translation(in: view)
+            switch recognizer.state {
+            case .began:
+                lastPositionPanTranslation = translation
+            case .changed:
+                let deltaTranslation = CGPoint(
+                    x: translation.x - lastPositionPanTranslation.x,
+                    y: translation.y - lastPositionPanTranslation.y
+                )
+                let yawRotation = simd_quatf(
+                    angle: cameraYaw.wrappedValue,
+                    axis: SIMD3<Float>(0, 1, 0)
+                )
+                let rotatedRight = yawRotation.act(SIMD3<Float>(1, 0, 0))
+                let horizontalRight = simd_normalize(SIMD3<Float>(rotatedRight.x, 0, rotatedRight.z))
+                let translationScale = DepthAnythingPhotoCameraInteraction.positionTranslationMetersPerPoint
+                let movement = horizontalRight * Float(deltaTranslation.x) * translationScale
+                    + SIMD3<Float>(0, 1, 0) * Float(-deltaTranslation.y) * translationScale
+                cameraPosition.wrappedValue = DepthAnythingPhotoCameraInteraction.constrainedPreviewPosition(
+                    cameraPosition.wrappedValue + movement,
+                    representativeDepth: representativeDepthMeters
+                )
+                lastPositionPanTranslation = translation
+            case .ended, .cancelled:
+                lastPositionPanTranslation = .zero
             default:
                 break
             }
@@ -1183,13 +1356,18 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
 /// Pre-save Depth Anything preview — matches Splat ML navigation chrome (nav-bar save, name prompt, discard alert).
 private struct DepthAnythingPreviewRoomView: View {
     let destination: USDZViewerDestination
+    @State private var previewModel: USDZModel
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var rtmdetService = RTMDetModelService.shared
-    @StateObject private var modelManager = USDZModelManager()
+    /// The preview does not need the complete saved-room catalog. Initialize it only when the
+    /// user commits a name, so entering the exact RealityKit preview does not scan/load all rooms.
+    @State private var modelManager: USDZModelManager?
+    @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
+    @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
     @State private var shouldResetCamera = false
-    @State private var previewCameraOffset: CGSize = .zero
-    @State private var previewCameraZoom: CGFloat = 1
+    @State private var shouldCaptureRealityKitSnapshot = false
+    @State private var realityKitSnapshot: UIImage?
     @State private var showingFurnitureFit = false
     @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
     @State private var furnitureFitShowIdentifyLivePreview = true
@@ -1221,6 +1399,24 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var showDiscardUnsavedAlert = false
     @StateObject private var immersiveChrome = PaafektViewerChromeController()
 
+    init(destination: USDZViewerDestination) {
+        self.destination = destination
+        self._previewModel = State(initialValue: USDZModel(
+            name: destination.generatedModelURL.deletingPathExtension().lastPathComponent,
+            fileName: destination.generatedModelURL.lastPathComponent,
+            isSavedRoom: true,
+            fileType: .usdz,
+            fileSize: nil,
+            photoOrientation: destination.photoOrientation,
+            roomWidth: destination.roomWidthMeters,
+            roomHeight: destination.roomHeightMeters,
+            roomDepth: destination.roomDepthMeters,
+            customDisplayName: "Room Preview",
+            roomCoordinateFrame: destination.roomCoordinateFrame,
+            cachedResolvedURL: destination.generatedModelURL
+        ))
+    }
+
     private var depthAnythingRoomDimensions: (width: Float, height: Float, depth: Float)? {
         let width = destination.roomWidthMeters
         let height = destination.roomHeightMeters
@@ -1247,15 +1443,14 @@ private struct DepthAnythingPreviewRoomView: View {
 
     private var previewSceneAndFurnitureUnderlay: some View {
         ZStack {
-            DepthAnythingPreviewSceneView(
-                imageURL: destination.measurementImageURL,
-                roomWidthMeters: destination.roomWidthMeters,
-                roomHeightMeters: destination.roomHeightMeters,
-                photoOrientation: destination.photoOrientation,
-                cameraOffset: $previewCameraOffset,
-                cameraZoom: $previewCameraZoom,
-                shouldResetCamera: $shouldResetCamera,
-                allowsSceneInteraction: !showingFurnitureFit
+            RealityKitView(
+                model: previewModel,
+                cameraMovementManager: cameraMovementManager,
+                arObjectPlacementManager: arObjectPlacementManager,
+                isARActive: false,
+                shouldCaptureSnapshot: $shouldCaptureRealityKitSnapshot,
+                capturedSnapshot: $realityKitSnapshot,
+                shouldResetCamera: $shouldResetCamera
             )
             .allowsHitTesting(!showingFurnitureFit)
             .accessibilityIdentifier("preview_room_viewport")
@@ -1322,6 +1517,11 @@ private struct DepthAnythingPreviewRoomView: View {
             ZStack {
                 previewSceneAndFurnitureUnderlay
                     .ignoresSafeArea()
+
+                PaafektViewerCameraDPadOverlay(
+                    photoOrientation: destination.photoOrientation,
+                    hideForCapture: isSavingRoom || isCapturingSnapshot || showingFurnitureFit
+                )
 
                 // Full-video task helper stays visible even after chrome auto-hides.
                 previewFullVideoFurnitureTapBubbleOverlay
@@ -1419,10 +1619,9 @@ private struct DepthAnythingPreviewRoomView: View {
             } else {
                 OrientationLockManager.shared.lockToPortrait()
             }
-            // List-page viewers preload RTMDet on appear; preview used to wait until brain tap (multi-second lag).
-            rtmdetService.ensureModelLoaded()
-            DepthAnythingRoomReconstructor.prewarmSharedModelIfNeeded()
-            logDebug("[DepthAnythingRoom][Preview] RTMDet + Depth Anything prewarm requested on appear")
+            // Exact preview generation has already completed RTMDet inference, so the shared
+            // service is warm. Requesting another load here only duplicated lifecycle work.
+            logDebug("[DepthAnythingRoom][Preview] RTMDet already warm from generation")
         }
         .onDisappear {
             dismissPreviewFullVideoFurnitureTapHint()
@@ -1494,8 +1693,6 @@ private struct DepthAnythingPreviewRoomView: View {
                         accessibilityLabel: L10n.RoomViewer.recenterView
                     ) {
                         immersiveChrome.noteChromeInteraction()
-                        previewCameraOffset = .zero
-                        previewCameraZoom = 1
                         shouldResetCamera = true
                     }
                     if !selectedFurnitureFitLabels.isEmpty {
@@ -1967,14 +2164,22 @@ private struct DepthAnythingPreviewRoomView: View {
     private func startSavingRoom() {
         let trimmedRoomName = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard DisplayNameValidation.isValid(trimmedRoomName) else { return }
-        guard !modelManager.hasSavedRoomNameConflict(trimmedRoomName) else {
+        let saveModelManager: USDZModelManager
+        if let modelManager {
+            saveModelManager = modelManager
+        } else {
+            let manager = USDZModelManager()
+            modelManager = manager
+            saveModelManager = manager
+        }
+        guard !saveModelManager.hasSavedRoomNameConflict(trimmedRoomName) else {
             saveAlertMessage = L10n.RoomViewer.duplicateRoomName
             saveWasSuccessful = false
             showSaveErrorNotice = true
             return
         }
-        let measurementImageURL = destination.measurementImageURL
-        guard FileManager.default.fileExists(atPath: measurementImageURL.path) else {
+        let generatedModelURL = destination.generatedModelURL
+        guard FileManager.default.fileExists(atPath: generatedModelURL.path) else {
             saveAlertMessage = L10n.RoomPreview.sourceImageUnavailable
             saveWasSuccessful = false
             showSaveErrorNotice = true
@@ -1982,59 +2187,32 @@ private struct DepthAnythingPreviewRoomView: View {
         }
         let photoOrientationRawValue = destination.photoOrientation.rawValue
         let roomCoordinateFrameRawValue = destination.roomCoordinateFrame.rawValue
+        let roomWidth = destination.roomWidthMeters
+        let roomHeight = destination.roomHeightMeters
+        let roomDepth = destination.roomDepthMeters
 
         showRoomNameInput = false
         withAnimation(.easeIn(duration: 0.2)) {
             isSavingRoom = true
-            saveProgress = 0.02
-            saveProgressStatusText = L10n.RoomViewer.measuringRoom
+            saveProgress = 0.25
+            saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
         }
 
         Task {
-            // Commit overlay before heavy first-save CoreML work (matches SplatRoomView save).
-            try? await Task.sleep(nanoseconds: 220_000_000)
-
             do {
                 let savedURL = try await Task.detached(priority: .userInitiated) {
-                    let cameraMetadata = CameraExifSidecar.load(roomURL: measurementImageURL)
-                    guard let measurementImage = UIImage(contentsOfFile: measurementImageURL.path)?.fixedOrientation() else {
-                        throw DepthAnythingPreviewSaveError.sourceImageUnavailable
-                    }
-
-                    let reconstructor = try DepthAnythingRoomReconstructor()
-                    let measuredResult = try await reconstructor.reconstructWithResult(
-                        image: measurementImage,
-                        cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata,
-                        progressHandler: { fraction in
-                            Task { @MainActor in
-                                saveProgress = 0.05 + Double(fraction) * 0.85
-                                if fraction < 0.58 {
-                                    saveProgressStatusText = L10n.RoomViewer.measuringRoom
-                                } else if fraction < 0.85 {
-                                    saveProgressStatusText = L10n.GenerationProgress.generating3DModel
-                                } else {
-                                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
-                                }
-                            }
-                        }
-                    )
-
-                    var measuredCameraMetadata = cameraMetadata
-                    for (key, value) in measuredResult.calibrationMetadata {
-                        measuredCameraMetadata[key] = value
-                    }
-                    if !measuredCameraMetadata.isEmpty {
-                        CameraExifSidecar.mergeDerivedValues(roomURL: measuredResult.usdzURL, additions: measuredCameraMetadata)
-                    }
                     let metadata = depthAnythingSavedRoomMetadata(
                         photoOrientationRawValue: photoOrientationRawValue,
                         roomCoordinateFrameRawValue: roomCoordinateFrameRawValue,
                         displayName: trimmedRoomName,
-                        roomWidth: measuredResult.roomWidthMeters,
-                        roomHeight: measuredResult.roomHeightMeters,
-                        roomDepth: measuredResult.roomDepthMeters
+                        roomWidth: roomWidth,
+                        roomHeight: roomHeight,
+                        roomDepth: roomDepth
                     )
-                    return try copyDepthAnythingRoomToSavedRooms(sourceURL: measuredResult.usdzURL, metadata: metadata)
+                    return try copyDepthAnythingRoomToSavedRooms(
+                        sourceURL: generatedModelURL,
+                        metadata: metadata
+                    )
                 }.value
 
                 await MainActor.run {
@@ -2062,17 +2240,6 @@ private struct DepthAnythingPreviewRoomView: View {
                     logDebug("❌ [DepthAnythingRoom] Save failed: \(error.localizedDescription)")
                 }
             }
-        }
-    }
-}
-
-private enum DepthAnythingPreviewSaveError: LocalizedError {
-    case sourceImageUnavailable
-
-    var errorDescription: String? {
-        switch self {
-        case .sourceImageUnavailable:
-            return L10n.RoomPreview.sourceImageUnavailable
         }
     }
 }
@@ -2527,7 +2694,7 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(item: $usdzViewerDestination) { destination in
             DepthAnythingPreviewRoomView(destination: destination)
                 .onAppear {
-                    logDebug("🚀 [Navigation] DepthAnythingPreviewRoomView (fast image-plane preview)")
+                    logDebug("🚀 [Navigation] DepthAnythingPreviewRoomView (generated USDZ in RealityKitView)")
                     logDebug("   \(destination.summary)")
                 }
                 .onDisappear {
@@ -2641,25 +2808,36 @@ struct SinglePhotoRoomView: View {
                     logDebug("[DepthAnythingRoom][CameraMetadata] keys=\(cameraMetadata.keys.sorted())")
                 }
                 let preview = try await Task.detached(priority: .userInitiated) {
-                    try makeDepthAnythingPreviewDestination(
+                    try await makeDepthAnythingPreviewDestination(
                         image: generationImage,
                         cameraMetadata: cameraMetadata,
-                        photoOrientation: orientation
+                        photoOrientation: orientation,
+                        progressHandler: { fraction in
+                            Task { @MainActor in
+                                if fraction < 0.58 {
+                                    singlePhotoGenerationStatus = L10n.RoomViewer.measuringRoom
+                                } else if fraction < 0.85 {
+                                    singlePhotoGenerationStatus = L10n.GenerationProgress.generating3DModel
+                                } else {
+                                    singlePhotoGenerationStatus = L10n.GenerationProgress.generating3DModel
+                                }
+                            }
+                        }
                     )
                 }.value
-                logDebug("✅ [DepthAnythingRoom] Fast preview ready: \(preview.summary)")
+                logDebug("✅ [DepthAnythingRoom] Exact RealityKit preview ready: \(preview.summary)")
                 logDebug(
-                    "[DepthAnythingRoom][PreviewFast][UIResult] " +
+                    "[DepthAnythingRoom][PreviewExact][UIResult] " +
                     "image=\(preview.imageWidth)x\(preview.imageHeight) " +
                     "W=\(String(format: "%.4f", preview.roomWidthMeters)) " +
                     "H=\(String(format: "%.4f", preview.roomHeightMeters)) " +
                     "D=\(String(format: "%.4f", preview.roomDepthMeters)) " +
-                    "source=\(preview.measurementImageURL.lastPathComponent)"
+                    "source=\(preview.generatedModelURL.lastPathComponent)"
                 )
                 await MainActor.run {
                     singlePhotoGenerationStatus = nil
                     usdzViewerDestination = USDZViewerDestination(
-                        measurementImageURL: preview.measurementImageURL,
+                        generatedModelURL: preview.generatedModelURL,
                         photoOrientation: orientation,
                         roomCoordinateFrame: .depthAnythingImageDepthMeters,
                         summary: preview.summary,

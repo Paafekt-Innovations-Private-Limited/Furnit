@@ -48,6 +48,24 @@ struct DepthAnythingRoomResult: Sendable {
     }
 }
 
+/// Capture-camera projection shared by the pre-save SceneKit preview and the saved USDZ viewer.
+struct DepthAnythingProjectionCamera: Sendable, Hashable {
+    let imageWidth: Int
+    let imageHeight: Int
+    let focalXPixels: Float
+    let focalYPixels: Float
+    let verticalFieldOfViewDegrees: Float
+    let source: String
+
+    var unitDepthPlaneWidth: Float {
+        Float(imageWidth) / max(focalXPixels, 1)
+    }
+
+    var unitDepthPlaneHeight: Float {
+        Float(imageHeight) / max(focalYPixels, 1)
+    }
+}
+
 /// Normalized reconstruction progress in 0...1 (preprocess → inference → mesh → USDZ export).
 typealias DepthAnythingReconstructionProgressHandler = @Sendable (Double) -> Void
 
@@ -127,6 +145,51 @@ final class DepthAnythingRoomReconstructor {
         let safeMinimumWidth = max(minimumRoomWidthMeters, 0.05)
         let displayHeight = max(measuredHeightMeters, safeMinimumWidth / imageAspect)
         return (width: displayHeight * imageAspect, height: displayHeight)
+    }
+
+    /// Resolve the same optical projection used when `reconstructWithResult` authors the saved
+    /// depth mesh. The preview calls this first with capture metadata and then with GeoCalib so its
+    /// virtual camera converges to the camera persisted in `depthMeshVerticalFovDegrees`.
+    static func projectionCameraForPreview(
+        image: UIImage,
+        cameraMetadata: [String: Double]?,
+        geoCalib: GeoCalibCalibrationResult?
+    ) -> DepthAnythingProjectionCamera? {
+        let fixedImage = image.fixedOrientation()
+        guard let cgImage = fixedImage.cgImage else { return nil }
+        let imageWidth = max(cgImage.width, 1)
+        let imageHeight = max(cgImage.height, 1)
+        let calibrationMetadata = mergedCameraMetadata(cameraMetadata, geoCalib?.metadata)
+        let resolved = focalPixelDetails(
+            image: fixedImage,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            cameraMetadata: calibrationMetadata
+        )
+        let metricCalibration = resolveMetricCalibration(
+            geoFocalPx: resolved.fx,
+            cameraMetadata: calibrationMetadata,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            rawObjectMeasurement: nil
+        )
+        let focalPixels = max(metricCalibration.focalPx, 1)
+        let verticalFieldOfView = 2 * atan(
+            Float(imageHeight) * 0.5 / focalPixels
+        ) * 180 / .pi
+        guard verticalFieldOfView.isFinite,
+              verticalFieldOfView > 1,
+              verticalFieldOfView < 179 else {
+            return nil
+        }
+        return DepthAnythingProjectionCamera(
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            focalXPixels: focalPixels,
+            focalYPixels: focalPixels,
+            verticalFieldOfViewDegrees: verticalFieldOfView,
+            source: "\(resolved.source)+\(metricCalibration.sourceLabel)"
+        )
     }
 
     private static func timedStage<T>(_ label: String, _ work: () async throws -> T) async rethrows -> T {
@@ -215,9 +278,10 @@ final class DepthAnythingRoomReconstructor {
                 imageHeight: workingPixelHeight
             )
         }
-        let depthMap = try await Self.timedStage("depth_anything") {
-            try await self.inferDepth(image: workingImage)
+        let depthInference = try await Self.timedStage("depth_anything") {
+            try await self.inferDepthWithStats(image: workingImage)
         }
+        let depthMap = depthInference.depthMap
         reportProgress(0.50)
         let geoCalibCalibration = await geoCalibTask
         let objectAnalysis = await objectAnalysisTask
@@ -288,7 +352,7 @@ final class DepthAnythingRoomReconstructor {
                 (leftX: $0.bboxLeftX, rightX: $0.bboxRightX, topY: $0.bboxTopY, bottomY: $0.bboxBottomY)
             }
         )
-        let measurementDepthMap = Self.scaleDepthMap(depthMap, scale: measurementCalibration.depthScale)
+        let calibrationEnd = CFAbsoluteTimeGetCurrent()
         var enrichedCalibrationMetadata = calibrationMetadata ?? [:]
         enrichedCalibrationMetadata["depthMetricScale"] = Double(metricCalibration.depthScale)
         enrichedCalibrationMetadata["depthMetricCalibrationSource"] = Double(metricCalibration.sourceCode)
@@ -327,9 +391,9 @@ final class DepthAnythingRoomReconstructor {
             enrichedCalibrationMetadata["depthAnchorMeasuredHeightM"] = Double(anchorMeasuredHeight)
         }
 
-        let rawStats = Self.depthMapStats(depthMap)
-        let stats = Self.depthMapStats(calibratedDepthMap)
-        let measurementStats = Self.depthMapStats(measurementDepthMap)
+        let rawStats = depthInference.stats
+        let stats = Self.scaledDepthMapStats(rawStats, scale: metricCalibration.depthScale)
+        let measurementStats = Self.scaledDepthMapStats(rawStats, scale: measurementCalibration.depthScale)
         logDebug(
             "[DepthAnythingRoom][MetricCalib] source=\(metricCalibration.sourceLabel) " +
             "geo_focal_px=\(String(format: "%.1f", metricCalibration.geoFocalPx)) " +
@@ -350,23 +414,28 @@ final class DepthAnythingRoomReconstructor {
             "depth_median_raw=\(Self.formatMeters(rawStats.median)) depth_median_cal=\(Self.formatMeters(stats.median)) " +
             "depth_median_measurement=\(Self.formatMeters(measurementStats.median))"
         )
+        let statisticsEnd = CFAbsoluteTimeGetCurrent()
 
-        let wallMeasured = Self.measureWall(
-            depthMap: measurementDepthMap,
+        let rawWallMeasured = Self.measureWall(
+            depthMap: depthMap,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
             fx: measurementFocal.fx,
             fy: measurementFocal.fy,
             wallMargin: wallMargin
         )
-        let depthSpreadMeasured = Self.measureDepthSpread(
-            pointGrid: measurementCalibration.pointGrid,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            wallMargin: wallMargin,
-            scale: measurementCalibration.depthScale,
-            cameraHeightPriorMeters: measurementCalibration.cameraHeightPriorMeters
-        ) ?? wallMeasured
+        let wallMeasured = Self.scaledRoomMeasurement(
+            rawWallMeasured,
+            scale: measurementCalibration.depthScale
+        )
+        let depthSpreadMeasured = measurementCalibration.cachedDepthSpread ?? Self.measureDepthSpread(
+                pointGrid: measurementCalibration.pointGrid,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight,
+                wallMargin: wallMargin,
+                scale: measurementCalibration.depthScale,
+                cameraHeightPriorMeters: measurementCalibration.cameraHeightPriorMeters
+            ) ?? wallMeasured
         let depthMask = RoomExtent.buildInvalidDepthMask(
             depth: rawDepthFlat,
             width: imageWidth,
@@ -380,7 +449,8 @@ final class DepthAnythingRoomReconstructor {
             } ?? [],
             focalPx: measurementFocal.fx,
             cx: Float(imageWidth - 1) * 0.5,
-            cy: Float(imageHeight - 1) * 0.5
+            cy: Float(imageHeight - 1) * 0.5,
+            depthP98: rawStats.p98
         )
         logDebug("[DepthMask] \(depthMask.debug)")
         let roomExtentPoints = Self.roomExtentPoints(
@@ -400,6 +470,7 @@ final class DepthAnythingRoomReconstructor {
             "conf=\(String(format: "%.2f", roomExtentMeasured.confidence)) " +
             "approx=\(roomExtentMeasured.approximate)"
         )
+        let roomExtentEnd = CFAbsoluteTimeGetCurrent()
         let importedCameraHeightForSingleView = measurementCalibration.cameraHeightPriorMeters
         let gravityPitchForHeight = Self.measurementPitchRadians(
             geoCalib: geoCalibCalibration,
@@ -419,6 +490,7 @@ final class DepthAnythingRoomReconstructor {
             "conf=\(String(format: "%.2f", roomHeightMeasured.confidence)) " +
             "approx=\(roomHeightMeasured.approximate)"
         )
+        let roomHeightEnd = CFAbsoluteTimeGetCurrent()
         let roomWidthMeasured = RoomHeight.roomWidthSingleView(
             pointGrid: measurementCalibration.pointGrid,
             vFloor: roomHeightMeasured.vFloor,
@@ -432,13 +504,11 @@ final class DepthAnythingRoomReconstructor {
             "conf=\(String(format: "%.2f", roomWidthMeasured.confidence)) " +
             "approx=\(roomWidthMeasured.approximate)"
         )
+        let roomWidthEnd = CFAbsoluteTimeGetCurrent()
         // Same detection, calibrated depth — RTMDet does not need to run again.
-        let objectMeasured = Self.measureObjectBBox(
-            objectRect: objectRect,
-            depthMap: calibratedDepthMap,
-            fx: focalPx,
-            fy: focalPx
-        )
+        let objectMeasured = rawObjectMeasured.map {
+            Self.scaledObjectMeasurement($0, scale: metricCalibration.depthScale)
+        }
         let authoritativeHeight = roomHeightMeasured.confidence >= 0.5
             ? roomHeightMeasured.height
             : min(3.6, max(2.0, roomExtentMeasured.height))
@@ -519,6 +589,15 @@ final class DepthAnythingRoomReconstructor {
             "measured_depth_m=\(String(format: "%.4f", measured.depth))"
         )
         let measurementEnd = CFAbsoluteTimeGetCurrent()
+        logDebug(String(
+            format: "[DepthAnythingRoom][TimingMath] calibration %.0f ms · statistics %.0f ms · extent %.0f ms · height %.0f ms · width %.0f ms · finalize %.0f ms",
+            (calibrationEnd - inferenceEnd) * 1000,
+            (statisticsEnd - calibrationEnd) * 1000,
+            (roomExtentEnd - statisticsEnd) * 1000,
+            (roomHeightEnd - roomExtentEnd) * 1000,
+            (roomWidthEnd - roomHeightEnd) * 1000,
+            (measurementEnd - roomWidthEnd) * 1000
+        ))
         reportProgress(0.72)
         let meshFocalXPixels = focalPx
         let meshFocalYPixels = focalPx
@@ -533,9 +612,12 @@ final class DepthAnythingRoomReconstructor {
 
         let representativeDepth = max(stats.median ?? measured.depth, 0.2)
         let nearestReliableDepth = max(stats.p05 ?? stats.min ?? 0.2, 0.2)
-        let forwardLimit = (representativeDepth * 0.35).clamped(to: 0.75...1.40)
-        let lateralLimit = (representativeDepth * 0.12).clamped(to: 0.24...0.48)
-        let backwardLimit = (representativeDepth * 0.08).clamped(to: 0.18...0.32)
+        let cameraEnvelope = DepthAnythingPhotoCameraInteraction.movementEnvelope(
+            representativeDepth: representativeDepth
+        )
+        let forwardLimit = cameraEnvelope.forward
+        let lateralLimit = cameraEnvelope.lateral
+        let backwardLimit = cameraEnvelope.backward
 
         // One opaque continuous surface only. The previous completed-background mesh formed a
         // second enclosure around the room and became visible as a translucent/foggy shell.
@@ -555,8 +637,12 @@ final class DepthAnythingRoomReconstructor {
         enrichedCalibrationMetadata["depthMeshForwardTranslationM"] = Double(forwardLimit)
         enrichedCalibrationMetadata["depthMeshLateralTranslationM"] = Double(lateralLimit)
         enrichedCalibrationMetadata["depthMeshBackwardTranslationM"] = Double(backwardLimit)
-        enrichedCalibrationMetadata["depthMeshMaxYawRadians"] = Double(Float.pi / 6)
-        enrichedCalibrationMetadata["depthMeshMaxPitchRadians"] = Double(Float.pi / 5)
+        enrichedCalibrationMetadata["depthMeshMaxYawRadians"] = Double(
+            DepthAnythingPhotoCameraInteraction.maximumYawRadians
+        )
+        enrichedCalibrationMetadata["depthMeshMaxPitchRadians"] = Double(
+            DepthAnythingPhotoCameraInteraction.maximumPitchRadians
+        )
         enrichedCalibrationMetadata["depthMeshNearestReliableDepthM"] = Double(nearestReliableDepth)
         let meshEnd = CFAbsoluteTimeGetCurrent()
         reportProgress(0.85)
@@ -584,6 +670,10 @@ final class DepthAnythingRoomReconstructor {
     }
 
     func inferDepth(image: UIImage) async throws -> [[Float]] {
+        try await inferDepthWithStats(image: image).depthMap
+    }
+
+    private func inferDepthWithStats(image: UIImage) async throws -> DepthInferenceResult {
         let fixedImage = image.fixedOrientation()
         guard let cgImage = fixedImage.cgImage else {
             throw DepthAnythingRoomError.invalidImage
@@ -606,7 +696,13 @@ final class DepthAnythingRoomReconstructor {
             targetWidth: targetWidth,
             targetHeight: targetHeight
         )
-        let resizedStats = Self.depthValueStats(remapped)
+        var rows: [[Float]] = []
+        rows.reserveCapacity(targetHeight)
+        for row in 0..<targetHeight {
+            let start = row * targetWidth
+            rows.append(Array(remapped[start..<start + targetWidth]))
+        }
+        let resizedStats = Self.depthMapStats(rows)
         logDebug(
             "[DepthAnythingRoom][InferenceRaw] observation=\(String(describing: type(of: observation))) " +
             "raw_depth_map=\(dense.width)x\(dense.height) letterbox_content=\(contentWidth)x\(contentHeight) " +
@@ -616,14 +712,7 @@ final class DepthAnythingRoomReconstructor {
             "resized_valid=\(resizedStats.validCount) resized_invalid=\(resizedStats.invalidCount) " +
             "resized_min=\(Self.formatMeters(resizedStats.min)) resized_median=\(Self.formatMeters(resizedStats.median)) resized_max=\(Self.formatMeters(resizedStats.max))"
         )
-
-        var rows: [[Float]] = []
-        rows.reserveCapacity(targetHeight)
-        for row in 0..<targetHeight {
-            let start = row * targetWidth
-            rows.append(Array(remapped[start..<start + targetWidth]))
-        }
-        return rows
+        return DepthInferenceResult(depthMap: rows, stats: resizedStats)
     }
 
     func buildMesh(
@@ -1638,6 +1727,22 @@ final class DepthAnythingRoomReconstructor {
         let bboxBottomY: Int
     }
 
+    private static func scaledObjectMeasurement(
+        _ measurement: ObjectBBoxMeasurement,
+        scale: Float
+    ) -> ObjectBBoxMeasurement {
+        ObjectBBoxMeasurement(
+            classIdx: measurement.classIdx,
+            width: measurement.width * scale,
+            height: measurement.height * scale,
+            depth: measurement.depth * scale,
+            bboxLeftX: measurement.bboxLeftX,
+            bboxRightX: measurement.bboxRightX,
+            bboxTopY: measurement.bboxTopY,
+            bboxBottomY: measurement.bboxBottomY
+        )
+    }
+
     private struct DepthMetricCalibration {
         let depthScale: Float
         let focalPx: Float
@@ -1668,6 +1773,8 @@ final class DepthAnythingRoomReconstructor {
         let cameraHeightPriorSourceCode: Int
         let scaleEstimatorConfidence: Float
         let scaleEstimatorDebug: String
+        /// Spread already evaluated by the scale resolver for the selected scale.
+        let cachedDepthSpread: (width: Float, height: Float, depth: Float)?
     }
 
     private static func measurementFocalPixels(
@@ -1716,6 +1823,17 @@ final class DepthAnythingRoomReconstructor {
             return wallFallback
         }
         return spread
+    }
+
+    private static func scaledRoomMeasurement(
+        _ measurement: (width: Float, height: Float, depth: Float),
+        scale: Float
+    ) -> (width: Float, height: Float, depth: Float) {
+        (
+            width: measurement.width * scale,
+            height: measurement.height * scale,
+            depth: measurement.depth * scale
+        )
     }
 
     private static func resolveMeasurementCameraHeightScale(
@@ -1800,22 +1918,25 @@ final class DepthAnythingRoomReconstructor {
         }
         var scaleEstimatorConfidence: Float = 0
         var scaleEstimatorDebug = "not_run"
+        var cachedDepthSpread: (width: Float, height: Float, depth: Float)?
         if priorSourceCode == 0 {
             let vpGravity = VanishingPointGravity.refine(
                 levelingRotation: levelingRotation,
                 image: workingImage,
                 focalPx: Double(fx)
             )
-            let scaleEstimatorPointGrid = LeveledDepthPointGrid(
-                depth: rawDepthFlat,
-                width: imageWidth,
-                height: imageHeight,
-                fx: fx,
-                fy: fy,
-                cx: Float(imageWidth - 1) * 0.5,
-                cy: Float(imageHeight - 1) * 0.5,
-                rotation: vpGravity.levelingRotation
-            )
+            let scaleEstimatorPointGrid = vpGravity.confidence > 0
+                ? LeveledDepthPointGrid(
+                    depth: rawDepthFlat,
+                    width: imageWidth,
+                    height: imageHeight,
+                    fx: fx,
+                    fy: fy,
+                    cx: Float(imageWidth - 1) * 0.5,
+                    cy: Float(imageHeight - 1) * 0.5,
+                    rotation: vpGravity.levelingRotation
+                )
+                : pointGrid
             let objectBoxes: [ScaleObjectBox] = objectRect.map { rect in
                 [
                     ScaleObjectBox(
@@ -1840,6 +1961,7 @@ final class DepthAnythingRoomReconstructor {
                     )
                 ]
             } ?? []
+            var cachedScaleSpreads: [(scale: Double, spread: (width: Float, height: Float, depth: Float))] = []
             let impliedRoomHeightForScale: (Double) -> Double? = { candidateScale in
                 guard candidateScale.isFinite, candidateScale > 0 else { return nil }
                 let impliedCameraHeightPrior = rawCameraHeight.map { $0 * Float(candidateScale) } ?? cameraHeightPrior
@@ -1851,6 +1973,7 @@ final class DepthAnythingRoomReconstructor {
                     scale: Float(candidateScale),
                     cameraHeightPriorMeters: impliedCameraHeightPrior
                 ) {
+                    cachedScaleSpreads.append((candidateScale, spread))
                     return Double(spread.height)
                 }
                 return nil
@@ -1878,6 +2001,11 @@ final class DepthAnythingRoomReconstructor {
             sourceLabel = estimatorResult.source
             sourceCode = 22
             logDebug("[ScaleResolver] \(scaleEstimatorDebug)")
+
+            let selectedScale = Double(depthScale)
+            cachedDepthSpread = cachedScaleSpreads.last(where: {
+                abs($0.scale - selectedScale) <= max(1e-7, abs(selectedScale) * 1e-6)
+            })?.spread
         }
 
         return MeasurementDepthCalibration(
@@ -1891,7 +2019,8 @@ final class DepthAnythingRoomReconstructor {
             gravitySourceCode: gravitySourceCode,
             cameraHeightPriorSourceCode: priorSourceCode,
             scaleEstimatorConfidence: scaleEstimatorConfidence,
-            scaleEstimatorDebug: scaleEstimatorDebug
+            scaleEstimatorDebug: scaleEstimatorDebug,
+            cachedDepthSpread: cachedDepthSpread
         )
     }
 
@@ -2871,8 +3000,14 @@ final class DepthAnythingRoomReconstructor {
         let p05: Float?
         let median: Float?
         let p95: Float?
+        let p98: Float?
         let max: Float?
         let centerDepth: Float?
+    }
+
+    private struct DepthInferenceResult {
+        let depthMap: [[Float]]
+        let stats: DepthMapStats
     }
 
     private struct DepthValueStats {
@@ -2936,6 +3071,7 @@ final class DepthAnythingRoomReconstructor {
                 p05: nil,
                 median: nil,
                 p95: nil,
+                p98: nil,
                 max: nil,
                 centerDepth: nil
             )
@@ -2960,8 +3096,28 @@ final class DepthAnythingRoomReconstructor {
             p05: percentile(sorted: validDepths, fraction: 0.05),
             median: percentile(sorted: validDepths, fraction: 0.5),
             p95: percentile(sorted: validDepths, fraction: 0.95),
+            p98: validDepths[min(
+                validDepths.count - 1,
+                max(0, Int(Double(validDepths.count - 1) * 0.98))
+            )],
             max: validDepths.last,
             centerDepth: centerDepth
+        )
+    }
+
+    private static func scaledDepthMapStats(_ stats: DepthMapStats, scale: Float) -> DepthMapStats {
+        guard scale.isFinite, scale > 0 else { return stats }
+        func scaled(_ value: Float?) -> Float? { value.map { $0 * scale } }
+        return DepthMapStats(
+            validCount: stats.validCount,
+            invalidCount: stats.invalidCount,
+            min: scaled(stats.min),
+            p05: scaled(stats.p05),
+            median: scaled(stats.median),
+            p95: scaled(stats.p95),
+            p98: scaled(stats.p98),
+            max: scaled(stats.max),
+            centerDepth: scaled(stats.centerDepth)
         )
     }
 

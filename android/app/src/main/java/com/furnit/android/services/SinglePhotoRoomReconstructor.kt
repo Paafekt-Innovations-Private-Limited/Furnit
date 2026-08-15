@@ -10,8 +10,10 @@ import android.net.Uri
 import com.furnit.android.R
 import com.furnit.android.RoomDefaults
 import com.furnit.android.models.RoomStructure
+import com.furnit.android.roomreconstruction.DepthMeshData
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
+import com.furnit.android.utils.RoomFolderMetadata
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
@@ -25,7 +27,7 @@ import kotlin.math.min
  * Creates a GLB model file with:
  * - Floor, ceiling, and walls as textured planes
  * - Textures extracted from the photo based on boundary positions
- * - Or, for AI/photo preview, a pixel-correct flat full-photo surface
+ * - Or, for AI/photo rooms, the final continuous depth surface with a safe flat fallback
  */
 class SinglePhotoRoomReconstructor(private val context: Context) {
 
@@ -70,13 +72,20 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
             try {
                 callback.onProgress(0.1f, context.getString(R.string.ai_progress_getting_photo_ready))
 
+                var depthMesh: DepthMeshData? = null
                 if (flatPhotoMesh) {
                     callback.onProgress(0.15f, context.getString(R.string.room_viewer_measuring_room))
-                    val measured = DepthAnythingRoomMeasurer.measure(context, image, sourcePhotoUri)
+                    val measured = DepthAnythingRoomMeasurer.measure(
+                        context = context,
+                        image = image,
+                        imageUri = sourcePhotoUri,
+                        includeForegroundMask = false,
+                    )
                     if (measured.measured) {
                         dimensions.width = measured.width
                         dimensions.height = measured.height
                         dimensions.depth = measured.depth
+                        depthMesh = measured.depthMesh
                         LogUtil.i(
                             TAG,
                             "Depth Anything room dims W=${dimensions.width} H=${dimensions.height} D=${dimensions.depth}",
@@ -119,6 +128,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     rightWallTexture,
                     flatPhotoMesh,
                     sourcePhoto = if (flatPhotoMesh) image else null,
+                    depthMesh = depthMesh,
+                    photoOrientation = if (image.width > image.height) "landscape" else "portrait",
                 )
 
                 callback.onProgress(0.9f, context.getString(R.string.ai_progress_finishing_up))
@@ -242,6 +253,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         rightWall: Bitmap,
         flatPhotoMesh: Boolean = false,
         sourcePhoto: Bitmap? = null,
+        depthMesh: DepthMeshData? = null,
+        photoOrientation: String = "portrait",
     ): File {
         // Create room in preview directory (NOT in rooms folder yet)
         // Room will be moved to rooms folder when user clicks Save in preview
@@ -267,12 +280,48 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
             height = dimensions.height
         )
 
+        var depthMeshProjectionVersion: Int? = null
+        var depthMeshHasCompletedBackground: Boolean? = null
+        var depthMeshUsesContinuousSurface: Boolean? = null
         val success = if (flatPhotoMesh) {
-            generator.generateFlatPhotoGlb(
-                outputFile = glbFile,
-                dimensions = glbDimensions,
-                photoTexture = frontWall,
-            )
+            val depthSurfaceGenerated = depthMesh?.let { mesh ->
+                val depthAlignedTexture = if (
+                    frontWall.width == mesh.imageWidth && frontWall.height == mesh.imageHeight
+                ) {
+                    frontWall
+                } else {
+                    Bitmap.createScaledBitmap(frontWall, mesh.imageWidth, mesh.imageHeight, true)
+                }
+                try {
+                    generator.generateDepthPhotoGlb(
+                        outputFile = glbFile,
+                        dimensions = glbDimensions,
+                        photoTexture = depthAlignedTexture,
+                        depthMap = mesh.calibratedDepth,
+                        depthWidth = mesh.imageWidth,
+                        depthHeight = mesh.imageHeight,
+                        focalXPixels = mesh.focalXPixels,
+                        focalYPixels = mesh.focalYPixels,
+                    )
+                } finally {
+                    if (depthAlignedTexture !== frontWall) depthAlignedTexture.recycle()
+                }
+            } == true
+            if (depthSurfaceGenerated) {
+                depthMeshProjectionVersion = 5
+                depthMeshHasCompletedBackground = false
+                depthMeshUsesContinuousSurface = true
+                true
+            } else {
+                depthMeshProjectionVersion = 3
+                depthMeshHasCompletedBackground = false
+                depthMeshUsesContinuousSurface = false
+                generator.generateFlatPhotoGlb(
+                    outputFile = glbFile,
+                    dimensions = glbDimensions,
+                    photoTexture = frontWall,
+                )
+            }
         } else {
             generator.generateGlb(
                 outputFile = glbFile,
@@ -297,7 +346,41 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         val metadataFile = File(roomFolder, "metadata.txt")
         val createdAt = System.currentTimeMillis()
         val roomName = RoomDisplayName.myRoomWithTimestamp(context, Date(createdAt))
-        metadataFile.writeText("name=$roomName\ncreated=$createdAt\nglb=room.glb")
+        metadataFile.writeText(
+            buildString {
+                append("name=$roomName\n")
+                append("created=$createdAt\n")
+                append("glb=room.glb\n")
+                append("photoOrientation=$photoOrientation\n")
+                depthMeshProjectionVersion?.let { append("depthMeshProjectionVersion=$it\n") }
+                depthMeshHasCompletedBackground?.let {
+                    append("depthMeshHasCompletedBackground=$it\n")
+                }
+                depthMeshUsesContinuousSurface?.let {
+                    append("depthMeshUsesContinuousSurface=$it\n")
+                }
+            },
+        )
+        RoomFolderMetadata.writeToFolder(
+            roomFolder,
+            RoomFolderMetadata.Snapshot(
+                name = roomName,
+                createdAt = createdAt,
+                type = if (flatPhotoMesh) "photo" else "manual",
+                photoOrientation = photoOrientation,
+                roomWidth = dimensions.width,
+                roomHeight = dimensions.height,
+                roomDepth = dimensions.depth,
+                roomDimsApproach = if (flatPhotoMesh) "depth_anything_metric" else null,
+                roomSceneWidth = dimensions.width,
+                roomSceneHeight = dimensions.height,
+                roomSceneDepth = dimensions.depth,
+                previewOnly = true,
+                depthMeshProjectionVersion = depthMeshProjectionVersion,
+                depthMeshHasCompletedBackground = depthMeshHasCompletedBackground,
+                depthMeshUsesContinuousSurface = depthMeshUsesContinuousSurface,
+            ),
+        )
 
         LogUtil.d(TAG, "Room created at: ${roomFolder.absolutePath}")
         return if (success) glbFile else File(roomFolder, "front_wall.png")

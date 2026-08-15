@@ -124,9 +124,13 @@ enum RoomHeight {
         ]
 
         var best: RoomHeightResult?
+        let junctionsByNormalSign = junctionRows(pointGrid: pointGrid)
         for variant in variants {
+            let junctions = variant.normalSign > 0
+                ? junctionsByNormalSign.positive
+                : junctionsByNormalSign.negative
             let result = estimateOnce(
-                pointGrid: pointGrid,
+                junctions: junctions,
                 fy: fy,
                 cy: cy,
                 pitch: pitch * variant.pitchSign,
@@ -154,8 +158,79 @@ enum RoomHeight {
         )
     }
 
+    private struct JunctionRows {
+        let floor: [Float]
+        let ceiling: [Float]
+    }
+
+    private struct SignedJunctionRows {
+        let positive: JunctionRows
+        let negative: JunctionRows
+    }
+
+    /// A negative normal sign only swaps floor and ceiling; wall classification is unchanged.
+    /// Classify each sampled column once, then derive all four directional junction searches.
+    private static func junctionRows(pointGrid: LeveledDepthPointGrid) -> SignedJunctionRows {
+        let width = pointGrid.width
+        let height = pointGrid.height
+        var positiveFloorRows: [Float] = []
+        var positiveCeilingRows: [Float] = []
+        var negativeFloorRows: [Float] = []
+        var negativeCeilingRows: [Float] = []
+        let xStart = max(1, width * 2 / 5)
+        let xEnd = min(width - 2, width * 3 / 5)
+        let xStep = max(1, (xEnd - xStart) / 180)
+
+        func transitionRow(
+            surfaces: [Surface?],
+            target: Surface,
+            descending: Bool
+        ) -> Float? {
+            var lastTarget = -1
+            let rows: AnySequence<Int> = descending
+                ? AnySequence(stride(from: height - 2, through: 1, by: -1))
+                : AnySequence(stride(from: 1, to: height - 1, by: 1))
+            for y in rows {
+                guard let surface = surfaces[y] else { continue }
+                if surface == target {
+                    lastTarget = y
+                } else if surface == .wall, lastTarget >= 0 {
+                    return Float(lastTarget)
+                }
+            }
+            return lastTarget >= 0 ? Float(lastTarget) : nil
+        }
+
+        var x = xStart
+        while x <= xEnd {
+            var surfaces = [Surface?](repeating: nil, count: height)
+            if height > 2 {
+                for y in 1..<(height - 1) {
+                    surfaces[y] = worldNormal(pointGrid, x, y, 1).map(classify)
+                }
+            }
+            if let row = transitionRow(surfaces: surfaces, target: .floor, descending: true) {
+                positiveFloorRows.append(row)
+            }
+            if let row = transitionRow(surfaces: surfaces, target: .ceiling, descending: false) {
+                positiveCeilingRows.append(row)
+            }
+            if let row = transitionRow(surfaces: surfaces, target: .ceiling, descending: true) {
+                negativeFloorRows.append(row)
+            }
+            if let row = transitionRow(surfaces: surfaces, target: .floor, descending: false) {
+                negativeCeilingRows.append(row)
+            }
+            x += xStep
+        }
+        return SignedJunctionRows(
+            positive: JunctionRows(floor: positiveFloorRows, ceiling: positiveCeilingRows),
+            negative: JunctionRows(floor: negativeFloorRows, ceiling: negativeCeilingRows)
+        )
+    }
+
     private static func estimateOnce(
-        pointGrid: LeveledDepthPointGrid,
+        junctions: JunctionRows,
         fy: Float,
         cy: Float,
         pitch: Float,
@@ -163,25 +238,11 @@ enum RoomHeight {
         normalSign: Float,
         variantLabel: String
     ) -> RoomHeightResult {
-        let width = pointGrid.width
         let clampedCameraHeight = min(1.75, max(1.55, cameraHeight))
         let horizonRow = cy + fy * tan(pitch)
 
-        var floorRows: [Float] = []
-        var ceilingRows: [Float] = []
-        let xStart = max(1, width * 2 / 5)
-        let xEnd = min(width - 2, width * 3 / 5)
-        let xStep = max(1, (xEnd - xStart) / 180)
-        var x = xStart
-        while x <= xEnd {
-            if let row = floorWallRow(pointGrid, col: x, normalSign) {
-                floorRows.append(row)
-            }
-            if let row = ceilingWallRow(pointGrid, col: x, normalSign) {
-                ceilingRows.append(row)
-            }
-            x += xStep
-        }
+        let floorRows = junctions.floor
+        let ceilingRows = junctions.ceiling
 
         guard floorRows.count >= 10, ceilingRows.count >= 10 else {
             return RoomHeightResult(
@@ -478,22 +539,32 @@ enum RoomHeight {
         let maxY = max(1, min(pointGrid.height - 2, yBottom))
         guard minY <= maxY else { return (0, 0, 0, 0) }
 
-        var xs: [Int] = []
-        xs.reserveCapacity((maxY - minY + 1) * pointGrid.width / 2)
+        var xCounts = [Int](repeating: 0, count: pointGrid.width)
+        var backWallCount = 0
         for y in minY...maxY {
             for x in 1..<(pointGrid.width - 1) {
                 guard let normal = worldNormal(pointGrid, x, y, normalSign) else { continue }
                 if isBackWall(normal) {
-                    xs.append(x)
+                    xCounts[x] += 1
+                    backWallCount += 1
                 }
             }
         }
-        guard xs.count > 200 else { return (0, xs.count, 0, 0) }
-        xs.sort()
-        let leftIndex = min(xs.count - 1, max(0, Int(Double(xs.count - 1) * 0.025)))
-        let rightIndex = min(xs.count - 1, max(0, Int(Double(xs.count - 1) * 0.975)))
-        let xLeft = xs[leftIndex]
-        let xRight = xs[rightIndex]
-        return (Float(xRight - xLeft), xs.count, xLeft, xRight)
+        guard backWallCount > 200 else { return (0, backWallCount, 0, 0) }
+
+        func xValue(atSortedIndex targetIndex: Int) -> Int {
+            var cumulativeCount = 0
+            for x in 0..<xCounts.count {
+                cumulativeCount += xCounts[x]
+                if targetIndex < cumulativeCount { return x }
+            }
+            return max(0, xCounts.count - 1)
+        }
+
+        let leftIndex = min(backWallCount - 1, max(0, Int(Double(backWallCount - 1) * 0.025)))
+        let rightIndex = min(backWallCount - 1, max(0, Int(Double(backWallCount - 1) * 0.975)))
+        let xLeft = xValue(atSortedIndex: leftIndex)
+        let xRight = xValue(atSortedIndex: rightIndex)
+        return (Float(xRight - xLeft), backWallCount, xLeft, xRight)
     }
 }

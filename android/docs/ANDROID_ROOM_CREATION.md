@@ -8,24 +8,25 @@
 4. AI generation starts `PhotoRoomGenerationService.startGenerationInBackground`.
 5. `SinglePhotoRoomActivity` handles orientation and screen-size configuration changes without recreation, keeping the selected photo, progress overlay, and in-flight generation callback attached when the phone rotates.
 6. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true` and no artificial wait time.
-7. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB for the immediate preview, with an embedded JPEG texture at quality 95.
-8. Metadata is written beside the GLB, including room dimensions, depth, photo orientation, and preview state.
-9. Save reruns metric measurement with foreground masks enabled. RTMDet mask unions and calibrated depth discontinuities form a conservative foreground layer; `LayeredDepthRoomCompletion` fills masked background color and inverse depth from nearby known structure.
-10. `GlbGenerator.generateDepthPhotoGlb` writes a version-5 `photo_room_depth` GLB with separate completed-background and foreground geometry. The old full-photo far backing plane is not emitted. If a reliable layered asset cannot be generated, Save writes a flat photo GLB instead.
-11. The completed folder is promoted to `files/rooms` transactionally; a failed export removes the incomplete saved folder. Metadata records projection version and whether the background is completed.
-12. Saved rooms open through `GLBRoomActivity`, which restores the authored field of view and camera-validity envelope. Pinch permits bounded forward/backward translation for version-5 assets; drag and D-pad look are clamped to source-image coverage. Flat fallback and legacy assets retain their compatible navigation paths.
+7. Before opening preview, the reconstructor runs GeoCalib, Depth Anything, RTMDet object-anchor measurement, and room-dimension estimation once. The rendered mesh uses the metric depth scale and metric focal length; the independent camera-height calibration remains measurement-only.
+8. `GlbGenerator.generateDepthPhotoGlb` writes one opaque, continuous version-5 `photo_room_depth` surface with the original photo texture. It samples every fourth source pixel, uses unsigned 32-bit indices, and does not emit completed-background, foreground, or far-backing duplicates. A flat full-photo GLB remains only as a generation-failure fallback.
+9. Metadata is written beside the GLB, including authoritative measured dimensions, photo orientation, projection version, continuous-surface state, and preview state.
+10. `GLBRoomActivity` previews that generated GLB with its authored focal projection and bounded camera envelope. Portrait/landscape projection framing uses the locked room orientation while Android and WebView resize callbacks settle.
+11. Save does not rerun inference or regenerate geometry. `RoomArtifactPromoter` transactionally copies the inspected preview folder into `files/rooms` and verifies that the saved `room.glb` is byte-identical before metadata is committed.
+12. Reopened rooms use the same `GLBRoomActivity` path and artifact. Flat fallback and legacy assets retain their compatible navigation paths.
 
 Manual setup still uses boundary-based texture crops and `GlbGenerator.generateGlb` (five-plane cuboid).
 
-## Why The AI Preview Remains Flat
+## Preview And Saved-Room Parity
 
-The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid planes, which produced visible **dragged pixels** on the front wall. The preview keeps the entire photo as one texture with clamp-to-edge sampling and unlit materials, matching the Swift single-photo preview while expensive metric generation remains deferred until Save.
+The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid planes, producing visible **dragged pixels**. A later two-surface experiment completed a background and overlaid foreground geometry, but could duplicate objects or expose a fog-like enclosure. Neither representation is used by the current AI generation path.
 
-`GLBRoomActivity` detects thin preview meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid. Saved `photo_room_depth` meshes use their authored projection and camera-envelope metadata. Volumetric/manual rooms switch from exterior orbit to turn-in-place navigation once the camera is inside; the Auto Orbit setting controls only the idle animation.
+Preview and saved-room rendering now share the same generated continuous GLB. The viewer restores the capture projection from GLB extras, applies source-image aspect-fill framing, and constrains movement to the authored envelope. Volumetric/manual rooms still switch from exterior orbit to turn-in-place navigation once the camera is inside; Auto Orbit controls only the idle animation.
 
-The version-5 layered completion/navigation path is an unconfirmed candidate as of 2026-08-14.
-Automated build and test-target compilation are provisional; do not treat the chair/fan alignment,
-duplicate foreground, or gray-hole issue as resolved until manual device testing confirms it.
+The version-5 continuous preview/save-parity path is an unconfirmed candidate as of 2026-08-15.
+Focused geometry/artifact tests and a Debug APK build pass, but do not treat landscape framing,
+chair/fan alignment, or preview-versus-reopen parity as resolved until manual device testing confirms
+a freshly generated room. Existing saved rooms are not regenerated by this change.
 
 The room viewer top controls mirror Swift: floating back, center ruler/pinch/tap helpers, recenter/save,
 and AR resize. The Android viewer no longer uses a full-width top band.
@@ -35,8 +36,8 @@ and AR resize. The Android viewer no longer uses a full-width top band.
 Generated room folders use GLB output:
 
 ```text
-files/room_previews/<room-id>/room.glb
-files/room_previews/<room-id>/metadata.txt
+files/room_preview/<room-id>/room.glb
+files/room_preview/<room-id>/metadata.txt
 files/rooms/<room-id>/room.glb
 files/rooms/<room-id>/metadata.txt
 ```
@@ -72,13 +73,12 @@ After starting AI generation from both standard and wide-angle photos, rotate th
 portrait and landscape while the progress overlay is visible. Confirm that the overlay remains,
 progress continues, and the generated room opens. For wide capture, verify the log reports a
 capture-quality back camera and the saved JPEG dimensions are not from a low-resolution auxiliary
-sensor. Also confirm that portrait and landscape EXIF inputs remain upright, the picker appears
-before generation work, and the preview remains a sharp flat photo without dragged crops or an added
-perspective tilt. After Save, reopen the room and verify whether it is a layered version-5 asset or
-the flat fallback. For a layered asset, recenter, pinch within the authored movement envelope, and
-drag/D-pad toward each bounded look limit. Foreground objects must remain aligned; newly revealed
-background must not repeat foreground pixels, stretch at depth edges, or expose renderer-gray holes.
-Confirm the top controls remain floating rather than a full-width band.
+sensor. Also confirm that portrait and landscape EXIF inputs remain upright and the picker appears
+before generation work. For each orientation, inspect the generated continuous-depth preview, Save,
+then reopen the new room and confirm framing, texture, geometry, and camera position are unchanged.
+Recenter, pinch within the authored movement envelope, and drag/D-pad toward each bounded look
+limit. Foreground objects must remain aligned without duplicate layers, stretched edges, fog shells,
+or renderer-gray holes. Confirm the top controls remain floating rather than a full-width band.
 
 `SavedRoomNavigationE2ETest` provides a create → preview → save → reopen regression with a synthetic
 image generated at test runtime. It checks navigation frame changes and renderer-gray exposure, but

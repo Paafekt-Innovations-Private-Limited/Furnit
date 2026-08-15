@@ -84,6 +84,7 @@
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
             android:name=".GLBRoomActivity"
+            android:configChanges="orientation|screenSize"
             android:exported="false"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity android:name=".SettingsActivity" android:exported="false" />

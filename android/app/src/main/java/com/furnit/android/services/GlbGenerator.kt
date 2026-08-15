@@ -1,17 +1,14 @@
 package com.furnit.android.services
 
 import android.graphics.Bitmap
-import com.furnit.android.roomreconstruction.LayeredDepthRoomCompletion
 import com.furnit.android.utils.LogUtil
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.ceil
 import kotlin.math.atan
 import kotlin.math.max
-import kotlin.math.sqrt
 
 /**
  * GlbGenerator - Creates binary glTF 2.0 (GLB) files for room models
@@ -35,7 +32,7 @@ class GlbGenerator {
         val positions: FloatArray,
         val normals: FloatArray,
         val uvs: FloatArray,
-        val indices: ShortArray,
+        val indices: IntArray,
         val cameraVerticalFovDegrees: Float? = null,
         val layeredDepthVersion: Int? = null,
         val cameraTranslationLimitMeters: Float? = null,
@@ -47,6 +44,7 @@ class GlbGenerator {
         val cameraSourceImageWidth: Int? = null,
         val cameraSourceImageHeight: Int? = null,
         val cameraNearestReliableDepthMeters: Float? = null,
+        val usesContinuousSurface: Boolean? = null,
     )
 
     data class RoomDimensions(
@@ -173,33 +171,23 @@ class GlbGenerator {
         depthHeight: Int,
         focalXPixels: Float,
         focalYPixels: Float,
-        semanticForegroundMask: ByteArray? = null,
     ): Boolean {
         return try {
-            val completion = LayeredDepthRoomCompletion.complete(
-                photo = photoTexture,
-                depth = depthMap,
-                width = depthWidth,
-                height = depthHeight,
-                semanticForegroundMask = semanticForegroundMask,
-            ) ?: run {
-                LogUtil.w(TAG, "No reliable foreground layers; refusing projective export")
-                return false
-            }
+            val (nearestReliableDepth, representativeRoomDepth) =
+                reliableDepthPercentiles(depthMap)
             val maxYaw = Math.PI.toFloat() / 6f
             val maxPitch = Math.PI.toFloat() / 5f
-            val forwardLimit = (completion.representativeRoomDepth * 0.35f).coerceIn(0.75f, 1.40f)
-            val lateralLimit = (completion.representativeRoomDepth * 0.12f).coerceIn(0.24f, 0.48f)
-            val backwardLimit = (completion.representativeRoomDepth * 0.08f).coerceIn(0.18f, 0.32f)
-            val backgroundGeometry = depthPhotoGeometry(
+            val forwardLimit = (representativeRoomDepth * 0.35f).coerceIn(0.75f, 1.40f)
+            val lateralLimit = (representativeRoomDepth * 0.12f).coerceIn(0.24f, 0.48f)
+            val backwardLimit = (representativeRoomDepth * 0.08f).coerceIn(0.18f, 0.32f)
+            val geometry = depthPhotoGeometry(
                 dimensions = dimensions,
-                depthMap = completion.completedBackgroundDepth,
+                depthMap = depthMap,
                 depthWidth = depthWidth,
                 depthHeight = depthHeight,
                 focalXPixels = focalXPixels,
                 focalYPixels = focalYPixels,
-                // The completed structural layer must cover every source-image cell. Edge
-                // rejection is retained on the foreground mesh only.
+                // Match the current iOS exporter: one opaque continuous pinhole surface.
                 depthDiscontinuityMeters = Float.POSITIVE_INFINITY,
             ).copy(
                 layeredDepthVersion = 5,
@@ -211,35 +199,23 @@ class GlbGenerator {
                 cameraPitchLimitRadians = maxPitch,
                 cameraSourceImageWidth = depthWidth,
                 cameraSourceImageHeight = depthHeight,
-                cameraNearestReliableDepthMeters = completion.nearestReliableDepth,
-            )
-            val foregroundGeometry = depthPhotoGeometry(
-                dimensions = dimensions,
-                depthMap = depthMap,
-                depthWidth = depthWidth,
-                depthHeight = depthHeight,
-                focalXPixels = focalXPixels,
-                focalYPixels = focalYPixels,
-                triangleMask = completion.foregroundMask,
-                depthDiscontinuityMeters = Float.POSITIVE_INFINITY,
+                cameraNearestReliableDepthMeters = nearestReliableDepth,
+                usesContinuousSurface = true,
             )
             LogUtil.d(
                 TAG,
-                "Generating depth photo GLB: ${outputFile.absolutePath} " +
+                "Generating continuous depth photo GLB: ${outputFile.absolutePath} " +
                     "photo=${photoTexture.width}x${photoTexture.height} " +
                     "depth=${depthWidth}x$depthHeight " +
-                    "backgroundVertices=${backgroundGeometry.positions.size / 3} " +
-                    "foregroundVertices=${foregroundGeometry.positions.size / 3}",
+                    "vertices=${geometry.positions.size / 3}",
             )
-            val written = writeGlb(
+            writeGlb(
                 outputFile = outputFile,
-                planes = listOf(backgroundGeometry, foregroundGeometry),
-                textures = listOf(completion.completedBackground, photoTexture),
-                textureNames = listOf("photo_room_depth", "photo_room_foreground"),
+                planes = listOf(geometry),
+                textures = listOf(photoTexture),
+                textureNames = listOf("photo_room_depth"),
                 jpegQuality = 95,
             )
-            completion.completedBackground.recycle()
-            written
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to generate depth photo GLB", e)
             false
@@ -261,8 +237,9 @@ class GlbGenerator {
                 focalXPixels.isFinite() && focalYPixels.isFinite() &&
                 focalXPixels > 1f && focalYPixels > 1f
         )
-        val maxVertices = 60_000
-        val step = max(4, ceil(sqrt(depthMap.size.toDouble() / maxVertices)).toInt())
+        // iOS samples every fourth source pixel and exports UInt32 indices. Keep the same
+        // density on Android so portrait and landscape rooms have equivalent geometry.
+        val step = 4
         fun samples(limit: Int): List<Int> = buildList {
             var value = 0
             while (value < limit) {
@@ -273,7 +250,6 @@ class GlbGenerator {
         }
         val rows = samples(depthHeight)
         val columns = samples(depthWidth)
-        require(rows.size * columns.size <= 65_531)
         require(triangleMask == null || triangleMask.size == depthWidth * depthHeight)
 
         var farDepth = 0f
@@ -308,7 +284,7 @@ class GlbGenerator {
             }
         }
 
-        val indices = ArrayList<Short>((rows.size - 1) * (columns.size - 1) * 6)
+        val indices = ArrayList<Int>((rows.size - 1) * (columns.size - 1) * 6)
         fun continuous(vararg values: Float): Boolean {
             if (values.any { !it.isFinite() || it <= 0f }) return false
             return (values.maxOrNull()!! - values.minOrNull()!!) <= depthDiscontinuityMeters
@@ -337,8 +313,8 @@ class GlbGenerator {
                     )
                 ) continue
                 indices.addAll(listOf(
-                    i00.toShort(), i10.toShort(), i11.toShort(),
-                    i00.toShort(), i11.toShort(), i01.toShort(),
+                    i00, i10, i11,
+                    i00, i11, i01,
                 ))
             }
         }
@@ -348,10 +324,26 @@ class GlbGenerator {
             positions = positions.toFloatArray(),
             normals = normals.toFloatArray(),
             uvs = uvs.toFloatArray(),
-            indices = indices.toShortArray(),
+            indices = indices.toIntArray(),
             cameraVerticalFovDegrees =
                 2f * atan((depthHeight * 0.5f) / focalYPixels) * 180f / Math.PI.toFloat(),
         )
+    }
+
+    private fun reliableDepthPercentiles(depthMap: FloatArray): Pair<Float, Float> {
+        val sampleStep = max(1, depthMap.size / 100_000)
+        val validDepths = ArrayList<Float>(minOf(depthMap.size, 100_001))
+        var index = 0
+        while (index < depthMap.size) {
+            val depth = depthMap[index]
+            if (depth.isFinite() && depth > 0f) validDepths.add(depth)
+            index += sampleStep
+        }
+        require(validDepths.isNotEmpty()) { "Depth map contains no valid metric samples" }
+        validDepths.sort()
+        val nearest = validDepths[((validDepths.lastIndex) * 0.05f).toInt()]
+        val median = validDepths[validDepths.size / 2]
+        return nearest to median
     }
 
     private fun writeGlb(
@@ -473,7 +465,7 @@ class GlbGenerator {
         )
 
         // Two triangles forming a quad
-        val indices = shortArrayOf(0, 1, 2, 0, 2, 3)
+        val indices = intArrayOf(0, 1, 2, 0, 2, 3)
 
         return PlaneGeometry(positions, normals, uvs, indices)
     }
@@ -498,7 +490,7 @@ class GlbGenerator {
             1f, 0f,
             0f, 0f,
         )
-        val indices = shortArrayOf(0, 1, 2, 0, 2, 3)
+        val indices = intArrayOf(0, 1, 2, 0, 2, 3)
         return PlaneGeometry(positions, normals, uvs, indices)
     }
 
@@ -546,8 +538,8 @@ class GlbGenerator {
             writeFloatArray(stream, plane.normals)
             // UVs (8 bytes per vertex = 2 floats)
             writeFloatArray(stream, plane.uvs)
-            // Indices (2 bytes per index)
-            writeShortArray(stream, plane.indices)
+            // Indices (4 bytes per index, matching iOS UInt32 mesh indices)
+            writeIntArray(stream, plane.indices)
         }
 
         // Write texture data (already PNG bytes)
@@ -566,10 +558,10 @@ class GlbGenerator {
         stream.write(buffer.array())
     }
 
-    private fun writeShortArray(stream: ByteArrayOutputStream, data: ShortArray) {
-        val buffer = ByteBuffer.allocate(data.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-        for (s in data) {
-            buffer.putShort(s)
+    private fun writeIntArray(stream: ByteArrayOutputStream, data: IntArray) {
+        val buffer = ByteBuffer.allocate(data.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+        for (value in data) {
+            buffer.putInt(value)
         }
         stream.write(buffer.array())
     }
@@ -610,6 +602,7 @@ class GlbGenerator {
                 planes[i].cameraSourceImageWidth?.let { add("\"cameraSourceImageWidth\":$it") }
                 planes[i].cameraSourceImageHeight?.let { add("\"cameraSourceImageHeight\":$it") }
                 planes[i].cameraNearestReliableDepthMeters?.let { add("\"cameraNearestReliableDepthMeters\":$it") }
+                planes[i].usesContinuousSurface?.let { add("\"usesContinuousSurface\":$it") }
             }
             val cameraExtras = if (extras.isEmpty()) "" else ",\"extras\":{${extras.joinToString(",")}}"
             sb.append(",{\"mesh\":$i,\"name\":\"${textureNames[i]}\"$cameraExtras}")
@@ -698,9 +691,9 @@ class GlbGenerator {
             offset += uvSize
 
             // Indices
-            val indexSize = plane.indices.size * 2
+            val indexSize = plane.indices.size * 4
             bufferViews.add("{\"buffer\":0,\"byteOffset\":$offset,\"byteLength\":$indexSize,\"target\":34963}")
-            accessors.add("{\"bufferView\":${planeIdx * 4 + 3},\"componentType\":5123,\"count\":$indexCount,\"type\":\"SCALAR\"}")
+            accessors.add("{\"bufferView\":${planeIdx * 4 + 3},\"componentType\":5125,\"count\":$indexCount,\"type\":\"SCALAR\"}")
             offset += indexSize
         }
 
