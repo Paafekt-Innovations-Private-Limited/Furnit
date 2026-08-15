@@ -4,6 +4,10 @@ Android follows the same live-frame ownership rules as Swift even though the mod
 (FP16 LiteRT on Android, Core ML on iOS). Android packages one RTMDet model; LiteRT uses the GPU
 delegate when supported and otherwise executes that same model with XNNPACK CPU.
 
+`FurnitureFitManager` contains only the active LiteRT RTMDet path; the retired RTMDet ONNX session,
+tensor, decoder, and mask fallback were removed. Android still packages ONNX Runtime for the
+separate Depth Anything and GeoCalib room-generation models.
+
 The packaged class blacklist is currently empty, so all 80 COCO classes compete during raw-head
 decoding on both Android and iOS. Confidence, class-aware NMS, primary scoring, and mask-affinity
 grouping still decide which detections become boxes or cutouts.
@@ -30,6 +34,19 @@ model storage after in-flight inference drains.
 
 These rules protect preview rendering. Detection boxes and masks still update at inference cadence;
 they are not expected to animate at display refresh rate.
+
+## Full-video segmented overlay controls
+
+After Identify selects an instance and Segment creates the frame-aligned cutout, the cutout uses one
+shared draw/hit-test transform. Drag changes its screen-space position and a two-finger pinch changes
+its scale from 0.3x through 3x; transparent gaps inside the cutout's opaque-content bounds remain
+valid gesture targets. Each newly selected cutout starts at the exact CameraX-aligned 1x pose, while
+ordinary incoming segmentation frames preserve the user's transform.
+
+Instrumentation coverage renders a synthetic frame-aligned cutout and verifies that drag moves its
+opaque bounds and pinch increases its opaque area. This control change is **device-unconfirmed as of
+2026-08-15**; automated build/test results are provisional until portrait and landscape full-video
+Segment mode are manually checked on a physical Android device.
 
 ## Reused storage
 
@@ -72,7 +89,8 @@ splits from the host app.
 
 On a physical arm64 device, test portrait and landscape rooms in default segmentation, full-video
 Identify, and selected Segment modes. Confirm camera colors, overlay orientation, tap selection,
-covered-lens handling, AR measurements, and exiting/re-entering Furniture Fit.
+drag/pinch minimize and maximize, covered-lens handling, AR measurements, and exiting/re-entering
+Furniture Fit.
 
 For a debug-signed build, timing lines are emitted by `FurnitureFitManager`:
 

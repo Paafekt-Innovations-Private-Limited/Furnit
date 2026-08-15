@@ -1125,6 +1125,7 @@ class GLBRoomActivity : AppCompatActivity() {
         inlineBrainFurnitureLabel = null
         clearInlineBrainMetricDimensions()
         placementIntelligenceCard.clear()
+        brainDetectionOverlayView.resetTransform()
         inlineBrainMode = if (inlineBrainFullVideoEnabled) {
             InlineBrainMode.IDENTIFY
         } else {
@@ -1229,6 +1230,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlay.visibility = View.VISIBLE
         updateSummonedToolbarState()
         ensureNavigationChromeOnTop()
+        brainDetectionOverlayView.resetTransform()
         brainDetectionOverlayView.setMaskAndDetections(
             mask = null,
             dets = emptyList(),
@@ -1296,6 +1298,7 @@ class GLBRoomActivity : AppCompatActivity() {
             inlineBrainFurnitureLabel = null
             clearInlineBrainMetricDimensions()
             placementIntelligenceCard.clear()
+            brainDetectionOverlayView.resetTransform()
             brainDetectionOverlayView.setMaskAndDetections(
                 mask = null,
                 dets = emptyList(),
@@ -1309,6 +1312,9 @@ class GLBRoomActivity : AppCompatActivity() {
             inlineBrainFirstMaskLogged = false
             LogUtil.i(TAG, "Inline brain timing: SEGMENT_SELECTED_START selected=${inlineBrainSelectedPins.size}")
             inlineBrainMode = InlineBrainMode.SEGMENT_SELECTED
+            // Begin every newly selected cutout at its exact CameraX-aligned 1x pose. Incoming
+            // segmentation frames preserve subsequent drag and pinch changes.
+            brainDetectionOverlayView.resetTransform()
             brainDetectionOverlayView.setDetectionBoxVisibility(false)
             brainDetectionOverlayView.setIdentifySelectionState(false, inlineBrainSelectedPins)
             showBrainProgress(getString(R.string.detector_segmenting_selection))

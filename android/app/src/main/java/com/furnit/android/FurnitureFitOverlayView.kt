@@ -33,10 +33,10 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var inputSize = 640 // Model input size
     private var sourceFrameWidth = 640
     private var sourceFrameHeight = 640
-    private var hitTestPixels: IntArray? = null
     private var hitTestWidth = 0
     private var hitTestHeight = 0
     private var hitTestBitmap: Bitmap? = null
+    private var hitTestOpaqueBounds: Rect? = null
     private var showDetectionBoxes = false
     private var identifySelectionEnabled = false
     /** Pinned instances (matched each frame by class + IoU), not "all boxes of this class". */
@@ -276,17 +276,15 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * Check if the touch point is on the furniture: use detection bbox when available (furniture structure),
-     * otherwise fall back to mask pixel (non-transparent).
+     * Check if the touch point is on the furniture: use detection bounds when available, then the
+     * cutout's opaque-content bounds so transparent gaps do not make drag/pinch impossible.
      */
     private fun isTouchOnFurniture(touchX: Float, touchY: Float): Boolean {
         if (width == 0 || height == 0) return false
         if (findDetectionAt(touchX, touchY) != null) return true
         if (identifySelectionEnabled && maskBitmap == null) return false
-        val detectionHit = findDetectionAt(touchX, touchY)
-        if (detectionHit != null) return true
         if (detections.isNotEmpty() && inputSize > 0 && maskBitmap == null) return false
-        return isTouchOnMask(touchX, touchY)
+        return isTouchWithinMaskBounds(touchX, touchY)
     }
 
     private data class DetectionTransform(
@@ -298,23 +296,29 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         val modelToSourceY: Float = 1f,
     )
 
-    private data class Quad(
-        val first: Float,
-        val second: Float,
-        val third: Float,
-        val fourth: Float,
+    private data class MaskTransform(
+        val scaleX: Float,
+        val scaleY: Float,
+        val left: Float,
+        val top: Float,
     )
 
     private fun currentDetectionTransform(): DetectionTransform {
         if (liveFrameAlignedOverlay) {
             val srcW = sourceFrameWidth.takeIf { it > 0 } ?: inputSize
             val srcH = sourceFrameHeight.takeIf { it > 0 } ?: inputSize
-            val scale = max(width / srcW.toFloat(), height / srcH.toFloat())
+            val baseScale = max(width / srcW.toFloat(), height / srcH.toFloat())
+            // Identification boxes stay locked to the live camera. Once a mask exists, the
+            // camera is hidden and this same aligned transform becomes the user's movable item.
+            val userScale = if (maskBitmap != null && !identifySelectionEnabled) furnitureScale else 1f
+            val scale = baseScale * userScale
+            val userTranslateX = if (userScale != 1f || maskBitmap != null) translateX else 0f
+            val userTranslateY = if (userScale != 1f || maskBitmap != null) translateY else 0f
             return DetectionTransform(
                 scaleX = scale,
                 scaleY = scale,
-                offsetX = (width - srcW * scale) * 0.5f,
-                offsetY = (height - srcH * scale) * 0.5f,
+                offsetX = (width - srcW * scale) * 0.5f + userTranslateX,
+                offsetY = (height - srcH * scale) * 0.5f + userTranslateY,
                 modelToSourceX = srcW.toFloat() / inputSize.coerceAtLeast(1).toFloat(),
                 modelToSourceY = srcH.toFloat() / inputSize.coerceAtLeast(1).toFloat(),
             )
@@ -413,40 +417,52 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
             ?.third
     }
 
-    private fun isTouchOnMask(touchX: Float, touchY: Float): Boolean {
+    /**
+     * A two-finger pinch should be usable anywhere inside the selected cutout's visual bounds,
+     * including transparent gaps between chair legs or between multiple selected objects.
+     */
+    private fun isTouchWithinMaskBounds(touchX: Float, touchY: Float): Boolean {
         if (width == 0 || height == 0) return false
         val bmp = maskBitmap ?: return false
-        val (totalScaleX, totalScaleY, maskLeft, maskTop) = if (liveFrameAlignedOverlay) {
-            val scale = max(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-            Quad(scale, scale, (width - bmp.width * scale) * 0.5f, (height - bmp.height * scale) * 0.5f)
-        } else {
-            val screenCenterX = width / 2f
-            val screenCenterY = overlayScreenCenterY()
-            val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-            val scaleX = baseScale * furnitureScale * assistedOverlayScale
-            val scaleY = scaleX * computeVerticalClampFactor(scaleX)
-            Quad(
-                scaleX,
-                scaleY,
-                screenCenterX - (bmp.width / 2f) * scaleX + translateX,
-                screenCenterY - (bmp.height / 2f) * scaleY + translateY,
+        updateHitTestCache(bmp)
+        val opaqueBounds = hitTestOpaqueBounds ?: return false
+        val transform = currentMaskTransform(bmp)
+        val bmpX = ((touchX - transform.left) / transform.scaleX).toInt()
+        val bmpY = ((touchY - transform.top) / transform.scaleY).toInt()
+        return opaqueBounds.contains(bmpX, bmpY)
+    }
+
+    private fun currentMaskTransform(bmp: Bitmap): MaskTransform {
+        if (liveFrameAlignedOverlay) {
+            // Preserve the exact CameraX FILL_CENTER alignment at 1x, then apply the user's
+            // scale around the viewport center and their screen-space translation.
+            val baseScale = max(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+            val totalScale = baseScale * furnitureScale
+            return MaskTransform(
+                scaleX = totalScale,
+                scaleY = totalScale,
+                left = (width - bmp.width * totalScale) * 0.5f + translateX,
+                top = (height - bmp.height * totalScale) * 0.5f + translateY,
             )
         }
-        val bmpX = ((touchX - maskLeft) / totalScaleX).toInt()
-        val bmpY = ((touchY - maskTop) / totalScaleY).toInt()
-        if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) return false
-        updateHitTestCache(bmp)
-        val pixels = hitTestPixels ?: return false
-        val idx = bmpY * hitTestWidth + bmpX
-        if (idx < 0 || idx >= pixels.size) return false
-        return Color.alpha(pixels[idx]) > 10
+
+        val screenCenterX = width / 2f
+        val screenCenterY = overlayScreenCenterY()
+        val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+        val scaleX = baseScale * furnitureScale * assistedOverlayScale
+        val scaleY = scaleX * computeVerticalClampFactor(scaleX)
+        return MaskTransform(
+            scaleX = scaleX,
+            scaleY = scaleY,
+            left = screenCenterX - (bmp.width / 2f) * scaleX + translateX,
+            top = screenCenterY - (bmp.height / 2f) * scaleY + translateY,
+        )
     }
 
     private fun updateHitTestCache(bmp: Bitmap) {
         if (hitTestBitmap === bmp &&
             hitTestWidth == bmp.width &&
-            hitTestHeight == bmp.height &&
-            hitTestPixels != null
+            hitTestHeight == bmp.height
         ) {
             return
         }
@@ -467,17 +483,36 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
             }
         }
 
-        hitTestPixels = pixels
+        var minX = bmp.width
+        var minY = bmp.height
+        var maxX = -1
+        var maxY = -1
+        for (y in 0 until bmp.height) {
+            val rowOffset = y * bmp.width
+            for (x in 0 until bmp.width) {
+                if (Color.alpha(pixels[rowOffset + x]) <= 10) continue
+                if (x < minX) minX = x
+                if (x > maxX) maxX = x
+                if (y < minY) minY = y
+                if (y > maxY) maxY = y
+            }
+        }
+
         hitTestWidth = bmp.width
         hitTestHeight = bmp.height
         hitTestBitmap = bmp
+        hitTestOpaqueBounds = if (maxX >= minX && maxY >= minY) {
+            Rect(minX, minY, maxX + 1, maxY + 1)
+        } else {
+            null
+        }
     }
 
     private fun clearHitTestCache() {
-        hitTestPixels = null
         hitTestWidth = 0
         hitTestHeight = 0
         hitTestBitmap = null
+        hitTestOpaqueBounds = null
     }
 
     private fun replaceMaskBitmap(newMask: Bitmap?) {
@@ -506,10 +541,10 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     //
     // This used to clear furnitureScale/translate whenever the primary detection's LABEL
     // differed from the previous frame's. But the primary is re-ranked every frame by
-    // FurnitureFitManager.primaryDetectionScore() over confidence/area/geometry, so its
-    // label flips whenever two candidates score closely or the class prediction wobbles
-    // (chair<->couch). The user's pinch was being wiped mid-session by ordinary detection
-    // churn, on a frame they did nothing.
+    // RTMDetSwiftParity.selectDefaultCluster() over confidence/area/geometry, so its label can
+    // flip whenever two candidates score closely or the class prediction wobbles (chair<->couch).
+    // The user's pinch was being wiped mid-session by ordinary detection churn, on a frame they
+    // did nothing.
     //
     // A user transform now survives until the user themselves changes subject, via the
     // explicit resetTransform() calls in SinglePhotoRoomActivity and SettingsImageScanActivity.
@@ -641,23 +676,9 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 )
             }
             drawMatrix.reset()
-            if (liveFrameAlignedOverlay) {
-                val scale = max(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-                drawMatrix.postScale(scale, scale)
-                drawMatrix.postTranslate(
-                    (width - bmp.width * scale) * 0.5f,
-                    (height - bmp.height * scale) * 0.5f,
-                )
-            } else {
-                val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-                val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
-                val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)
-                drawMatrix.postScale(totalScaleX, totalScaleY, bmp.width / 2f, bmp.height / 2f)
-                val screenCenterX = width / 2f
-                val screenCenterY = overlayScreenCenterY()
-                drawMatrix.postTranslate(screenCenterX - bmp.width / 2f, screenCenterY - bmp.height / 2f)
-                drawMatrix.postTranslate(translateX, translateY)
-            }
+            val transform = currentMaskTransform(bmp)
+            drawMatrix.postScale(transform.scaleX, transform.scaleY)
+            drawMatrix.postTranslate(transform.left, transform.top)
 
             canvas.drawBitmap(bmp, drawMatrix, maskSilhouettePaint)
         }
