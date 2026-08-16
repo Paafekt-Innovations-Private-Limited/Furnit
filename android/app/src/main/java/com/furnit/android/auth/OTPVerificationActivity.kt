@@ -1,6 +1,10 @@
 package com.furnit.android.auth
 
+import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -10,6 +14,7 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
+import android.text.method.DigitsKeyListener
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -25,7 +30,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import com.furnit.android.ContentActivity
@@ -34,15 +41,17 @@ import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.WindowInsetsUtil
+import com.google.android.gms.auth.api.phone.SmsRetriever
+import com.google.android.gms.common.api.CommonStatusCodes
+import com.google.android.gms.common.api.Status
 
 /**
  * OTP verification — 6-digit code.
  *
- * Note: We do **not** use Play Services SMS User Consent here. Firebase Phone Auth already
- * registers for [SMS_RETRIEVED]; starting SmsRetriever User Consent in parallel causes
- * broadcasts where the message body is null until consent, and Firebase’s internal receiver
- * (firebase-auth) can NPE on that path. Autofill / keyboard suggestions still work via
- * [setAutofillHints] and visible digit fields.
+ * SMS User Consent starts before Firebase requests the code. After the user approves Android's
+ * one-time prompt, the six digits are extracted, placed into the visible boxes, and verified.
+ * Firebase SMS auto-retrieval is disabled so both APIs do not compete for the same broadcast.
+ * No SMS permission is requested and manual entry remains available.
  */
 class OTPVerificationActivity : AppCompatActivity() {
 
@@ -52,6 +61,7 @@ class OTPVerificationActivity : AppCompatActivity() {
         const val EXTRA_USER_NAME = "user_name"
         private const val OTP_LENGTH = 6
         private const val RESEND_COOLDOWN_SECONDS = 30
+        private const val STATE_INITIAL_REQUEST_STARTED = "initial_otp_request_started"
         private val OTP_BOX_FILL = android.graphics.Color.parseColor("#F2FFFFFF")
         private val OTP_BOX_TEXT = android.graphics.Color.parseColor("#0E0F12")
     }
@@ -69,6 +79,52 @@ class OTPVerificationActivity : AppCompatActivity() {
     private var resendTimer: CountDownTimer? = null
     private var canResend: Boolean = false
     private var pendingShowIme: Boolean = false
+    private var isApplyingOtp: Boolean = false
+    private var isSubmittingOtp: Boolean = false
+    private var initialOtpRequestStarted: Boolean = false
+    private var smsReceiverRegistered: Boolean = false
+    private var smsConsentPromptVisible: Boolean = false
+
+    private val smsConsentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        smsConsentPromptVisible = false
+        if (result.resultCode != Activity.RESULT_OK) {
+            LogUtil.d(TAG, "SMS User Consent was not approved; manual OTP entry remains available")
+            return@registerForActivityResult
+        }
+
+        val message = result.data?.getStringExtra(SmsRetriever.EXTRA_SMS_MESSAGE)
+        val otp = OtpCodeInput.fromSmsMessage(message)
+        if (otp == null) {
+            LogUtil.w(TAG, "Consented SMS did not contain an exact six-digit OTP")
+            return@registerForActivityResult
+        }
+
+        LogUtil.d(TAG, "Filling OTP from user-approved SMS")
+        applyOtpDigits(otp, sourceIndex = 0)
+    }
+
+    private val smsConsentReceiver = object : BroadcastReceiver() {
+        @Suppress("DEPRECATION")
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != SmsRetriever.SMS_RETRIEVED_ACTION) return
+            val status = intent.getParcelableExtra(SmsRetriever.EXTRA_STATUS) as? Status ?: return
+            when (status.statusCode) {
+                CommonStatusCodes.SUCCESS -> {
+                    if (smsConsentPromptVisible) return
+                    val consentIntent =
+                        intent.getParcelableExtra(SmsRetriever.EXTRA_CONSENT_INTENT) as? Intent
+                    if (consentIntent != null && !isFinishing) {
+                        smsConsentPromptVisible = true
+                        smsConsentLauncher.launch(consentIntent)
+                    }
+                }
+                CommonStatusCodes.TIMEOUT ->
+                    LogUtil.d(TAG, "SMS User Consent timed out; manual OTP entry remains available")
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,8 +143,78 @@ class OTPVerificationActivity : AppCompatActivity() {
         }
 
         setupUI()
-        startResendTimer()
         pendingShowIme = true
+        initialOtpRequestStarted =
+            savedInstanceState?.getBoolean(STATE_INITIAL_REQUEST_STARTED, false) ?: false
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!smsReceiverRegistered) {
+            ContextCompat.registerReceiver(
+                this,
+                smsConsentReceiver,
+                IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION),
+                SmsRetriever.SEND_PERMISSION,
+                null,
+                ContextCompat.RECEIVER_EXPORTED,
+            )
+            smsReceiverRegistered = true
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!initialOtpRequestStarted) {
+            initialOtpRequestStarted = true
+            startSmsConsentThen { requestInitialOtp() }
+        }
+    }
+
+    override fun onStop() {
+        if (smsReceiverRegistered) {
+            unregisterReceiver(smsConsentReceiver)
+            smsReceiverRegistered = false
+        }
+        super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(STATE_INITIAL_REQUEST_STARTED, initialOtpRequestStarted)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun startSmsConsentThen(action: () -> Unit) {
+        SmsRetriever.getClient(this)
+            .startSmsUserConsent(null)
+            .addOnCompleteListener {
+                if (!isFinishing && !isDestroyed) action()
+            }
+    }
+
+    private fun requestInitialOtp() {
+        errorText.visibility = View.GONE
+        progressBar.visibility = View.VISIBLE
+        verifyButton.isEnabled = false
+        startResendTimer()
+
+        authManager.sendOTP(
+            phoneNumber = phoneNumber,
+            name = userName,
+            activity = this,
+            onCodeSent = {
+                progressBar.visibility = View.GONE
+            },
+            onAutoVerified = {
+                progressBar.visibility = View.GONE
+                navigateToMain()
+            },
+            onError = { error ->
+                progressBar.visibility = View.GONE
+                errorText.text = error
+                errorText.visibility = View.VISIBLE
+            },
+        )
     }
 
     private fun dp(v: Float): Int = (v * resources.displayMetrics.density).toInt()
@@ -190,9 +316,6 @@ class OTPVerificationActivity : AppCompatActivity() {
         val otpRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
-            }
         }
 
         otpDigitInputs = Array(OTP_LENGTH) { index ->
@@ -375,6 +498,7 @@ class OTPVerificationActivity : AppCompatActivity() {
     private fun createOtpDigitInput(index: Int): EditText {
         return EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
+            keyListener = DigitsKeyListener.getInstance("0123456789")
             setRawInputType(InputType.TYPE_CLASS_NUMBER)
             imeOptions = if (index == OTP_LENGTH - 1) {
                 EditorInfo.IME_ACTION_DONE
@@ -388,13 +512,9 @@ class OTPVerificationActivity : AppCompatActivity() {
             setTextColor(ColorStateList.valueOf(OTP_BOX_TEXT))
             setHintTextColor(ColorStateList.valueOf(PaafektColors.textSecondary))
             highlightColor = PaafektColors.accent
-            filters = arrayOf(InputFilter.LengthFilter(1))
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
-                // Each box represents one OTP character. Positional hints let Android's
-                // autofill service distribute the retrieved SMS code across all six boxes.
-                setAutofillHints("smsOTPCode${index + 1}")
-            }
+            // Accept a whole OTP long enough for paste or SMS User Consent to reach the
+            // TextWatcher, which immediately redistributes it into the six visual boxes.
+            filters = arrayOf(InputFilter.LengthFilter(OTP_LENGTH))
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val cursor = GradientDrawable().apply {
@@ -411,7 +531,10 @@ class OTPVerificationActivity : AppCompatActivity() {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 override fun afterTextChanged(s: Editable?) {
-                    if (s?.length == 1 && index < OTP_LENGTH - 1) {
+                    if (isApplyingOtp) return
+                    val digits = OtpCodeInput.asciiDigits(s)
+                    if (digits.length > 1 && applyOtpDigits(digits, index)) return
+                    if (digits.length == 1 && index < OTP_LENGTH - 1) {
                         otpDigitInputs[index + 1].requestFocus()
                     }
                     validateOtp()
@@ -455,16 +578,55 @@ class OTPVerificationActivity : AppCompatActivity() {
         return otpDigitInputs.joinToString("") { it.text.toString() }
     }
 
+    private fun applyOtpDigits(candidate: CharSequence, sourceIndex: Int): Boolean {
+        val digits = OtpCodeInput.asciiDigits(candidate)
+        if (digits.length <= 1) return false
+
+        val destinationStart = if (digits.length == OTP_LENGTH) 0 else sourceIndex
+        isApplyingOtp = true
+        try {
+            if (digits.length == OTP_LENGTH) {
+                otpDigitInputs.forEach { it.text.clear() }
+            }
+            digits.forEachIndexed { offset, digit ->
+                val destination = destinationStart + offset
+                if (destination < OTP_LENGTH) {
+                    otpDigitInputs[destination].setText(digit.toString())
+                    otpDigitInputs[destination].setSelection(1)
+                }
+            }
+        } finally {
+            isApplyingOtp = false
+        }
+
+        val nextEmpty = otpDigitInputs.indexOfFirst { it.text.isEmpty() }
+        if (nextEmpty >= 0) {
+            otpDigitInputs[nextEmpty].requestFocus()
+        } else {
+            otpDigitInputs.last().requestFocus()
+        }
+        validateOtp()
+        return true
+    }
+
     private fun clearOtp() {
-        otpDigitInputs.forEach { it.text.clear() }
+        isApplyingOtp = true
+        try {
+            otpDigitInputs.forEach { it.text.clear() }
+        } finally {
+            isApplyingOtp = false
+        }
+        isSubmittingOtp = false
+        validateOtp()
         otpDigitInputs[0].requestFocus()
     }
 
     private fun verifyOtp() {
         val otp = getEnteredOtp()
-        if (otp.length != OTP_LENGTH) return
+        if (otp.length != OTP_LENGTH || isSubmittingOtp) return
+        isSubmittingOtp = true
 
-        LogUtil.d(TAG, "Verifying OTP: $otp")
+        LogUtil.d(TAG, "Verifying entered OTP")
 
         errorText.visibility = View.GONE
         progressBar.visibility = View.VISIBLE
@@ -480,6 +642,7 @@ class OTPVerificationActivity : AppCompatActivity() {
             },
             onError = { error ->
                 progressBar.visibility = View.GONE
+                isSubmittingOtp = false
                 verifyButton.isEnabled = true
                 errorText.text = error
                 errorText.visibility = View.VISIBLE
@@ -516,22 +679,29 @@ class OTPVerificationActivity : AppCompatActivity() {
         resendButton.isEnabled = false
         progressBar.visibility = View.VISIBLE
 
-        authManager.resendOTP(
-            phoneNumber = phoneNumber,
-            activity = this,
-            onCodeSent = {
-                progressBar.visibility = View.GONE
-                resendButton.isEnabled = true
-                Toast.makeText(this, R.string.otp_code_sent, Toast.LENGTH_SHORT).show()
-                startResendTimer()
-            },
-            onError = { error ->
-                progressBar.visibility = View.GONE
-                resendButton.isEnabled = true
-                errorText.text = error
-                errorText.visibility = View.VISIBLE
-            },
-        )
+        startSmsConsentThen {
+            authManager.resendOTP(
+                phoneNumber = phoneNumber,
+                name = userName,
+                activity = this,
+                onCodeSent = {
+                    progressBar.visibility = View.GONE
+                    resendButton.isEnabled = true
+                    Toast.makeText(this, R.string.otp_code_sent, Toast.LENGTH_SHORT).show()
+                    startResendTimer()
+                },
+                onAutoVerified = {
+                    progressBar.visibility = View.GONE
+                    navigateToMain()
+                },
+                onError = { error ->
+                    progressBar.visibility = View.GONE
+                    resendButton.isEnabled = true
+                    errorText.text = error
+                    errorText.visibility = View.VISIBLE
+                },
+            )
+        }
     }
 
     private fun navigateToMain() {

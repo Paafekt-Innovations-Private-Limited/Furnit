@@ -382,34 +382,14 @@ class LoginActivity : AppCompatActivity() {
             return
         }
 
-        LogUtil.d(TAG, "Sending OTP to: $fullPhoneNumber")
+        LogUtil.d(TAG, "Opening OTP verification for: $fullPhoneNumber")
 
-        // Hide error, show progress
         errorText.visibility = View.GONE
-        progressBar.visibility = View.VISIBLE
-        sendOtpButton.isEnabled = false
-
-        authManager.sendOTP(
-            phoneNumber = fullPhoneNumber,
-            activity = this,
-            onCodeSent = {
-                progressBar.visibility = View.GONE
-                sendOtpButton.isEnabled = true
-
-                // Navigate to OTP verification
-                val intent = Intent(this, OTPVerificationActivity::class.java).apply {
-                    putExtra(OTPVerificationActivity.EXTRA_PHONE_NUMBER, fullPhoneNumber)
-                    putExtra(OTPVerificationActivity.EXTRA_USER_NAME, name)
-                }
-                startActivity(intent)
-            },
-            onError = { error ->
-                progressBar.visibility = View.GONE
-                sendOtpButton.isEnabled = true
-                errorText.text = error
-                errorText.visibility = View.VISIBLE
-            }
-        )
+        val intent = Intent(this, OTPVerificationActivity::class.java).apply {
+            putExtra(OTPVerificationActivity.EXTRA_PHONE_NUMBER, fullPhoneNumber)
+            putExtra(OTPVerificationActivity.EXTRA_USER_NAME, name)
+        }
+        startActivity(intent)
     }
 
     private fun navigateToMain() {

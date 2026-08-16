@@ -55,26 +55,26 @@ If both network and SIM country are unavailable (for example, a Wi-Fi-only devic
 the fallback is the effective app/device locale. Android app-language and locale
 behavior are documented in [`LOCALIZATION.md`](LOCALIZATION.md).
 
-## OTP autofill
+## OTP capture and manual entry
 
-The verification screen uses six visible one-character `EditText` fields. On Android
-8.0 and newer, each field declares its positional autofill hint:
+The verification screen uses six visible digit fields and keeps manual entry as the
+required fallback. Current source starts the Play services SMS User Consent listener
+before asking Firebase to send a code. When Android presents the one-time consent
+dialog and the user approves it, the app extracts an exact six-ASCII-digit token,
+fills the visible fields, and submits it. Pasting a complete code into any field uses
+the same distribution path. No SMS runtime permission is requested.
 
-```text
-smsOTPCode1, smsOTPCode2, smsOTPCode3, smsOTPCode4, smsOTPCode5, smsOTPCode6
-```
+Firebase Phone Auth is configured with a zero SMS auto-retrieval timeout while User
+Consent is active. This disables Firebase's competing SMS Retriever receiver, while
+instant verification through `onVerificationCompleted` remains supported. Do not
+restore a positive Firebase retrieval timeout without revalidating the two receivers'
+interaction and preserving manual entry.
 
-This lets a compatible Android autofill service or keyboard distribute a received
-six-digit code across the split fields. Firebase may also complete verification
-directly through `onVerificationCompleted`. The source change was added on 2026-08-03
-and is included in the signed version 1.2 / code 5 artifact. Production delivery must
-still be confirmed from Play Console or a Play-installed update.
-
-Manual entry remains supported and is the required fallback. The app does not start
-the SMS User Consent API in parallel with Firebase Auth because Firebase already owns
-the SMS Retriever path. Device services, keyboard settings, message format, and Google
-Play services can still affect whether a suggestion appears; the app cannot force the
-user's keyboard to show one.
+The prior signed version 1.2 / code 5 artifact used Android positional autofill hints
+instead. The User Consent implementation and its resend, paste, automatic-submit, and
+manual-entry behavior passed unit tests and a debug build on 2026-08-16 but remain
+on-device unconfirmed. Production delivery is also unconfirmed until checked in Play
+Console or on a Play-installed update.
 
 ## Debug Settings test identity
 
@@ -93,9 +93,11 @@ Use a fresh Google Play install, not a locally signed APK:
 2. Open login and verify the expected country code, or choose it manually.
 3. Send a verification code to a real number in an enabled Firebase SMS region.
 4. Confirm Firebase accepts the Play-signed build (no package/SHA authorization error).
-5. On the OTP screen, wait for automatic verification or the keyboard/autofill
-   suggestion; then verify that manual six-digit entry still succeeds.
-6. Test resend/rate-limit messaging and sign-out/sign-in once more.
+5. On the OTP screen, approve the one-time SMS User Consent prompt and confirm the
+   received code fills and submits once.
+6. Repeat with consent declined and verify that manual six-digit entry and whole-code
+   paste both succeed.
+7. Test resend/rate-limit messaging and sign-out/sign-in once more.
 
 SMS region policy and reviewer test-number setup are documented in
 [`../../docs/firebase-sms-regions.md`](../../docs/firebase-sms-regions.md).

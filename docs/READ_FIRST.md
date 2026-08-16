@@ -2,7 +2,7 @@
 
 This is the compact active context for contributors and coding agents. It records
 settled facts that should not be reconstructed from chat history or stale audits.
-Last verified: 2026-08-14.
+Last verified: 2026-08-16.
 
 ## Settled product and ownership facts
 
@@ -42,12 +42,15 @@ the resolved cause.
 - Country preselection prefers the mobile-network country, then the SIM country, then
   the effective app/device locale. The picker remains the manual override; IP lookup
   and phone/SMS runtime permissions are not used for this choice.
-- The six OTP fields retain manual entry and declare Android positional autofill hints
-  `smsOTPCode1` through `smsOTPCode6` on Android 8+. The change is included in the
-  signed version 1.2 / code 5 artifact; Play publication of that artifact has not been
-  re-confirmed in this repository.
-- Do not start SMS User Consent in parallel with Firebase's SMS Retriever path without
-  revalidating the Firebase Auth interaction. Manual entry must always remain usable.
+- The current source candidate retains six-field manual OTP entry and starts SMS User
+  Consent before requesting the code. A zero Firebase auto-retrieval timeout prevents
+  its SMS Retriever receiver from competing with User Consent; Firebase instant
+  verification remains available. Approved messages and whole-code paste distribute
+  an exact six-ASCII-digit code across the fields and submit it.
+- The User Consent, resend, paste, automatic-submit, and manual-entry behavior passed
+  unit tests and a debug build on 2026-08-16 but remains on-device unconfirmed. Do not
+  re-enable Firebase SMS auto-retrieval alongside User Consent without revalidating
+  their interaction. Manual entry must always remain usable.
 
 ## Active platform architecture
 

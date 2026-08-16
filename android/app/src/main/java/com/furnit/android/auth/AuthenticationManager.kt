@@ -38,6 +38,9 @@ class AuthenticationManager private constructor(context: Context) {
         private const val MAX_OTP_REQUESTS_PER_HOUR = 5
         private const val LOCKOUT_DURATION_MS = 30 * 60 * 1000L // 30 minutes
         private const val HOUR_MS = 60 * 60 * 1000L
+        // SMS User Consent owns code capture so Firebase's parallel SMS Retriever receiver is
+        // disabled. Instant verification can still arrive through onVerificationCompleted.
+        private const val FIREBASE_SMS_AUTO_RETRIEVAL_TIMEOUT_SECONDS = 0L
         private const val DEBUG_SETTINGS_PHONE_DIGITS = "16505553434"
 
         // Set to true to bypass OTP authentication (for development/testing)
@@ -209,8 +212,10 @@ class AuthenticationManager private constructor(context: Context) {
      */
     fun sendOTP(
         phoneNumber: String,
+        name: String,
         activity: Activity,
         onCodeSent: () -> Unit,
+        onAutoVerified: () -> Unit,
         onError: (String) -> Unit
     ) {
         if (isLockedOut()) {
@@ -242,35 +247,17 @@ class AuthenticationManager private constructor(context: Context) {
 
         LogUtil.d(TAG, "Sending OTP to: $phoneNumber")
 
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                // Auto-verification (rare on most devices)
-                LogUtil.d(TAG, "Auto-verification completed")
-                isLoading = false
-            }
-
-            override fun onVerificationFailed(e: FirebaseException) {
-                LogUtil.e(TAG, "Verification failed", e)
-                isLoading = false
-                errorMessage = localizedVerificationError(e)
-                onError(errorMessage!!)
-            }
-
-            override fun onCodeSent(
-                verificationId: String,
-                token: PhoneAuthProvider.ForceResendingToken
-            ) {
-                LogUtil.d(TAG, "OTP code sent successfully")
-                this@AuthenticationManager.verificationId = verificationId
-                this@AuthenticationManager.resendToken = token
-                isLoading = false
-                onCodeSent()
-            }
-        }
+        val callbacks = verificationCallbacks(
+            phoneNumber = phoneNumber,
+            name = name,
+            onCodeSent = onCodeSent,
+            onAutoVerified = onAutoVerified,
+            onError = onError,
+        )
 
         val options = PhoneAuthOptions.newBuilder(auth)
             .setPhoneNumber(phoneNumber)
-            .setTimeout(60L, TimeUnit.SECONDS)
+            .setTimeout(FIREBASE_SMS_AUTO_RETRIEVAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .setActivity(activity)
             .setCallbacks(callbacks)
             .build()
@@ -283,13 +270,15 @@ class AuthenticationManager private constructor(context: Context) {
      */
     fun resendOTP(
         phoneNumber: String,
+        name: String,
         activity: Activity,
         onCodeSent: () -> Unit,
+        onAutoVerified: () -> Unit,
         onError: (String) -> Unit
     ) {
         val token = resendToken
         if (token == null) {
-            sendOTP(phoneNumber, activity, onCodeSent, onError)
+            sendOTP(phoneNumber, name, activity, onCodeSent, onAutoVerified, onError)
             return
         }
 
@@ -300,37 +289,73 @@ class AuthenticationManager private constructor(context: Context) {
 
         isLoading = true
 
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                isLoading = false
-            }
-
-            override fun onVerificationFailed(e: FirebaseException) {
-                LogUtil.e(TAG, "Resend verification failed", e)
-                isLoading = false
-                onError(localizedVerificationError(e, resend = true))
-            }
-
-            override fun onCodeSent(
-                verificationId: String,
-                newToken: PhoneAuthProvider.ForceResendingToken
-            ) {
-                this@AuthenticationManager.verificationId = verificationId
-                this@AuthenticationManager.resendToken = newToken
-                isLoading = false
-                onCodeSent()
-            }
-        }
+        val callbacks = verificationCallbacks(
+            phoneNumber = phoneNumber,
+            name = name,
+            onCodeSent = onCodeSent,
+            onAutoVerified = onAutoVerified,
+            onError = onError,
+            resend = true,
+        )
 
         val options = PhoneAuthOptions.newBuilder(auth)
             .setPhoneNumber(phoneNumber)
-            .setTimeout(60L, TimeUnit.SECONDS)
+            .setTimeout(FIREBASE_SMS_AUTO_RETRIEVAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .setActivity(activity)
             .setCallbacks(callbacks)
             .setForceResendingToken(token)
             .build()
 
         PhoneAuthProvider.verifyPhoneNumber(options)
+    }
+
+    private fun verificationCallbacks(
+        phoneNumber: String,
+        name: String,
+        onCodeSent: () -> Unit,
+        onAutoVerified: () -> Unit,
+        onError: (String) -> Unit,
+        resend: Boolean = false,
+    ): PhoneAuthProvider.OnVerificationStateChangedCallbacks {
+        return object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                LogUtil.d(TAG, "Firebase completed instant phone verification")
+                completePhoneSignIn(
+                    credential = credential,
+                    name = name,
+                    phoneNumber = phoneNumber,
+                    countFailedAttempt = false,
+                    onSuccess = onAutoVerified,
+                    onError = onError,
+                )
+            }
+
+            override fun onVerificationFailed(error: FirebaseException) {
+                LogUtil.e(TAG, if (resend) "Resend verification failed" else "Verification failed", error)
+                isLoading = false
+                errorMessage = localizedVerificationError(error, resend = resend)
+                onError(errorMessage!!)
+            }
+
+            override fun onCodeSent(
+                newVerificationId: String,
+                token: PhoneAuthProvider.ForceResendingToken,
+            ) {
+                LogUtil.d(TAG, "OTP code sent successfully")
+                verificationId = newVerificationId
+                resendToken = token
+                isLoading = false
+                onCodeSent()
+            }
+
+            override fun onCodeAutoRetrievalTimeOut(timedOutVerificationId: String) {
+                // A zero Firebase retrieval timeout deliberately routes SMS capture through
+                // User Consent, but Firebase still supplies the ID needed to verify that code.
+                verificationId = timedOutVerificationId
+                isLoading = false
+                LogUtil.d(TAG, "Firebase SMS retrieval disabled; SMS User Consent and manual entry remain available")
+            }
+        }
     }
 
     /**
@@ -361,10 +386,31 @@ class AuthenticationManager private constructor(context: Context) {
             return
         }
 
+        val credential = PhoneAuthProvider.getCredential(verId, otp)
+        completePhoneSignIn(
+            credential = credential,
+            name = name,
+            phoneNumber = phoneNumber,
+            countFailedAttempt = true,
+            onSuccess = onSuccess,
+            onError = onError,
+        )
+    }
+
+    private fun completePhoneSignIn(
+        credential: PhoneAuthCredential,
+        name: String,
+        phoneNumber: String,
+        countFailedAttempt: Boolean,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        if (isAuthenticated) {
+            onSuccess()
+            return
+        }
         isLoading = true
         errorMessage = null
-
-        val credential = PhoneAuthProvider.getCredential(verId, otp)
 
         auth.signInWithCredential(credential)
             .addOnCompleteListener { task ->
@@ -397,7 +443,7 @@ class AuthenticationManager private constructor(context: Context) {
                     } else {
                         onError(appContext.getString(R.string.auth_sign_in_failed))
                     }
-                } else {
+                } else if (countFailedAttempt) {
                     // Increment failed attempt counter
                     val attempts = prefs.getInt(KEY_OTP_ATTEMPTS, 0) + 1
                     prefs.edit().putInt(KEY_OTP_ATTEMPTS, attempts).apply()
@@ -416,6 +462,10 @@ class AuthenticationManager private constructor(context: Context) {
                         onError(errorMessage!!)
                     }
                     LogUtil.e(TAG, "Sign in failed", task.exception)
+                } else {
+                    errorMessage = appContext.getString(R.string.auth_sign_in_failed)
+                    LogUtil.e(TAG, "Automatic phone sign in failed", task.exception)
+                    onError(errorMessage!!)
                 }
             }
     }
