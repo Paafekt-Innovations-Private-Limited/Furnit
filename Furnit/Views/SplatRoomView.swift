@@ -202,7 +202,7 @@ struct SplatRoomView: View {
     }
 
     /// User-facing Infinite Zoom toggle for the room viewer (matches Settings).
-    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     /// Default **on**: plane-aware / PLY×scale for saved **room metres** (ceiling / PLY span for `sceneToMeters`).
     @AppStorage("room_dimensions_bound_based") private var roomDimensionsBoundBased = true

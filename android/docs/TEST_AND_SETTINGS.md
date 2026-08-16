@@ -64,6 +64,11 @@ For camera smoothness, color/orientation, AR sizing, thermal cadence, and frame-
 
 The old backend selection and FurnitureFit tuning switches have been removed. Current settings focus on debug logging, the single-image furniture scan, room viewer behavior, and default manual/demo room dimensions. In debug builds, the Developer section is visible only while the authenticated Firebase identity is the test number `+1 650-555-3434`; leaving that identity also disables any persisted debug-logging state.
 
+**Infinite Zoom** defaults off. With the switch off, GLB/photo navigation and the legacy image
+viewer retain their existing bounded behavior. After enabling it, reopen the room viewer and confirm
+pinch can use the wider `0.05...1000` range; turn it off and reopen once more to confirm the normal
+flow is restored. The enabled Android behavior was manually confirmed on 2026-08-16.
+
 Full-video identification is controlled in `GLBRoomActivity` by the in-room **viewfinder** button, not by Settings.
 
 ### Licenses smoke test

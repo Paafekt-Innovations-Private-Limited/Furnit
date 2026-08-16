@@ -16,7 +16,7 @@ struct SettingsView: View {
 
     // Room Viewer Settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
-    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     private var canShowDeveloperSettings: Bool {
         #if DEBUG

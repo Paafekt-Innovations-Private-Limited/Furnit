@@ -30,6 +30,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     private var lastPinchScale: CGFloat = 1
     private var capturedFrustumPinchStartFieldOfView: Float = 60
     private var initialTouchPoint: CGPoint?
+    private var infiniteZoomEnabled = false
 
     // Accumulated rotation state to prevent flickering and maintain smooth rotation
     private var accumulatedYaw: Float = 0.0    // Horizontal rotation around Y-axis
@@ -84,6 +85,14 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         self.boundaryManager = manager
     }
 
+    /// Keeps the normal room/photo navigation contract unchanged when disabled. When enabled,
+    /// pinch zoom may cross the camera boundary and uses the same wide camera range as Android.
+    func setInfiniteZoomEnabled(_ enabled: Bool) {
+        infiniteZoomEnabled = enabled
+        cameraEntity?.camera.near = enabled ? 0.001 : 0.1
+        cameraEntity?.camera.far = enabled ? 1000.0 : 100.0
+    }
+
     // Set object placement manager for object manipulation
     func setObjectPlacementManager(_ manager: RealityKitObjectPlacementManager) {
         self.objectPlacementManager = manager
@@ -94,6 +103,8 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     func setCameraReferences(camera: PerspectiveCamera, cameraAnchor: AnchorEntity) {
         self.cameraEntity = camera
         self.cameraAnchor = cameraAnchor
+        camera.camera.near = infiniteZoomEnabled ? 0.001 : 0.1
+        camera.camera.far = infiniteZoomEnabled ? 1000.0 : 100.0
 
         // Initialize accumulated rotation from camera's current orientation
         initializeRotationFromCamera()
@@ -790,6 +801,9 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             }
             
         case .changed:
+            // Match Android's non-layered photo path: keep the authored optical center and
+            // expand projection zoom. Moving the eye for this room type distorts the source
+            // photograph and does not behave like Android.
             if (capturedPhotoOpticalCenter != nil || usesFlatPhotoNavigation),
                let cameraEntity {
                 if let opticalCenter = capturedPhotoOpticalCenter {
@@ -800,7 +814,12 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
                 let scale = max(Float(gesture.scale), 0.01)
                 let initialHalfFov = capturedFrustumPinchStartFieldOfView * .pi / 360
                 let zoomedFieldOfView = 2 * atan(tan(initialHalfFov) / scale) * 180 / .pi
-                cameraEntity.camera.fieldOfViewInDegrees = min(max(zoomedFieldOfView, 12), 120)
+                let minimumFieldOfView: Float = infiniteZoomEnabled ? 0.05 : 12
+                let maximumFieldOfView: Float = infiniteZoomEnabled ? 175 : 120
+                cameraEntity.camera.fieldOfViewInDegrees = min(
+                    max(zoomedFieldOfView, minimumFieldOfView),
+                    maximumFieldOfView
+                )
                 lastPinchScale = gesture.scale
                 return
             }
@@ -826,7 +845,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
             var newPosition = cameraTransform.translation + cameraMovement
             
             // Apply boundary constraints
-            if let boundaryManager = boundaryManager {
+            if !infiniteZoomEnabled, let boundaryManager = boundaryManager {
                 newPosition = boundaryManager.constrainCameraPosition(newPosition)
             }
             

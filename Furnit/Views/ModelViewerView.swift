@@ -18,6 +18,7 @@ struct ModelViewerView: View {
     @AppStorage("singlePhotoRoom.width") private var defaultRoomWidth: Double = 4.0
     @AppStorage("singlePhotoRoom.depth") private var defaultRoomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var defaultRoomHeight: Double = 2.8
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     // Camera movement state
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
@@ -199,6 +200,7 @@ struct ModelViewerView: View {
                 cameraMovementManager: cameraMovementManager,
                 arObjectPlacementManager: arObjectPlacementManager,
                 isARActive: isARActive,
+                infiniteZoom: infiniteZoomEnabled,
                 shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
                 capturedSnapshot: $roomSnapshot,
                 shouldResetCamera: cameraResetBinding  // ✅ Camera reset trigger

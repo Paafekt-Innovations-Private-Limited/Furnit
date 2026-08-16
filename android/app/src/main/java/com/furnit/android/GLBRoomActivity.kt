@@ -2257,10 +2257,11 @@ class GLBRoomActivity : AppCompatActivity() {
         // @AppStorage("roomViewer.oscillation") and the original 4fd456a8 behaviour.
         val autoOrbitEnabled = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
             .getBoolean("auto_orbit_enabled", false)
-        // Settings > Infinite Zoom. Default ON, matching iOS
+        // Settings > Infinite Zoom. Default OFF, matching iOS. The normal room/photo
+        // navigation contract stays bounded unless the user explicitly enables it.
         // @AppStorage("roomViewer.infiniteZoom").
         val infiniteZoomEnabled = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
-            .getBoolean("infinite_zoom_enabled", true)
+            .getBoolean("infinite_zoom_enabled", false)
 
         // Three.js GLB viewer matching iOS GLBRoomView exactly
         return """
@@ -2484,6 +2485,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
 
         function constrainToRoom(position) {
+            if (INFINITE_ZOOM_ENABLED) return position;
             if (!roomBoundsForClamping) return position;
             const b = roomBoundsForClamping;
             if (isPhotoSurfaceMesh()) {
@@ -2612,7 +2614,13 @@ class GLBRoomActivity : AppCompatActivity() {
                         } else {
                             const pinchRatio = distance / previousInteriorDistance;
                             if (Number.isFinite(pinchRatio) && pinchRatio > 0) {
-                                depthPhotoZoom = THREE.MathUtils.clamp(depthPhotoZoom * pinchRatio, 0.5, 4.0);
+                                const minimumPhotoZoom = INFINITE_ZOOM_ENABLED ? 0.05 : 0.5;
+                                const maximumPhotoZoom = INFINITE_ZOOM_ENABLED ? 1000 : 4.0;
+                                depthPhotoZoom = THREE.MathUtils.clamp(
+                                    depthPhotoZoom * pinchRatio,
+                                    minimumPhotoZoom,
+                                    maximumPhotoZoom,
+                                );
                                 updatePhotoProjection();
                             }
                         }

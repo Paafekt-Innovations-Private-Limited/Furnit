@@ -57,6 +57,15 @@ iPhoneOS Debug build succeeds, but preview-versus-reopen appearance remains devi
 2026-08-15. Test a newly generated room through preview → Save → reopen; opening an older room
 exercises only viewer-side compatibility and does not rewrite its USDZ.
 
+The Settings **Infinite Zoom** switch defaults off. With it off, the existing photo/room camera
+envelopes and viewer-specific zoom limits are unchanged. The 2026-08-16 opt-in candidate propagates
+the setting through RealityKit USDZ, immediate photo preview, Metal splat, GLB, and manual-mesh
+viewers; enabled viewers use wider clipping/zoom ranges and skip their normal positional boundary
+clamp where applicable. Generic and signed iPhoneOS Debug builds succeed, and the saved preference
+was verified on a connected device, but repeated iOS manual checks have not confirmed the intended
+behavior. Treat this as an unconfirmed candidate until a fresh continuous-depth USDZ and the other
+viewer formats are tested on-device with the switch both off and on.
+
 `FurnitUITests/SavedRoomNavigationUITests.swift` adds a create → preview → save → reopen navigation
 regression using a programmatically generated synthetic room image. It checks zoom, pan and D-pad
 frame changes plus renderer-background exposure. The test target compiles independently of any

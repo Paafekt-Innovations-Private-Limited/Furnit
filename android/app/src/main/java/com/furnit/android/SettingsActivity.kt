@@ -133,7 +133,7 @@ class SettingsActivity : AppCompatActivity() {
                     this@SettingsActivity,
                     getString(R.string.settings_infinite_zoom),
                     getString(R.string.settings_infinite_zoom_description),
-                    prefs.getBoolean("infinite_zoom_enabled", true),
+                    prefs.getBoolean("infinite_zoom_enabled", false),
                 ) { isChecked ->
                     prefs.edit().putBoolean("infinite_zoom_enabled", isChecked).apply()
                 },

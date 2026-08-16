@@ -48,6 +48,10 @@ class RoomViewerActivity : AppCompatActivity() {
     private var lastTouchX = 0f
     private var lastTouchY = 0f
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
+    private val infiniteZoomEnabled: Boolean by lazy {
+        getSharedPreferences("furnit_prefs", MODE_PRIVATE)
+            .getBoolean("infinite_zoom_enabled", false)
+    }
     private lateinit var mainImageView: ImageView
     private val imageMatrix = Matrix()
     private lateinit var rootLayout: FrameLayout
@@ -106,7 +110,9 @@ class RoomViewerActivity : AppCompatActivity() {
     private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             scaleFactor *= detector.scaleFactor
-            scaleFactor = max(0.5f, min(scaleFactor, 5.0f))
+            val minimumScale = if (infiniteZoomEnabled) 0.05f else 0.5f
+            val maximumScale = if (infiniteZoomEnabled) 1000.0f else 5.0f
+            scaleFactor = max(minimumScale, min(scaleFactor, maximumScale))
             updateImageTransform()
             return true
         }

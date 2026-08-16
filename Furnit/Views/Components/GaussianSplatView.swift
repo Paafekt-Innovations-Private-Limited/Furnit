@@ -330,10 +330,10 @@ struct GaussianSplatView: UIViewRepresentable {
     /// Binding updated on the main thread; non-nil when loading fails.
     @Binding var loadError: String?
 
-    /// Zoom multiplier – clamped to 0.5 … 3.0 by the pinch gesture handler (or 0.1 … 50 when `infiniteZoom` is true).
+    /// Zoom multiplier – clamped to 0.5 … 3.0 by the pinch gesture handler (or 0.05 … 1000 when `infiniteZoom` is true).
     @Binding var zoomLevel: Float
 
-    /// When true, use dolly-style pinch zoom with a much wider range and smaller near plane (matches the Room Viewer “Infinite Zoom” setting).
+    /// When true, use dolly-style pinch zoom with the Android 0.05...1000 range and a smaller near plane.
     let infiniteZoom: Bool
 
     /// Source room/photo orientation.
@@ -443,7 +443,10 @@ struct GaussianSplatView: UIViewRepresentable {
         // Sync zoom for rendering only — do **not** assign `coordinator.zoomLevel` (a `@Binding`)
         // here; that writes the parent `@State` during `updateUIView` and triggers
         // “Modifying state during view update”.
-        coordinator.appliedZoomLevel = zoomLevel
+        coordinator.infiniteZoom = infiniteZoom
+        let minimumZoom: Float = infiniteZoom ? 0.05 : 0.5
+        let maximumZoom: Float = infiniteZoom ? 1000.0 : 3.0
+        coordinator.appliedZoomLevel = min(max(zoomLevel, minimumZoom), maximumZoom)
         measurementHost?.coordinator = coordinator
         coordinator.measurementHost = measurementHost
         mtkView.setNeedsDisplay()
@@ -547,8 +550,8 @@ struct GaussianSplatView: UIViewRepresentable {
         private let exteriorCameraZ: Float = -8.0
         private let fovy:            Float = 65 * (.pi / 180)   // 65° → radians
 
-        /// Whether to use wide-range dolly-style pinch zoom and a smaller near plane (matches the “Infinite Zoom” setting).
-        let infiniteZoom: Bool
+        /// Whether to use the Android wide-range dolly zoom and a smaller near plane.
+        var infiniteZoom: Bool
         let arReferenceOrientation: PhotoOrientation
         let treatAsClassicPly: Bool
         let initialSplatRoomYaw: Float
@@ -1267,7 +1270,7 @@ struct GaussianSplatView: UIViewRepresentable {
             let zoomedFovy  = infiniteZoom ? fovy : (fovy / appliedZoomLevel)
 
             let nearZ: Float = infiniteZoom ? 0.001 : 0.01
-            let farZ: Float = infiniteZoom ? 250.0 : 100.0
+            let farZ: Float = infiniteZoom ? 1000.0 : 100.0
 
             let projectionMatrix = matrixPerspectiveRightHand(
                 fovyRadians:  zoomedFovy,
@@ -1320,18 +1323,23 @@ struct GaussianSplatView: UIViewRepresentable {
                 lookAt = SIMD3<Float>(lookAt.x, -lookAt.y, -lookAt.z)
             }
 
-            // Infinite Zoom: convert pinch scaling into dolly along the view ray instead of narrowing the field of view.
+            // Infinite Zoom must translate the eye along its view ray. Scaling the eye-to-target
+            // radius can approach the target but can never cross it, which made the setting look
+            // identical to bounded zoom on iOS. Translate both eye and look target so orientation
+            // stays stable while the camera can pass through the room, matching Android's
+            // first-person dolly behavior.
             if infiniteZoom {
-                let baseDir = camPos - lookAt
+                let baseDir = lookAt - camPos
                 let baseDistance = simd_length(baseDir)
                 if baseDistance > 0.0001 {
-                    let minZoom: Float = 0.1
-                    let maxZoom: Float = 50.0
+                    let minZoom: Float = 0.05
+                    let maxZoom: Float = 1000.0
                     let clampedZoom = min(max(appliedZoomLevel, minZoom), maxZoom)
-                    let distanceScale = 1.0 / clampedZoom
-                    let newDistance = max(0.02, baseDistance * distanceScale)
                     let dirNorm = baseDir / baseDistance
-                    camPos = lookAt + dirNorm * newDistance
+                    let dollyDistance = baseDistance * log(clampedZoom)
+                    let dollyTranslation = dirNorm * dollyDistance
+                    camPos += dollyTranslation
+                    lookAt += dollyTranslation
                 }
             }
 
@@ -2035,8 +2043,8 @@ struct GaussianSplatView: UIViewRepresentable {
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
             let newZoom = appliedZoomLevel * Float(gesture.scale)
-            let minZoom: Float = infiniteZoom ? 0.1 : 0.5
-            let maxZoom: Float = infiniteZoom ? 50.0 : 3.0
+            let minZoom: Float = infiniteZoom ? 0.05 : 0.5
+            let maxZoom: Float = infiniteZoom ? 1000.0 : 3.0
             let clamped = min(max(newZoom, minZoom), maxZoom)
             appliedZoomLevel = clamped
             zoomLevel = clamped

@@ -23,6 +23,13 @@ The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid pl
 
 Preview and saved-room rendering now share the same generated continuous GLB. The viewer restores the capture projection from GLB extras, applies source-image aspect-fill framing, and constrains movement to the authored envelope. Volumetric/manual rooms still switch from exterior orbit to turn-in-place navigation once the camera is inside; Auto Orbit controls only the idle animation.
 
+Settings **Infinite Zoom** defaults off. The off path retains the authored photo envelope, room
+boundary clamp, and existing viewer-specific zoom limits. When explicitly enabled, the depth-photo
+projection zoom, Three.js dolly range, and legacy `RoomViewerActivity` image scale use the wider
+`0.05...1000` range, and volumetric GLB navigation may cross its normal room-position clamp. Android
+on-device behavior was confirmed by the user on 2026-08-16; the matching iOS candidate remains
+device-unconfirmed and is tracked by the iOS platform index.
+
 The version-5 continuous preview/save-parity path is an unconfirmed candidate as of 2026-08-15.
 Focused geometry/artifact tests and a Debug APK build pass, but do not treat landscape framing,
 chair/fan alignment, or preview-versus-reopen parity as resolved until manual device testing confirms
@@ -79,6 +86,9 @@ then reopen the new room and confirm framing, texture, geometry, and camera posi
 Recenter, pinch within the authored movement envelope, and drag/D-pad toward each bounded look
 limit. Foreground objects must remain aligned without duplicate layers, stretched edges, fog shells,
 or renderer-gray holes. Confirm the top controls remain floating rather than a full-width band.
+Repeat with Settings **Infinite Zoom** off to verify this bounded flow is unchanged, then enable it,
+reopen the viewer, and verify pinch can exceed the normal near/far limit. Disable it again before
+checking the default flow.
 
 `SavedRoomNavigationE2ETest` provides a create → preview → save → reopen regression with a synthetic
 image generated at test runtime. It checks navigation frame changes and renderer-gray exposure, but

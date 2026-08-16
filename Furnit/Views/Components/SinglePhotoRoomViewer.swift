@@ -1357,6 +1357,7 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
 private struct DepthAnythingPreviewRoomView: View {
     let destination: USDZViewerDestination
     @State private var previewModel: USDZModel
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var rtmdetService = RTMDetModelService.shared
@@ -1448,6 +1449,7 @@ private struct DepthAnythingPreviewRoomView: View {
                 cameraMovementManager: cameraMovementManager,
                 arObjectPlacementManager: arObjectPlacementManager,
                 isARActive: false,
+                infiniteZoom: infiniteZoomEnabled,
                 shouldCaptureSnapshot: $shouldCaptureRealityKitSnapshot,
                 capturedSnapshot: $realityKitSnapshot,
                 shouldResetCamera: $shouldResetCamera

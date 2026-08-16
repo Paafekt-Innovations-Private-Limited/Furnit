@@ -7,6 +7,7 @@ struct RealityKitView: UIViewRepresentable {
     let cameraMovementManager: CameraMovementManager
     let arObjectPlacementManager: ARObjectPlacementManager
     let isARActive: Bool
+    let infiniteZoom: Bool
 
     // ✅ NEW: Snapshot capability - for capturing clean 3D room
     @Binding var shouldCaptureSnapshot: Bool
@@ -49,6 +50,7 @@ struct RealityKitView: UIViewRepresentable {
         
         // Set up coordinator and custom camera for non-AR mode
         context.coordinator.setupGestures(for: arView, placementManager: arObjectPlacementManager)
+        context.coordinator.gestureHandlers?.setInfiniteZoomEnabled(infiniteZoom)
         context.coordinator.setupCustomCamera(for: arView)
 
         loadModel(into: arView, coordinator: context.coordinator)
@@ -63,6 +65,8 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
+        context.coordinator.gestureHandlers?.setInfiniteZoomEnabled(infiniteZoom)
+
         if let cameraAnchor = context.coordinator.cameraAnchor {
             cameraMovementManager.setCameraAnchor(cameraAnchor)
         }

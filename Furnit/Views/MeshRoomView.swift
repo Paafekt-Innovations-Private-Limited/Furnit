@@ -23,6 +23,7 @@ struct MeshRoomView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authManager: AuthenticationManager
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     @State private var isLoading = true
     @State private var error: String? = nil
@@ -276,6 +277,7 @@ struct MeshRoomView: View {
                 rightX: rightX,
                 ceilingY: ceilingY,
                 floorY: floorY,
+                infiniteZoom: infiniteZoomEnabled,
                 webViewRef: $webView,
                 onLoaded: {
                     isLoading = false
@@ -1577,6 +1579,7 @@ struct MeshWebGLView: UIViewRepresentable {
     let rightX: CGFloat
     let ceilingY: CGFloat
     let floorY: CGFloat
+    let infiniteZoom: Bool
 
     @Binding var webViewRef: WKWebView?
     let onLoaded: () -> Void
@@ -1595,6 +1598,7 @@ struct MeshWebGLView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         context.coordinator.webView = webView
+        context.coordinator.lastInfiniteZoom = infiniteZoom
         webView.navigationDelegate = context.coordinator
 
         // Completely disable WebView scrolling - let Three.js handle all touch
@@ -1647,7 +1651,14 @@ struct MeshWebGLView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        guard context.coordinator.lastInfiniteZoom != infiniteZoom else { return }
+        context.coordinator.lastInfiniteZoom = infiniteZoom
+        guard BundledWebViewAsset.bundledBaseURL() != nil else { return }
+        let html = generateMeshViewerHTML()
+        let baseURL = URL(string: BundledWebViewAsset.assetURLString(for: ""))!
+        uiView.loadHTMLString(html, baseURL: baseURL)
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onLoaded: onLoaded, onGLBExported: onGLBExported)
@@ -1657,6 +1668,7 @@ struct MeshWebGLView: UIViewRepresentable {
         let onLoaded: () -> Void
         let onGLBExported: (Data) -> Void
         weak var webView: WKWebView?
+        var lastInfiniteZoom: Bool?
 
         init(onLoaded: @escaping () -> Void, onGLBExported: @escaping (Data) -> Void) {
             self.onLoaded = onLoaded
@@ -1798,8 +1810,6 @@ struct MeshWebGLView: UIViewRepresentable {
         let base64Image = imageData.base64EncodedString()
 
         let isPortrait = photoOrientation == .portrait
-        // Settings > Infinite Zoom (defaults true, so read the object not bool(forKey:)).
-        let infiniteZoomEnabled = (UserDefaults.standard.object(forKey: "roomViewer.infiniteZoom") as? Bool) ?? true
         let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
 
         return """
@@ -1946,9 +1956,8 @@ struct MeshWebGLView: UIViewRepresentable {
                 controls.panSpeed = 1.5;        // Fast pan
                 controls.enableZoom = true;
                 controls.enablePan = true;
-                // Settings > Infinite Zoom: lift the dolly clamps, matching the GLB and
-                // Metal splat viewers.
-                const INFINITE_ZOOM_ENABLED = \(infiniteZoomEnabled);
+                // Settings > Infinite Zoom: use the same 0.05...1000 range as Android.
+                const INFINITE_ZOOM_ENABLED = \(infiniteZoom);
                 controls.minDistance = INFINITE_ZOOM_ENABLED ? 0.05 : 0.3;
                 controls.maxDistance = INFINITE_ZOOM_ENABLED
                     ? 1000
@@ -1986,6 +1995,7 @@ struct MeshWebGLView: UIViewRepresentable {
                 }
 
                 function constrainToRoom(position) {
+                    if (INFINITE_ZOOM_ENABLED) return position;
                     const b = roomBoundsForClamping;
                     position.x = THREE.MathUtils.clamp(position.x, b.minX + 0.05, b.maxX - 0.05);
                     position.y = THREE.MathUtils.clamp(position.y, b.minY + 0.05, b.maxY - 0.05);
@@ -2132,7 +2142,9 @@ struct MeshWebGLView: UIViewRepresentable {
                     roomBoundsForClamping.maxY = roomHeight * factor;
                     roomBoundsForClamping.minZ = -roomDepth * 0.5 * factor;
                     roomBoundsForClamping.maxZ = roomDepth * 0.5 * factor;
-                    controls.maxDistance = Math.max(roomWidth, roomDepth) * 1.5 * factor;
+                    if (!INFINITE_ZOOM_ENABLED) {
+                        controls.maxDistance = Math.max(roomWidth, roomDepth) * 1.5 * factor;
+                    }
                     const targetYScaled = roomHeight * 0.5 * factor;
                     const cameraZScaled = roomDepth * 0.35 * factor;
                     initialTarget.set(0, targetYScaled, -roomDepth * 0.5 * factor);

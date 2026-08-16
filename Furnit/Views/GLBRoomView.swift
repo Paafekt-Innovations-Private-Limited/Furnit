@@ -236,6 +236,7 @@ struct GLBRoomView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authManager: AuthenticationManager
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     @State private var isLoading = true
     @State private var error: String? = nil
@@ -440,6 +441,7 @@ struct GLBRoomView: View {
             GLBWebGLView(
                 glbURL: glbURL,
                 photoOrientation: photoOrientation,
+                infiniteZoom: infiniteZoomEnabled,
                 onLoaded: {
                     isLoading = false
                 },
@@ -1537,6 +1539,7 @@ struct GLBRoomView: View {
 struct GLBWebGLView: UIViewRepresentable {
     let glbURL: URL
     let photoOrientation: PhotoOrientation
+    let infiniteZoom: Bool
     let onLoaded: () -> Void
     let onError: (String) -> Void
 
@@ -1553,6 +1556,7 @@ struct GLBWebGLView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         context.coordinator.webView = webView
+        context.coordinator.lastInfiniteZoom = infiniteZoom
 
         // Completely disable WebView scrolling - let Three.js handle all touch
         webView.scrollView.isScrollEnabled = false
@@ -1609,7 +1613,15 @@ struct GLBWebGLView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        guard context.coordinator.lastInfiniteZoom != infiniteZoom else { return }
+        context.coordinator.lastInfiniteZoom = infiniteZoom
+        guard let glbData = try? Data(contentsOf: glbURL),
+              BundledWebViewAsset.bundledBaseURL() != nil else { return }
+        let html = generateGLBViewerHTML(glbData: glbData)
+        let baseURL = URL(string: BundledWebViewAsset.assetURLString(for: ""))!
+        uiView.loadHTMLString(html, baseURL: baseURL)
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onLoaded: onLoaded, onError: onError)
@@ -1619,6 +1631,7 @@ struct GLBWebGLView: UIViewRepresentable {
         let onLoaded: () -> Void
         let onError: (String) -> Void
         weak var webView: WKWebView?
+        var lastInfiniteZoom: Bool?
 
         init(onLoaded: @escaping () -> Void, onError: @escaping (String) -> Void) {
             self.onLoaded = onLoaded
@@ -1719,9 +1732,6 @@ struct GLBWebGLView: UIViewRepresentable {
         // this is the HTML generator, and the original injected the flag at generation time
         // too, so the viewer picks the setting up when the room is opened.
         let autoOrbitEnabled = UserDefaults.standard.bool(forKey: "roomViewer.oscillation")
-        // Settings > Infinite Zoom. Defaults to true, so read the object and fall back
-        // rather than using bool(forKey:), which returns false for an unset key.
-        let infiniteZoomEnabled = (UserDefaults.standard.object(forKey: "roomViewer.infiniteZoom") as? Bool) ?? true
         let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
         return """
         <!DOCTYPE html>
@@ -1793,9 +1803,8 @@ struct GLBWebGLView: UIViewRepresentable {
                 controls.enableZoom = true;
                 controls.enablePan = true;
                 controls.panSpeed = 1.5;
-                // Settings > Infinite Zoom: lift the dolly clamps. Mirrors the Metal splat
-                // viewer, which widens 0.5..3.0 to 0.1..50 for the same setting.
-                const INFINITE_ZOOM_ENABLED = \(infiniteZoomEnabled);
+                // Settings > Infinite Zoom: use the same 0.05...1000 range as Android.
+                const INFINITE_ZOOM_ENABLED = \(infiniteZoom);
                 controls.minDistance = INFINITE_ZOOM_ENABLED ? 0.05 : 0.5;
                 controls.maxDistance = INFINITE_ZOOM_ENABLED ? 1000 : 20;
                 controls.touches = {
@@ -1832,6 +1841,7 @@ struct GLBWebGLView: UIViewRepresentable {
                 }
 
                 function constrainToRoom(position) {
+                    if (INFINITE_ZOOM_ENABLED) return position;
                     if (!hasNavigableRoomVolume()) return position;
                     const b = roomBoundsForClamping;
                     position.x = THREE.MathUtils.clamp(position.x, b.minX, b.maxX);
