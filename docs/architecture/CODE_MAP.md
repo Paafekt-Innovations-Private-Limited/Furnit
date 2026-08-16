@@ -24,7 +24,7 @@ document.
 | Default metric room reconstruction | `Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift`, `GeoCalibCalibrationService.swift`, `FocalResolver.swift`, `ScaleEstimator.swift`, `RoomHeight.swift`, `RoomExtent.swift` |
 | Manual boundary reconstruction | `Furnit/Services/RoomReconstruction/SinglePhotoRoomReconstructor.swift`, `SyntheticDepthEstimator.swift` |
 | Capture/calibration sidecars | `Furnit/Services/OnDevice/CameraExifSidecar.swift`, `RoomGenerationCameraSidecar.swift`, `Furnit/Views/Components/ARRoomPhotoCaptureView.swift` |
-| RTMDet model/inference | `Furnit/Services/OnDevice/RTMDetModelService.swift`, `RTMDetLiteRuntime.swift`, `RTMDetImageInference.swift`, `Furnit/Native/FurnitLiteRTDelegationAudit.m` |
+| RTMDet model/inference | `Furnit/Services/OnDevice/RTMDetModelService.swift`, `RTMDetImageInference.swift` |
 | Furniture Fit UI/selection/overlays | `Furnit/Views/FurnitureFit/` |
 | USDZ/GLB/mesh/splat viewers | `Furnit/Views/ModelViewerView.swift`, `GLBRoomView.swift`, `MeshRoomView.swift`, `SplatRoomView.swift`, `Furnit/Views/Components/RealityKitView.swift`, `GaussianSplatView.swift` |
 | Theme/brand | `Furnit/Theme/Theme.swift`, `Furnit/Assets.xcassets/`, `docs/PAAFEKT_DESIGN_SYSTEM.md` |

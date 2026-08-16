@@ -68,6 +68,10 @@ Per-release checklist:
   registration only if the Play signing key or Firebase app changes; see
   [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
 - Bump `versionCode` in `app/build.gradle` for every upload.
+- Preserve `ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON` while the project builds its JNI
+  library with NDK r27. Before upload, verify the release APK with
+  `$ANDROID_HOME/build-tools/36.1.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-arm64-v8a-release.apk`
+  and confirm every 64-bit ELF `LOAD` segment is at least `0x4000` aligned.
 - Confirm `verifyLegalAssets` runs and inspect the bundle for the three files under
   `base/assets/legal/` before upload.
 
@@ -78,8 +82,8 @@ Per-release checklist:
 - The method picker is displayed immediately after image selection; a quality-bounded, EXIF-normalized bitmap decode and AI generation continue off the UI thread.
 - `PhotoRoomGenerationService` owns the AI room-generation job lifecycle.
 - `SinglePhotoRoomReconstructor` writes the textured GLB room output.
-- `GlbGenerator.generateFlatPhotoGlb` builds the immediate **AI preview**: one full-photo textured plane (Swift parity, avoids dragged/stretched cuboid crops).
-- On Save, `GlbGenerator.generateDepthPhotoGlb` pinhole-unprojects the calibrated metric depth and embeds the full-photo texture as JPEG quality 95. It cuts triangles across depth discontinuities and adds a projected far-photo backing layer.
+- `GlbGenerator.generateDepthPhotoGlb` pinhole-unprojects calibrated metric depth and embeds the full-photo texture as JPEG quality 95 before preview. The active version-5 output is one opaque continuous projective surface; it does not add the retired projected background shell.
+- Save promotes the inspected preview GLB byte-for-byte instead of rerunning reconstruction. `GlbGenerator.generateFlatPhotoGlb` is retained only as a generation-failure fallback.
 - `GlbGenerator.generateGlb` builds the **manual default**: floor, ceiling, and wall planes with cropped photo textures.
 - `RoomGenerationAssets` records the packaged Swift-parity asset contract.
 - Generated preview folders are promoted into `files/rooms/` only when the user saves the room.

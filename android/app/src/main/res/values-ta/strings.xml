@@ -168,6 +168,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">மானுடவியல் கருவிகள் ஆராய்ச்சி, குறியீட்டு உதவி, செயல்படுத்தல் விவரங்கள் மூலம் பகுத்தறிதல் மற்றும் வளர்ச்சி மறு செய்கை ஆகியவற்றை ஆதரிக்க பயன்படுத்தப்பட்டன.</string>
     <string name="settings_room_viewer">அறை பார்வையாளர்</string>
+    <string name="settings_infinite_zoom">வரம்பற்ற பெரிதாக்கம்</string>
+    <string name="settings_infinite_zoom_description">வரம்புகள் இல்லாமல் பெரிதாக்கவும் சிறிதாக்கவும்</string>
     <string name="settings_sign_out">வெளியேறு</string>
     <string name="settings_sign_out_confirm">நிச்சயமாக வெளியேற விரும்புகிறீர்களா?</string>
     <string name="settings_delete_account">கணக்கை நீக்கு</string>

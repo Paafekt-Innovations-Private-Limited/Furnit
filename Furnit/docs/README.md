@@ -19,8 +19,8 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance segmentation
   ("brain") in room viewers: top controls expose ruler/pinch/tap helpers, brain default
   auto-segments primary, **text.viewfinder** toggles full-video identify/segment modes, transparent
-  cutouts composite over the 3D room, and the Android-equivalent FP16 TFLite graph runs through
-  LiteRT's mandatory fully audited Metal delegate (`cpuNodes=0`) → raw-head decode →
+  cutouts composite over the 3D room, and the ODR-delivered RTMDet-Ins-m Core ML model runs through
+  Core ML → raw-head decode →
   confidence-first NMS → mask affinity → pixel-union cutout.
 
 Room generation (default AI path): **GeoCalib + Depth Anything + RTMDet object anchor → measured
@@ -103,7 +103,7 @@ different identity hides the section and disables any persisted debug mode.
 
 ## Docs here
 - [`mask-head-accel.md`](mask-head-accel.md) — historical Core ML mask-head optimization
-  record; it is not the production LiteRT runtime guide.
+  record; verify current mask dimensions and acceleration details in source.
 - `Furnit/Views/FurnitureFit/README.md` — RTMDet/FurnitureFit pipeline, room-viewer brain flow,
   Settings scan diagnostic path, mask affinity grouping, pixel-level mask union, and overlay gesture ownership.
 

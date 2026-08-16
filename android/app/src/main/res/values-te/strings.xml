@@ -168,6 +168,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">పరిశోధన, కోడ్ సహాయం, అమలు వివరాల ద్వారా తార్కికం మరియు అభివృద్ధి పునరావృతానికి మద్దతు ఇవ్వడానికి ఆంత్రోపిక్ సాధనాలు ఉపయోగించబడ్డాయి.</string>
     <string name="settings_room_viewer">గది వీక్షకుడు</string>
+    <string name="settings_infinite_zoom">అపరిమిత జూమ్</string>
+    <string name="settings_infinite_zoom_description">పరిమితులు లేకుండా జూమ్ ఇన్ మరియు అవుట్ చేయండి</string>
     <string name="settings_sign_out">సైన్ అవుట్ చేయండి</string>
     <string name="settings_sign_out_confirm">మీరు ఖచ్చితంగా సైన్ అవుట్ చేయాలనుకుంటున్నారా?</string>
     <string name="settings_delete_account">ఖాతాను తొలగించండి</string>

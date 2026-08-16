@@ -184,6 +184,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">تم استخدام الأدوات البشرية لدعم البحث والمساعدة في التعليمات البرمجية والتفكير من خلال تفاصيل التنفيذ وتكرار التطوير.</string>
     <string name="settings_room_viewer">عارض الغرفة</string>
+    <string name="settings_infinite_zoom">تكبير وتصغير غير محدود</string>
+    <string name="settings_infinite_zoom_description">كبّر وصغّر بلا حدود</string>
     <string name="settings_sign_out">تسجيل الخروج</string>
     <string name="settings_sign_out_confirm">هل أنت متأكد أنك تريد تسجيل الخروج؟</string>
     <string name="settings_delete_account">حذف الحساب</string>

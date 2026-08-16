@@ -80,7 +80,8 @@ object PaafektDialogs {
 
         val saveButton = MaterialButton(activity).apply {
             text = activity.getString(R.string.common_save)
-            contentDescription = "room_name_save_button"
+            id = R.id.room_name_save_button
+            contentDescription = activity.getString(R.string.common_save)
             setTextColor(PaafektColors.accentText)
             backgroundTintList = android.content.res.ColorStateList.valueOf(PaafektColors.accent)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)

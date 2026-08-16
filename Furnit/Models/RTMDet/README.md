@@ -18,6 +18,9 @@ Important:
 
 - The model must be added to the `Furnit` app target resources in Xcode.
 - For App Store/TestFlight distribution, `rtmdet-ins-m.mlpackage` at this path is tagged with the On-Demand Resources tag `RTMDetModel` by `Furnit.xcodeproj`.
+- Do not add `*.tflite` files to the iOS target. The Android FP16 export is not an iOS
+  runtime dependency, and the synchronized Xcode group explicitly excludes the known
+  local experiment filename.
 - This folder is only a stable in-repo landing zone so the model is not left at repo root.
 - Use `scripts/install_rtmdet_ios_model.sh` to copy a local model here quickly.
 - Current Swift postprocess expects raw RTMDet heads:

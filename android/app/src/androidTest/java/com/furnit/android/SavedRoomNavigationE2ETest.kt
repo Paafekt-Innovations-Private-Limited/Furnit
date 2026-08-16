@@ -56,10 +56,10 @@ class SavedRoomNavigationE2ETest {
             putExtra(SinglePhotoRoomActivity.EXTRA_UI_TEST_IMAGE_PATH, fixtureFile.absolutePath)
         }
         ActivityScenario.launch<SinglePhotoRoomActivity>(intent).use {
-            val aiRoom = waitForDescription("ai_room_option", 30_000)
+            val aiRoom = waitForResource("ai_room_option", 30_000)
             aiRoom.click()
 
-            val previewViewport = waitForDescription("saved_room_viewport", 120_000)
+            val previewViewport = waitForResource("saved_room_viewport", 120_000)
             waitForStableFrame()
             assertFrameHasNoGrayRendererHoles(captureScreen(), previewViewport.visibleBounds, "preview")
 
@@ -67,10 +67,10 @@ class SavedRoomNavigationE2ETest {
             val nameInput = device.wait(Until.findObject(By.clazz(EditText::class.java)), 10_000)
             assertNotNull("Room-name input did not open", nameInput)
             nameInput.text = roomName
-            waitForDescription("room_name_save_button", 10_000).click()
+            waitForResource("room_name_save_button", 10_000).click()
 
             waitForText(roomName, 240_000).click()
-            val savedViewport = waitForDescription("saved_room_viewport", 40_000)
+            val savedViewport = waitForResource("saved_room_viewport", 40_000)
             waitForStableFrame()
 
             val baseline = captureScreen()
@@ -157,6 +157,13 @@ class SavedRoomNavigationE2ETest {
         val selector = By.desc(description)
         val result = device.wait(Until.findObject(selector), timeoutMs)
         assertNotNull("Timed out waiting for '$description'", result)
+        return result
+    }
+
+    private fun waitForResource(resourceName: String, timeoutMs: Long): UiObject2 {
+        val selector = By.res(targetContext.packageName, resourceName)
+        val result = device.wait(Until.findObject(selector), timeoutMs)
+        assertNotNull("Timed out waiting for resource '$resourceName'", result)
         return result
     }
 

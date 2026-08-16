@@ -31,9 +31,9 @@ descriptions of the current app.
 | [`../Furnit/docs/mask-head-accel.md`](../Furnit/docs/mask-head-accel.md) | Historical reference | Retired Core ML mask-head optimization record |
 | [`../Furnit/Views/FurnitureFit/README.md`](../Furnit/Views/FurnitureFit/README.md) | Active, code-local | RTMDet/Furniture Fit implementation |
 | [`../Furnit/Models/RTMDet/README.md`](../Furnit/Models/RTMDet/README.md) | Active, code-local | RTMDet model package notes |
-| [`IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md`](IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md) | Active reference | iOS RTMDet LiteRT Metal pipeline |
+| [`IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md`](IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md) | Historical experiment | Reverted iOS LiteRT/Metal pipeline; not a production runtime guide |
 | [`IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md`](IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md) | Active reference | Room/furniture sizing and overlay math |
-| [`RTMDET_IOS_SWIFT_SPIKE.md`](RTMDET_IOS_SWIFT_SPIKE.md) | Active implementation reference | Loader/export expectations and Swift postprocess status |
+| [`RTMDET_IOS_SWIFT_SPIKE.md`](RTMDET_IOS_SWIFT_SPIKE.md) | Historical experiment | Reverted iOS LiteRT/Metal runtime record |
 | [`ON_DEMAND_RESOURCES.md`](ON_DEMAND_RESOURCES.md) | Active operations | iOS RTMDet ODR and bundled-model behavior |
 | [`../Furnit/diagrams/README.md`](../Furnit/diagrams/README.md) | Active diagrams | iOS room and RTMDet flows |
 

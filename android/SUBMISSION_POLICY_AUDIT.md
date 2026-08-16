@@ -31,6 +31,19 @@ This is a pragmatic release checklist, not legal advice.
   app/device locale. This supersedes the locale-only state recorded in the historical
   `Checked` list below; the user can always override the picker manually.
 
+## Production addendum — 2026-08-17
+
+- Play Console confirms version **1.3 / code 6** is the current 100% production
+  release.
+- The next signed handoff is version **1.4 / code 8**. Code 7 reached Play processing
+  but was blocked because app-owned `libfurnit_rtmdet.so` used 4 KB ELF alignment.
+- NDK r27 now receives `ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON`. The rebuilt code-8
+  AAB contains `0x4000`-aligned arm64/x86_64 native libraries, the arm64 release APK
+  passes Build Tools `zipalign -P 16`, and the signed AAB verifies successfully.
+- Version 1.4 also includes complete Infinite Zoom strings in all 13 localized
+  catalogs and localized accessibility descriptions backed by stable resource IDs for
+  the saved-room navigation instrumentation flow.
+
 ## Checked
 
 - Privacy Policy link exists in app: Settings > Legal > Privacy Policy opens `https://paafekt.com/privacy`.

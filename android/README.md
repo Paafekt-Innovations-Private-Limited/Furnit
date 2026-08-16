@@ -13,10 +13,10 @@ languages, RTL behavior, and catalog verification: [`docs/LOCALIZATION.md`](docs
 - User input: take a photo or select one from the photo library.
 - Picker performance: after image selection, the AI/manual method picker is shown before heavy work starts.
 - Decode performance: room photos are sampled and EXIF-normalized off the UI thread instead of decoding full-resolution bitmaps on the main thread.
-- AI path: `PhotoRoomGenerationService` writes a **flat full-photo** `room.glb` preview. Save runs metric generation and attempts a version-5 layered projective GLB with separated foreground geometry and completed background appearance; it falls back to a flat photo GLB if layered generation is unavailable.
+- AI path: `PhotoRoomGenerationService` runs metric generation once, writes one opaque version-5 continuous projective `room.glb`, and opens that final artifact as the preview. Save transactionally promotes the byte-identical preview instead of rerunning inference; a flat photo GLB remains only as a generation-failure fallback.
 - Manual path: the user adjusts room boundaries and exports a textured five-plane GLB room.
 - Viewer path: generated rooms open in `GLBRoomActivity`; saved rooms are listed by `ModelManager`.
-- GLB performance: AI flat-photo previews embed the texture as JPEG to reduce file size and preview/save latency.
+- GLB performance: AI previews embed the texture as JPEG and reuse the generated artifact across preview and Save.
 
 The old native Gaussian-splat stack has been removed from the Android app. There are no separate room-generation build variants and no native room-generation model runtime in the active path.
 
@@ -30,10 +30,10 @@ ruler/pinch/tap helpers, recenter/save, and AR resize. It is not a full-width ba
 Camera navigation is geometry-derived rather than controlled by the Auto Orbit preference. Exterior
 views orbit around the room; inside a volumetric room, drag turns the camera in place. Version-5
 saved single-photo rooms use an authored camera envelope: pinch permits limited forward/backward
-movement, while drag and the D-pad apply coverage-bounded look changes. The completed background
-layer replaces the old full-photo backing plane so foreground source pixels are not copied behind
-foreground geometry. This candidate is build-validated only; final Android device visual
-confirmation remains pending as of 2026-08-14.
+movement, while drag and the D-pad apply coverage-bounded look changes. The version-5 artifact uses
+one opaque projective surface rather than the retired layered background/foreground experiment.
+This candidate is build-validated only; final Android device visual confirmation remains pending
+as of 2026-08-15.
 
 | Mode | Camera preview | Overlay | Purpose |
 |---|---|---|---|
@@ -95,6 +95,10 @@ Terminal build:
 ```bash
 ./gradlew :app:assembleDebug
 ```
+
+The current Play handoff is version `1.4` / code `8`. Release native libraries use
+16 KB-compatible ELF segments; NDK r27 receives
+`ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON` from `app/build.gradle`.
 
 The app module builds one debug variant. Android Studio's Build Variants panel may still be visible because it is part of the IDE, but the project no longer defines the old room-generation variants.
 

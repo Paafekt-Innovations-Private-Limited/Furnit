@@ -168,6 +168,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">নৃতাত্ত্বিক সরঞ্জামগুলি গবেষণা, কোড সহায়তা, বাস্তবায়নের বিবরণের মাধ্যমে যুক্তি এবং বিকাশের পুনরাবৃত্তিকে সমর্থন করার জন্য ব্যবহৃত হয়েছিল।</string>
     <string name="settings_room_viewer">রুম ভিউয়ার</string>
+    <string name="settings_infinite_zoom">সীমাহীন জুম</string>
+    <string name="settings_infinite_zoom_description">সীমা ছাড়াই জুম ইন এবং আউট করুন</string>
     <string name="settings_sign_out">সাইন আউট</string>
     <string name="settings_sign_out_confirm">আপনি কি নিশ্চিত আপনি সাইন আউট করতে চান?</string>
     <string name="settings_delete_account">অ্যাকাউন্ট মুছুন</string>

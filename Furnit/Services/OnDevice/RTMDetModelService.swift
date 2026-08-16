@@ -1,11 +1,10 @@
 import Foundation
 import CoreML
 
-/// Developer-facing loader for RTMDet-Ins-m Core ML experiments.
+/// Shared loader for the production RTMDet-Ins-m Core ML model.
 ///
-/// This intentionally does not replace the existing RTMDet runtime yet.
-/// It only supports the still-image validation path until output parsing
-/// and mask quality are proven on device.
+/// The model may be embedded for development or delivered through the
+/// `RTMDetModel` on-demand-resource tag for App Store distribution.
 @MainActor
 final class RTMDetModelService: ObservableObject {
 

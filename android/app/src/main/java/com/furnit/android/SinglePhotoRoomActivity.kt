@@ -861,7 +861,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ) {
                 onAIRoomSelected()
             }
-            aiOption.contentDescription = "ai_room_option"
+            aiOption.id = R.id.ai_room_option
+            aiOption.contentDescription = getString(R.string.photo_room_title)
             content.addView(
                 aiOption,
                 LinearLayout.LayoutParams(

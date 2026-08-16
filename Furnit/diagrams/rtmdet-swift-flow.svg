@@ -20,10 +20,10 @@
     </style>
   </defs>
 
-  <text x="32" y="40" class="title">RTMDet segmentation — iOS room viewers (Swift / LiteRT Metal)</text>
-  <text x="32" y="60" class="sub">Android-equivalent FP16 graph; four clamps use Metal-supported max/min. Full Metal audit requires cpuNodes=0. ★ = Metal GPU, ☆ = Swift CPU.</text>
+  <text x="32" y="40" class="title">RTMDet segmentation — iOS room viewers (Swift / Core ML)</text>
+  <text x="32" y="60" class="sub">ODR-delivered raw-head Core ML model with shared Swift decode, affinity grouping, and cutout rendering.</text>
 
-  <rect x="560" y="74" width="14" height="14" rx="3" class="ane"/><text x="580" y="86" class="legtxt">LiteRT Metal GPU</text>
+  <rect x="560" y="74" width="14" height="14" rx="3" class="ane"/><text x="580" y="86" class="legtxt">Core ML compute</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Swift CPU</text>
   <rect x="32" y="74" width="14" height="14" rx="3" class="ui"/><text x="52" y="86" class="legtxt">UI / mode control</text>
 
@@ -50,13 +50,13 @@
   <path class="edge" d="M460,462 L460,496" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="496" width="420" height="52" rx="12" class="ane"/>
-    <text x="460" y="518" text-anchor="middle" class="bt">★ LiteRT 2.17 Metal — RTMDet-Ins-m FP16</text>
-    <text x="460" y="536" text-anchor="middle" class="bs">dedicated thread · audited full Metal plan · zero CPU nodes · no runtime fallback</text></g>
+    <text x="460" y="518" text-anchor="middle" class="bt">Core ML — RTMDet-Ins-m raw-head model</text>
+    <text x="460" y="536" text-anchor="middle" class="bs">CPU+ANE preferred · CPU+GPU / all / CPU fallback order</text></g>
   <path class="edge" d="M460,548 L460,582" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="582" width="420" height="52" rx="12" class="data"/>
     <text x="460" y="604" text-anchor="middle" class="bt">Raw heads + mask_feat</text>
-    <text x="460" y="622" text-anchor="middle" class="bs">persistent NHWC→NCHW copy · cls / bbox / kernel × {80,40,20} · mask prototypes</text></g>
+    <text x="460" y="622" text-anchor="middle" class="bs">cls / bbox / kernel × {80,40,20} · 160×160 mask prototypes</text></g>
   <path class="edge" d="M460,634 L460,668" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="668" width="420" height="52" rx="12" class="cpu"/>
@@ -66,8 +66,7 @@
 
   <g><rect x="250" y="754" width="420" height="52" rx="12" class="cpu"/>
     <text x="460" y="776" text-anchor="middle" class="bt">☆ Mask head · buildRawMaskPlane</text>
-    <text x="460" y="794" text-anchor="middle" class="bs">dynamic-conv MLP per 80×80 px · pixel-level RGBA union cutout</text></g>
-  <text x="684" y="784" class="star">← un-accelerated</text>
+    <text x="460" y="794" text-anchor="middle" class="bs">dynamic-conv mask head · pixel-level RGBA union cutout</text></g>
   <path class="edge" d="M460,806 L460,840" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="840" width="420" height="52" rx="12" class="cpu"/>

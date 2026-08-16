@@ -1,6 +1,12 @@
-# iOS Furniture Fit — RTMDet LiteRT Metal Pipeline
+# iOS Furniture Fit — Reverted RTMDet LiteRT Metal Experiment
 
-This document summarizes the current iOS Furniture Fit segmentation path. The implementation uses
+> **Historical experiment.** This pipeline was reverted in `52533590` after fully
+> delegated Metal FP16 execution corrupted the class heads. Production iOS uses the
+> ODR-delivered Core ML model through `RTMDetModelService` and
+> `RTMDetImageInference`. The abandoned implementation remains on
+> `wip/litert-ios`; do not treat the details below as current runtime guidance.
+
+This document summarizes the reverted iOS Furniture Fit segmentation experiment. The implementation used
 Android's **RTMDet-Ins-m FP16 TFLite math and tensor contract** through an iOS-specific,
 Metal-compatible graph variant and LiteRT's iOS Metal delegate. The variant only replaces four
 `RELU_0_TO_1` clamps with equivalent max/min pairs. It keeps the Android-style helper name

@@ -164,6 +164,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">人择工具用于支持研究、代码辅助、通过实现细节进行推理以及开发迭代。</string>
     <string name="settings_room_viewer">房间查看器</string>
+    <string name="settings_infinite_zoom">无限缩放</string>
+    <string name="settings_infinite_zoom_description">不受限制地放大和缩小</string>
     <string name="settings_sign_out">退出</string>
     <string name="settings_sign_out_confirm">您确定要退出吗？</string>
     <string name="settings_delete_account">删除账户</string>

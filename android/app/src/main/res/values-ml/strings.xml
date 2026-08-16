@@ -168,6 +168,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">ഗവേഷണം, കോഡ് സഹായം, നടപ്പാക്കൽ വിശദാംശങ്ങളിലൂടെ ന്യായവാദം, വികസന ആവർത്തനം എന്നിവയെ പിന്തുണയ്ക്കുന്നതിന് ആന്ത്രോപിക് ഉപകരണങ്ങൾ ഉപയോഗിച്ചു.</string>
     <string name="settings_room_viewer">റൂം വ്യൂവർ</string>
+    <string name="settings_infinite_zoom">പരിധിയില്ലാത്ത സൂം</string>
+    <string name="settings_infinite_zoom_description">പരിധികളില്ലാതെ സൂം ഇൻ ചെയ്യുകയും ഔട്ട് ചെയ്യുകയും ചെയ്യുക</string>
     <string name="settings_sign_out">സൈൻ ഔട്ട് ചെയ്യുക</string>
     <string name="settings_sign_out_confirm">സൈൻ ഔട്ട് ചെയ്യണമെന്ന് തീർച്ചയാണോ?</string>
     <string name="settings_delete_account">അക്കൗണ്ട് ഇല്ലാതാക്കുക</string>

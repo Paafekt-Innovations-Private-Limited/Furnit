@@ -10,7 +10,7 @@
 - Verify camera, photo-library, and motion permission prompts use accurate wording.
 
 ## App Store Connect
-- Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device: **instant preview (no ML)** then **GeoCalib + Depth Anything + RTMDet object anchor → USDZ on first save**.
+- Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device: **GeoCalib + Depth Anything + RTMDet object anchor → final projective USDZ before preview**, then Save promotes the inspected artifact.
 - Confirm the export compliance answer remains correct for the shipped build (`ITSAppUsesNonExemptEncryption = NO`).
 - Ensure screenshots and app description do not claim unfinished or hidden functionality, and do not imply room photos are uploaded for generation.
 - Describe generated dimensions as estimates and avoid unsupported “meter-accurate” or
@@ -29,6 +29,14 @@
   captured; Build Upload `Complete` must not be treated as App Review approval.
 - Select build 87, choose the intended release option, add the version to a submission,
   and confirm the final submission status becomes `Waiting for Review`.
+
+### Version 1.4 candidate (2026-08-17)
+
+- Application target: marketing version **1.4**, build **88**.
+- A fresh unsigned iPhoneOS Release build succeeded and contains the RTMDet Core ML
+  model with no `.tflite` resource.
+- Infinite Zoom and preview/save appearance remain device-unconfirmed. Do not archive
+  or submit this candidate as release-verified until the owner confirms those checks.
 
 ## App Privacy (declare here — copy into App Store Connect)
 
@@ -92,8 +100,8 @@ Sign-in is required using Firebase phone authentication.
 Suggested review flow:
 1. Sign in using the supplied test credentials.
 2. From Home, choose Photo → 3D and capture or select a room photo.
-3. An immediate preview opens. Saving the room runs on-device metric reconstruction using GeoCalib, Depth Anything, and RTMDet.
-4. Open the saved room and use Furniture Fit to identify and position furniture.
+3. On-device metric reconstruction uses GeoCalib, Depth Anything, and RTMDet, then the generated room opens for preview.
+4. Save the room, reopen it, and use Furniture Fit to identify and position furniture.
 5. Open Settings → Licenses to view the bundled third-party notices and Apache license offline.
 
 Furniture detection may download the RTMDet model through Apple On-Demand Resources when first needed.

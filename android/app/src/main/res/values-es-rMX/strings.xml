@@ -172,6 +172,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">Se utilizaron herramientas antrópicas para respaldar la investigación, la asistencia con el código, el razonamiento a través de los detalles de implementación y la iteración del desarrollo.</string>
     <string name="settings_room_viewer">Visor de habitaciones</string>
+    <string name="settings_infinite_zoom">Zoom infinito</string>
+    <string name="settings_infinite_zoom_description">Acerca y aleja sin límites</string>
     <string name="settings_sign_out">Cerrar sesión</string>
     <string name="settings_sign_out_confirm">¿Estás seguro de que deseas cerrar sesión?</string>
     <string name="settings_delete_account">Eliminar cuenta</string>

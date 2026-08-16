@@ -1,6 +1,9 @@
-# RTMDet iOS Runtime
+# RTMDet iOS LiteRT Runtime — Reverted Experiment
 
-> Historical filename: this is now the active production runtime, not a pending spike.
+> **Historical experiment.** The LiteRT/Metal runtime described below was reverted in
+> `52533590` after delegated FP16 execution corrupted class heads. Production iOS uses
+> the ODR-delivered Core ML model through `RTMDetModelService` and
+> `RTMDetImageInference`. Do not use the remaining details as current runtime guidance.
 
 iOS uses the same RTMDet math, signature, and named tensor contract as Android. Its
 `rtmdet-ins-m-raw-fp16.tflite` payload is an iOS-specific Metal-compatible FlatBuffer:

@@ -2,7 +2,7 @@
 
 This is the compact active context for contributors and coding agents. It records
 settled facts that should not be reconstructed from chat history or stale audits.
-Last verified: 2026-08-16.
+Last verified: 2026-08-17.
 
 ## Settled product and ownership facts
 
@@ -94,9 +94,21 @@ Use [`architecture.md`](architecture.md) and
 [`architecture/CODE_MAP.md`](architecture/CODE_MAP.md) for owning files and deeper
 links.
 
+## Current release handoff
+
+- Android source/build artifacts are version **1.4 / code 8**. Code 7 was rejected
+  during Play processing because the app-owned RTMDet JNI library had 4 KB ELF
+  segments. The NDK r27 build now enables flexible page sizes; a fresh code-8 release
+  has `0x4000` alignment for every 64-bit native library and passes
+  `zipalign -P 16`.
+- iOS source is version **1.4 / build 88**. A fresh unsigned iPhoneOS Release build
+  succeeded and contains the RTMDet Core ML model with no `.tflite` resource. Infinite
+  Zoom and preview/save appearance remain device-unconfirmed; do not describe the iOS
+  candidate as release-verified yet.
+
 ## License and attribution packaging
 
-- Version 1.2 source on both platforms exposes a readable third-party notice and the
+- Current source on both platforms exposes a readable third-party notice and the
   complete Apache License 2.0 text offline under Settings → Licenses.
 - **Android only** bundles the LiteRT combined license text, including the required
   Caffe/BSD attribution, because only Android ships LiteRT. Android also bundles the

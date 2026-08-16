@@ -168,6 +168,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">Anthropische Tools wurden zur Unterstützung der Forschung, der Codeunterstützung, der Argumentation durch Implementierungsdetails und der Entwicklungsiteration eingesetzt.</string>
     <string name="settings_room_viewer">Raumbetrachter</string>
+    <string name="settings_infinite_zoom">Unbegrenzter Zoom</string>
+    <string name="settings_infinite_zoom_description">Ohne Begrenzung hinein- und herauszoomen</string>
     <string name="settings_sign_out">Abmelden</string>
     <string name="settings_sign_out_confirm">Sind Sie sicher, dass Sie sich abmelden möchten?</string>
     <string name="settings_delete_account">Konto löschen</string>

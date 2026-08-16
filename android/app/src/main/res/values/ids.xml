@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Stable UI-test hooks; keep accessibility descriptions localized for TalkBack. -->
+    <item name="ai_room_option" type="id" />
+    <item name="room_name_save_button" type="id" />
+    <item name="saved_room_viewport" type="id" />
+</resources>

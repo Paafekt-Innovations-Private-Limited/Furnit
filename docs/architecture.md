@@ -12,7 +12,7 @@ native implementations. The authoritative path-to-code inventory is
 | Authentication | `LoginView` → `AuthenticationManager` → `OTPVerificationView` → Firebase Auth | `LoginActivity` → `AuthenticationManager` → `OTPVerificationActivity` → Firebase Auth |
 | AI room creation | GeoCalib/Depth Anything/RTMDet → version-5 single-surface projective USDZ → exact preview → Save promotes the same artifact (device-unconfirmed) | Immediate method picker → EXIF-aware decode → metric measurement → one continuous version-5 projective GLB → exact preview → byte-identical Save promotion; flat fallback only on generation failure (device-unconfirmed) |
 | Manual room creation | Boundary editor → `SinglePhotoRoomReconstructor` → textured mesh/USDZ path | `RoomBoundaryActivity` → five-plane textured GLB → `GLBRoomActivity` |
-| Furniture Fit | Android-equivalent RTMDet FP16 graph variant → mandatory audited full Metal (`cpuNodes=0`) → class-aware NMS → mask affinity → transparent overlays | RTMDet FP16 LiteRT (GPU or XNNPACK CPU) → boxes-only identify or mask segmentation → transparent overlays |
+| Furniture Fit | RTMDet-Ins-m Core ML raw heads → class-aware NMS → mask affinity → transparent overlays | RTMDet FP16 LiteRT (GPU or XNNPACK CPU) → boxes-only identify or mask segmentation → transparent overlays |
 | Saved room | Private `Documents/SavedRooms` | Private `files/rooms` (excluded from backup/transfer) |
 | Legal disclosure | Bundled third-party notice + Apache text opened offline by `LicensesView` | Bundled notices plus Apache, LiteRT/Caffe, ONNX Runtime, Three.js, and reCAPTCHA texts opened offline by `LicensesActivity` |
 

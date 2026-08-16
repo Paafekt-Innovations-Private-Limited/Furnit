@@ -15,7 +15,7 @@ camera calibration, and furniture inference are designed to run on device.
 | Phone sign-in | Firebase phone-number authentication, country picker, OTP verification | iOS `Furnit/Authentication/`; Android `android/app/src/main/java/com/furnit/android/auth/` |
 | Photo → 3D | Creates a preview, measures the room, and saves a local 3D asset | iOS `Furnit/Services/RoomReconstruction/`; Android `android/app/src/main/java/com/furnit/android/services/` and `roomreconstruction/` |
 | Room viewer | Opens saved USDZ/GLB/mesh/splat content with measurement and camera controls | iOS `Furnit/Views/`; Android `GLBRoomActivity` and viewer assets |
-| Furniture Fit | Detects/segments furniture and composites movable cutouts over the room | iOS RTMDet FP16 LiteRT (mandatory audited full Metal); Android RTMDet FP16 LiteRT (GPU or XNNPACK CPU) |
+| Furniture Fit | Detects/segments furniture and composites movable cutouts over the room | iOS RTMDet-Ins-m Core ML; Android RTMDet FP16 LiteRT (GPU or XNNPACK CPU) |
 | Local library | Stores and reopens saved rooms on the device | iOS `Documents/SavedRooms`; Android `files/rooms` |
 | Licenses and attributions | Shows bundled notices and Apache text without requiring a network connection | iOS `Furnit/Licenses/` + `LicensesView`; Android `app/src/main/assets/legal/` + `LicensesActivity` |
 
@@ -23,8 +23,8 @@ camera calibration, and furniture inference are designed to run on device.
 
 | Platform | Default single-photo result | Viewer/runtime |
 |---|---|---|
-| iOS | Immediate flat preview; textured metric-context USDZ on first save | SwiftUI/UIKit + RealityKit/SceneKit/MetalSplatter |
-| Android | Flat full-photo GLB preview; manual five-plane GLB alternative | Kotlin + WebView/Three.js, with SceneView/ARCore where needed |
+| iOS | Version-5 single-surface projective USDZ generated before preview; Save promotes the inspected artifact | SwiftUI/UIKit + RealityKit/SceneKit/MetalSplatter |
+| Android | Version-5 continuous projective GLB generated before preview; manual five-plane GLB alternative | Kotlin + WebView/Three.js, with SceneView/ARCore where needed |
 
 The implementations aim for equivalent product behavior, but their model formats,
 renderers, and persistence details are platform-native. Cross-platform parity should

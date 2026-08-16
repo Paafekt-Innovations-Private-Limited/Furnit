@@ -168,6 +168,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">मानवविज्ञानी उपकरणों का उपयोग अनुसंधान, कोड सहायता, कार्यान्वयन विवरण के माध्यम से तर्क और विकास पुनरावृत्ति का समर्थन करने के लिए किया गया था।</string>
     <string name="settings_room_viewer">कक्ष दर्शक</string>
+    <string name="settings_infinite_zoom">असीमित ज़ूम</string>
+    <string name="settings_infinite_zoom_description">बिना सीमा के ज़ूम इन और आउट करें</string>
     <string name="settings_sign_out">साइन आउट करें</string>
     <string name="settings_sign_out_confirm">क्या आप वाकई साइन आउट करना चाहते हैं?</string>
     <string name="settings_delete_account">खाता हटाएँ</string>

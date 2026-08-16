@@ -35,8 +35,8 @@ android {
         applicationId "com.paafekt.android"
         minSdk 24
         targetSdk 36
-        versionCode 6
-        versionName "1.3"
+        versionCode 8
+        versionName "1.4"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -45,6 +45,9 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17"
+                // NDK r27 does not enable 16 KB ELF alignment by default. This makes the
+                // RTMDet JNI library loadable on Android devices using 16 KB memory pages.
+                arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
             }
         }
     }

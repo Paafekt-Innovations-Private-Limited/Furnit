@@ -168,6 +168,8 @@
     <string name="credits_anthropic_title">Anthropic</string>
     <string name="credits_anthropic_body">ಸಂಶೋಧನೆ, ಕೋಡ್ ನೆರವು, ಅನುಷ್ಠಾನದ ವಿವರಗಳ ಮೂಲಕ ತಾರ್ಕಿಕತೆ ಮತ್ತು ಅಭಿವೃದ್ಧಿ ಪುನರಾವರ್ತನೆಯನ್ನು ಬೆಂಬಲಿಸಲು ಆಂಥ್ರೊಪಿಕ್ ಉಪಕರಣಗಳನ್ನು ಬಳಸಲಾಯಿತು.</string>
     <string name="settings_room_viewer">ಕೊಠಡಿ ವೀಕ್ಷಕ</string>
+    <string name="settings_infinite_zoom">ಮಿತಿಯಿಲ್ಲದ ಜೂಮ್</string>
+    <string name="settings_infinite_zoom_description">ಯಾವುದೇ ಮಿತಿಯಿಲ್ಲದೆ ಜೂಮ್ ಇನ್ ಮತ್ತು ಔಟ್ ಮಾಡಿ</string>
     <string name="settings_sign_out">ಸೈನ್ ಔಟ್ ಮಾಡಿ</string>
     <string name="settings_sign_out_confirm">ನೀವು ಸೈನ್ ಔಟ್ ಮಾಡಲು ಖಚಿತವಾಗಿ ಬಯಸುವಿರಾ?</string>
     <string name="settings_delete_account">ಖಾತೆಯನ್ನು ಅಳಿಸಿ</string>

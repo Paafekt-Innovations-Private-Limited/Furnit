@@ -258,7 +258,8 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // WebView for 3D rendering — full-bleed behind system bars; insets apply to chrome only.
         webView = WebView(this).apply {
-            contentDescription = "saved_room_viewport_loading"
+            id = R.id.saved_room_viewport
+            contentDescription = getString(R.string.photo_room_loading)
             fitsSystemWindows = false
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -3323,7 +3324,7 @@ class GLBRoomActivity : AppCompatActivity() {
         fun onLoaded() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
-                webView.contentDescription = "saved_room_viewport"
+                webView.contentDescription = getString(R.string.room_viewer_title)
                 ensureNavigationChromeOnTop()
                 notifyWebViewViewportChanged()
                 LogUtil.d(TAG, "WebGL viewer reported loaded")
@@ -3334,7 +3335,7 @@ class GLBRoomActivity : AppCompatActivity() {
         fun onError(message: String) {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
-                webView.contentDescription = "saved_room_viewport_error"
+                webView.contentDescription = getString(R.string.room_viewer_preview_unavailable)
                 LogUtil.e(TAG, "WebGL error: $message")
                 Toast.makeText(
                     this@GLBRoomActivity,

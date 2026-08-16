@@ -12,7 +12,10 @@ the required Apache, LiteRT/Caffe, ONNX Runtime, Three.js, reCAPTCHA, or
 model-modification notice is missing or truncated. The reCAPTCHA document is copied
 from the exact resolved 18.6.1 AAR into generated app assets so it cannot drift from
 the dependency. A release handoff should also run
-`./gradlew :app:bundleRelease --no-daemon` and verify the signed AAB.
+`./gradlew :app:assembleRelease :app:bundleRelease --no-daemon`, verify the signed
+AAB, and run Build Tools `zipalign -c -P 16 -v 4` against the release APK. Inspect
+every arm64/x86_64 ELF `LOAD` alignment as well; `0x1000` is a Play-blocking 4 KB
+artifact and `0x4000` is 16 KB-compatible.
 
 For Android Studio device testing, set **Run > Edit Configurations > app > Deploy** to
 **APK from app bundle**. The default APK-only deployment omits the install-time
