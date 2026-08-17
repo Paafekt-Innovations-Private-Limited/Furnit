@@ -2452,6 +2452,8 @@ class GLBRoomActivity : AppCompatActivity() {
         let depthPhotoPitchLimit = Math.PI / 5;
         let depthPhotoSourceAspect = null;
         let depthPhotoNearestReliableDepth = null;
+        const cameraOrbitRadiansPerPixel = 0.012;
+        const depthPhotoDpadCoveragePadding = THREE.MathUtils.degToRad(0.25);
 
         function isPhotoSurfaceMesh() {
             return isFlatPhotoMesh || isDepthPhotoMesh;
@@ -2752,6 +2754,87 @@ class GLBRoomActivity : AppCompatActivity() {
             };
         }
 
+        // Aspect-fill consumes the full captured-image coverage on one axis: vertical for a
+        // portrait viewport and horizontal for a landscape viewport. A D-pad step on that axis
+        // would therefore be clamped to zero at the capture pose. Create only the projection
+        // overscan required by the requested step before turning, so every arrow responds while
+        // the bounded path still keeps the renderer inside the photographed pixels.
+        function ensureDepthPhotoDpadCoverage(axis, requiredLook) {
+            if (navigationMode !== 'photoDepth' || !isLayeredDepthPhoto ||
+                    !Number.isFinite(requiredLook) || requiredLook <= 0) return;
+
+            const coverageForAxis = () => {
+                const coverage = currentDepthPhotoLookLimits();
+                return axis === 'yaw' ? coverage.yaw : coverage.pitch;
+            };
+            const currentCoverage = coverageForAxis();
+            if (currentCoverage >= requiredLook) return;
+
+            const originalZoom = depthPhotoZoom;
+            const maximumPhotoZoom = INFINITE_ZOOM_ENABLED ? 1000 : 4.0;
+            if (originalZoom >= maximumPhotoZoom) return;
+
+            let lowZoom = originalZoom;
+            let highZoom = maximumPhotoZoom;
+            depthPhotoZoom = highZoom;
+            updatePhotoProjection();
+            const maximumCoverage = coverageForAxis();
+            if (maximumCoverage <= currentCoverage) {
+                depthPhotoZoom = originalZoom;
+                updatePhotoProjection();
+                return;
+            }
+
+            // If the authored envelope or zoom ceiling cannot provide a full step, use the
+            // largest safe partial step. Otherwise binary-search the smallest necessary crop.
+            const targetCoverage = Math.min(requiredLook, maximumCoverage);
+            for (let iteration = 0; iteration < 14; iteration++) {
+                const candidateZoom = (lowZoom + highZoom) * 0.5;
+                depthPhotoZoom = candidateZoom;
+                updatePhotoProjection();
+                if (coverageForAxis() >= targetCoverage) {
+                    highZoom = candidateZoom;
+                } else {
+                    lowZoom = candidateZoom;
+                }
+            }
+            depthPhotoZoom = highZoom;
+            updatePhotoProjection();
+            console.log('[GLBViewer] D-pad safe overscan axis=', axis,
+                'zoom=', depthPhotoZoom.toFixed(3));
+        }
+
+        function prepareDepthPhotoDpadLook(deltaX, deltaY) {
+            if (navigationMode !== 'photoDepth' || !isLayeredDepthPhoto) return;
+            interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+            if (deltaX !== 0) {
+                const targetYaw = THREE.MathUtils.clamp(
+                    interiorEuler.y - deltaX * cameraOrbitRadiansPerPixel,
+                    -depthPhotoYawLimit,
+                    depthPhotoYawLimit,
+                );
+                if (Math.abs(targetYaw - interiorEuler.y) > 1e-6) {
+                    ensureDepthPhotoDpadCoverage(
+                        'yaw',
+                        Math.abs(targetYaw) + depthPhotoDpadCoveragePadding,
+                    );
+                }
+            }
+            if (deltaY !== 0) {
+                const targetPitch = THREE.MathUtils.clamp(
+                    interiorEuler.x - deltaY * cameraOrbitRadiansPerPixel,
+                    -depthPhotoPitchLimit,
+                    depthPhotoPitchLimit,
+                );
+                if (Math.abs(targetPitch - interiorEuler.x) > 1e-6) {
+                    ensureDepthPhotoDpadCoverage(
+                        'pitch',
+                        Math.abs(targetPitch) + depthPhotoDpadCoveragePadding,
+                    );
+                }
+            }
+        }
+
         function backCenterInsetFraction(depth) {
             const t = Math.min(1, Math.max(0, depth / 6.0));
             return 0.035 + 0.065 * t;
@@ -2878,6 +2961,7 @@ class GLBRoomActivity : AppCompatActivity() {
         window.moveCamera = function(dx, dy) {
             noteAutoOrbitInteraction();
             if (navigationMode === 'photoDepth') {
+                prepareDepthPhotoDpadLook(dx, dy);
                 window.orbitCamera(dx, dy);
                 return;
             }
@@ -2906,7 +2990,9 @@ class GLBRoomActivity : AppCompatActivity() {
             noteAutoOrbitInteraction();
             if (typeof dy !== 'number' || !isFinite(dy)) return;
             if (navigationMode === 'photoDepth') {
-                window.orbitCamera(0, -dy * 40);
+                const pitchPixels = -dy * 40;
+                prepareDepthPhotoDpadLook(0, pitchPixels);
+                window.orbitCamera(0, pitchPixels);
                 return;
             }
             camera.position.y += dy;
@@ -2927,19 +3013,19 @@ class GLBRoomActivity : AppCompatActivity() {
             noteAutoOrbitInteraction();
             if (navigationMode === 'firstPerson' || navigationMode === 'photoDepth') {
                 interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
-                interiorEuler.y -= deltaX * 0.012;
+                interiorEuler.y -= deltaX * cameraOrbitRadiansPerPixel;
                 if (navigationMode === 'photoDepth' && isLayeredDepthPhoto) {
                     const coverage = currentDepthPhotoLookLimits();
                     interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -coverage.yaw, coverage.yaw);
                     interiorEuler.x = THREE.MathUtils.clamp(
-                        interiorEuler.x - deltaY * 0.012,
+                        interiorEuler.x - deltaY * cameraOrbitRadiansPerPixel,
                         -coverage.pitch,
                         coverage.pitch,
                     );
                 } else {
                     const pitchLimit = Math.PI / 2 - 0.05;
                     interiorEuler.x = THREE.MathUtils.clamp(
-                        interiorEuler.x - deltaY * 0.012,
+                        interiorEuler.x - deltaY * cameraOrbitRadiansPerPixel,
                         -pitchLimit,
                         pitchLimit,
                     );
@@ -2949,14 +3035,13 @@ class GLBRoomActivity : AppCompatActivity() {
                 syncFirstPersonTarget();
                 return;
             }
-            const rotateSpeed = 0.012;  // Matching iOS
             const spherical = new THREE.Spherical();
             const offset = new THREE.Vector3();
             offset.copy(camera.position).sub(controls.target);
             spherical.setFromVector3(offset);
 
-            spherical.theta -= deltaX * rotateSpeed;
-            spherical.phi -= deltaY * rotateSpeed;
+            spherical.theta -= deltaX * cameraOrbitRadiansPerPixel;
+            spherical.phi -= deltaY * cameraOrbitRadiansPerPixel;
             spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
 
             offset.setFromSpherical(spherical);

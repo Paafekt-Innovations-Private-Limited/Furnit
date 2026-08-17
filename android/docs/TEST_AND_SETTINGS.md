@@ -35,10 +35,21 @@ For Android Studio device testing, set **Run > Edit Configurations > app > Deplo
 9. Confirm the saved room appears in the home room list and reopens with the same framing, geometry, texture, and initial camera position as the preview. Save must promote the preview GLB rather than rerun inference.
 10. Recenter, pinch within the bounded forward/backward envelope, and use drag plus D-pad toward each coverage limit. Confirm foreground objects stay in place without duplicated layers, edge stretching, fog shells, or renderer-gray holes. Repeat with fresh portrait and landscape inputs. This candidate still requires manual device confirmation as of 2026-08-15.
 
+The 2026-08-17 D-pad candidate automatically creates the minimum safe projection overscan before a
+button turn when aspect-fill otherwise leaves zero pitch margin in portrait or zero yaw margin in
+landscape. With Infinite Zoom off, test Up and Down immediately after recentering a real portrait
+version-5 room, then test Left and Right immediately after recentering a real landscape room. A
+synthetic portrait create/save/reopen regression passed on a Pixel 9a, and direct taps on the same
+controlled artifact produced visible portrait and forced-landscape movement without renderer-gray
+holes. The user's originally reported room remained unavailable after they reported another failure,
+so this behavior is explicitly unconfirmed and must not be treated as resolved until they retest that
+exact room.
+
 The large `SavedRoomNavigationE2ETest` exercises the same create/save/reopen/navigation sequence with
-a synthetic image generated at runtime. Compile it with `:app:assembleAndroidTest`; run it only on a
-suitable arm64 device with the install-time model packs available. Its pixel checks are regression
-signals, not a substitute for the room-photo smoke test above.
+a synthetic image generated at runtime. It now taps all four D-pad buttons before pinch, including
+portrait Up/Down at the initial aspect-fill limit. Compile it with `:app:assembleAndroidTest`; run it
+only on a suitable arm64 device with the install-time model packs available. Its pixel checks are
+regression signals, not a substitute for the room-photo smoke test above.
 
 ## GLB Room Full-Video Segmentation Smoke Test
 

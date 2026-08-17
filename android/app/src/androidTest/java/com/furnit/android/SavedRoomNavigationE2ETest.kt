@@ -77,12 +77,40 @@ class SavedRoomNavigationE2ETest {
             assertFrameHasNoGrayRendererHoles(baseline, savedViewport.visibleBounds, "saved baseline")
 
             val bounds = savedViewport.visibleBounds
-            // Fit consumes the captured width. Dolly in first to create real source-image
-            // overscan; only then should one-finger look be allowed to turn.
+            // This fixture locks the viewer in portrait. Exercise vertical D-pad motion before
+            // any pinch so aspect-fill's initially zero pitch margin cannot hide a regression.
+            // Check the horizontal pair too; the same path owns the landscape zero-yaw case.
+            var afterDpad = clickDpadAndCapture(
+                "camera_dpad_up",
+                baseline,
+                bounds,
+                "portrait D-pad up",
+            )
+            afterDpad = clickDpadAndCapture(
+                "camera_dpad_down",
+                afterDpad,
+                bounds,
+                "portrait D-pad down",
+            )
+            afterDpad = clickDpadAndCapture(
+                "camera_dpad_left",
+                afterDpad,
+                bounds,
+                "portrait D-pad left",
+            )
+            afterDpad = clickDpadAndCapture(
+                "camera_dpad_right",
+                afterDpad,
+                bounds,
+                "portrait D-pad right",
+            )
+
+            // Keep the existing forward-dolly and one-finger-look regression after the direct
+            // D-pad checks; moving forward creates additional source-image overscan.
             savedViewport.pinchOpen(0.55f, 600)
             waitForStableFrame()
             val afterPinch = captureScreen()
-            assertFrameChanged(baseline, afterPinch, bounds, "pinch dolly")
+            assertFrameChanged(afterDpad, afterPinch, bounds, "pinch dolly")
             assertFrameHasNoGrayRendererHoles(afterPinch, bounds, "after pinch")
 
             device.swipe(
@@ -97,16 +125,21 @@ class SavedRoomNavigationE2ETest {
             assertFrameChanged(afterPinch, afterLook, bounds, "one-finger look")
             assertFrameHasNoGrayRendererHoles(afterLook, bounds, "after one-finger look")
 
-            // The preceding rightward swipe deliberately reaches the authored right-look limit;
-            // exercise the opposite D-pad direction so the assertion verifies a real step rather
-            // than correctly clamped motion at that boundary.
-            waitForDescription("camera_dpad_left", 10_000).click()
-            waitForStableFrame()
-            val afterDpad = captureScreen()
-            assertFrameChanged(afterLook, afterDpad, bounds, "D-pad")
-            assertFrameHasNoGrayRendererHoles(afterDpad, bounds, "after D-pad")
-
             assertTrue(visualFailures.joinToString(separator = "\n"), visualFailures.isEmpty())
+        }
+    }
+
+    private fun clickDpadAndCapture(
+        description: String,
+        before: Bitmap,
+        bounds: Rect,
+        label: String,
+    ): Bitmap {
+        waitForDescription(description, 10_000).click()
+        waitForStableFrame()
+        return captureScreen().also { after ->
+            assertFrameChanged(before, after, bounds, label)
+            assertFrameHasNoGrayRendererHoles(after, bounds, label)
         }
     }
 
