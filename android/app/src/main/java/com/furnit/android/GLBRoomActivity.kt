@@ -2833,24 +2833,75 @@ class GLBRoomActivity : AppCompatActivity() {
             }
         }
 
-        function backCenterInsetFraction(depth) {
-            const t = Math.min(1, Math.max(0, depth / 6.0));
-            return 0.035 + 0.065 * t;
+        const minimumRoomVerticalFovDegrees = 60;
+        const maximumRoomVerticalFovDegrees = 125;
+        const roomFramingMargin = 1.06;
+        let volumetricRoomBounds = null;
+
+        function fitVolumetricRoomProjection() {
+            if (!volumetricRoomBounds) return;
+
+            const viewport = viewportSize();
+            const aspect = Math.max(viewport.width / viewport.height, 0.01);
+            const forward = controls.target.clone().sub(camera.position).normalize();
+            let right = new THREE.Vector3().crossVectors(forward, camera.up);
+            if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+            right.normalize();
+            const viewUp = new THREE.Vector3().crossVectors(right, forward).normalize();
+            const frontZ = volumetricRoomBounds.min.z;
+            let maximumHorizontalSlope = 0;
+            let maximumVerticalSlope = 0;
+
+            for (const x of [volumetricRoomBounds.min.x, volumetricRoomBounds.max.x]) {
+                for (const y of [volumetricRoomBounds.min.y, volumetricRoomBounds.max.y]) {
+                    const cameraToCorner = new THREE.Vector3(x, y, frontZ).sub(camera.position);
+                    const forwardDistance = cameraToCorner.dot(forward);
+                    if (forwardDistance <= 0.01) continue;
+                    maximumHorizontalSlope = Math.max(
+                        maximumHorizontalSlope,
+                        Math.abs(cameraToCorner.dot(right)) / forwardDistance,
+                    );
+                    maximumVerticalSlope = Math.max(
+                        maximumVerticalSlope,
+                        Math.abs(cameraToCorner.dot(viewUp)) / forwardDistance,
+                    );
+                }
+            }
+
+            const requiredVerticalSlope = Math.max(
+                maximumVerticalSlope,
+                maximumHorizontalSlope / aspect,
+            ) * roomFramingMargin;
+            const requiredVerticalFovDegrees = THREE.MathUtils.radToDeg(
+                2 * Math.atan(requiredVerticalSlope),
+            );
+            camera.fov = THREE.MathUtils.clamp(
+                Math.max(minimumRoomVerticalFovDegrees, requiredVerticalFovDegrees),
+                minimumRoomVerticalFovDegrees,
+                maximumRoomVerticalFovDegrees,
+            );
+            camera.aspect = aspect;
+            camera.updateProjectionMatrix();
         }
 
         function applyBackCenterCamera(boxWorld) {
             const depth = Math.max(boxWorld.max.z - boxWorld.min.z, 0.1);
-            const insetFromBack = Math.max(depth * backCenterInsetFraction(depth), 0.05);
+            // Keep the eye just inside the authored back wall. The lens fit below, rather than a
+            // room-specific camera coordinate, determines how much of the room is visible.
+            const insetFromBack = Math.min(0.05, depth * 0.1);
             const roomHeight = Math.max(boxWorld.max.y - boxWorld.min.y, 0.1);
+            const centerX = (boxWorld.min.x + boxWorld.max.x) * 0.5;
             const centerY = (boxWorld.min.y + boxWorld.max.y) * 0.5;
             const lookAtY = centerY - roomHeight * 0.06;
             const cameraZ = boxWorld.max.z - insetFromBack;
             const targetZ = boxWorld.min.z;
 
-            camera.position.set(0, lookAtY + Math.max(roomHeight * 0.14, 0.35), cameraZ);
-            controls.target.set(0, lookAtY, targetZ);
+            camera.position.set(centerX, lookAtY + Math.max(roomHeight * 0.14, 0.35), cameraZ);
+            controls.target.set(centerX, lookAtY, targetZ);
             camera.lookAt(controls.target);
             controls.update();
+            volumetricRoomBounds = boxWorld.clone();
+            fitVolumetricRoomProjection();
 
             initialCameraPosition = camera.position.clone();
             initialControlsTarget = controls.target.clone();
@@ -2869,7 +2920,8 @@ class GLBRoomActivity : AppCompatActivity() {
             };
             updateNavigationMode();
             console.log('[GLBViewer] Back-center camera inset=', insetFromBack.toFixed(2),
-                'posZ=', cameraZ.toFixed(2), 'targetZ=', targetZ.toFixed(2));
+                'posZ=', cameraZ.toFixed(2), 'targetZ=', targetZ.toFixed(2),
+                'verticalFov=', camera.fov.toFixed(1));
         }
 
         function applyFlatPhotoCamera() {
@@ -3065,6 +3117,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 camera.position.copy(initialCameraPosition);
                 controls.target.copy(initialControlsTarget);
                 controls.update();
+                fitVolumetricRoomProjection();
                 updateNavigationMode();
                 console.log('[GLBViewer] Camera recentered');
             }
@@ -3075,6 +3128,8 @@ class GLBRoomActivity : AppCompatActivity() {
             camera.aspect = viewport.width / viewport.height;
             if (isPhotoSurfaceMesh()) {
                 updatePhotoProjection();
+            } else if (volumetricRoomBounds) {
+                fitVolumetricRoomProjection();
             } else {
                 camera.updateProjectionMatrix();
             }

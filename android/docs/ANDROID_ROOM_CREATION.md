@@ -48,6 +48,13 @@ confirms the behavior on their room.
 The room viewer top controls mirror Swift: floating back, center ruler/pinch/tap helpers, recenter/save,
 and AR resize. The Android viewer no longer uses a full-width top band.
 
+Volumetric GLB rooms now use a bounds- and viewport-derived opening camera: the eye stays just
+inside the detected back wall, while the vertical field of view expands only as needed to contain
+the opposite wall in the live portrait or landscape viewport. Recenter and viewport changes reapply
+that calculated framing; no bundled-room camera coordinates are stored. The Android Debug build
+passes, but this 2026-09-03 framing candidate remains on-device unconfirmed, particularly the wide
+portrait lens required by Scandinavian Minimal.
+
 ## Active Outputs
 
 Generated room folders use GLB output:

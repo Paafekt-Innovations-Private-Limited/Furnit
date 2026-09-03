@@ -503,15 +503,8 @@ class RealityKitBoundaryManager {
         return constrainCameraPosition(safePosition)
     }
     
-    /// Depth-adaptive inset fraction (matches Android RoomBoundaryManager.backCenterInsetFraction).
-    /// Shallow rooms: smaller fraction (camera stays near back). Deep rooms: larger fraction (camera further in).
-    private func backCenterInsetFraction(depth: Float) -> Float {
-        let t = min(1.0, max(0.0, depth / 6.0))
-        return 0.035 + 0.065 * t  // matches RoomBounds (stay near back wall)
-    }
-    
-    /// Camera at back CENTER with depth-adaptive inset (matches Android when room opened from list / room created).
-    /// One formula works for shallow and deep rooms.
+    /// Camera at back center, kept just inside the authored wall so an opaque back wall cannot
+    /// obstruct the view. The viewport-aware field-of-view fit determines the visible room span.
     func getCameraAtBackCenter() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
         
@@ -523,8 +516,7 @@ class RealityKitBoundaryManager {
         
         let roomCenter = getRoomCenter()
         let depth = bounds.max.z - bounds.min.z  // backWallZ - frontWallZ
-        let fraction = backCenterInsetFraction(depth: depth)
-        let insetFromBack = max(depth * fraction, cameraPadding)
+        let insetFromBack = min(cameraPadding, max(depth * 0.1, 0.001))
         
         let camX = roomCenter.x
         let camY = roomCenter.y + 0.4
@@ -535,13 +527,70 @@ class RealityKitBoundaryManager {
         let targetZ = bounds.min.z  // front wall (where photo is)
         
         if debugMode {
-            logDebug("🎯 [BoundaryManager] getCameraAtBackCenter depth=\(depth) fraction=\(fraction) inset=\(insetFromBack) pos=(\(camX),\(camY),\(camZ)) lookAt=(\(targetX),\(targetY),\(targetZ))")
+            logDebug("🎯 [BoundaryManager] getCameraAtBackCenter depth=\(depth) inset=\(insetFromBack) pos=(\(camX),\(camY),\(camZ)) lookAt=(\(targetX),\(targetY),\(targetZ))")
         }
         
         return (
             position: SIMD3<Float>(camX, camY, camZ),
             lookAt: SIMD3<Float>(targetX, targetY, targetZ)
         )
+    }
+
+    /// Vertical lens angle needed to contain the complete front wall for the current viewport.
+    /// The position and lens are derived from scene bounds; no bundled-room coordinates are used.
+    func verticalFieldOfViewToFrameFrontWall(
+        cameraPosition: SIMD3<Float>,
+        lookAtPosition: SIMD3<Float>,
+        photoOrientation: PhotoOrientation,
+        viewportSize: CGSize?,
+        minimumDegrees: Float = 60
+    ) -> Float? {
+        guard let bounds = roomBounds else { return nil }
+
+        let direction = lookAtPosition - cameraPosition
+        guard simd_length_squared(direction) > 1e-8 else { return nil }
+        let forward = simd_normalize(direction)
+        let worldUp = SIMD3<Float>(0, 1, 0)
+        var right = simd_cross(forward, worldUp)
+        if simd_length_squared(right) < 1e-8 {
+            right = SIMD3<Float>(1, 0, 0)
+        } else {
+            right = simd_normalize(right)
+        }
+        let viewUp = simd_normalize(simd_cross(right, forward))
+        let viewportAspect = max(
+            DepthAnythingFlatPhotoCameraFraming.viewportAspect(
+                photoOrientation: photoOrientation,
+                viewportSize: viewportSize
+            ),
+            0.01
+        )
+
+        var maximumHorizontalSlope: Float = 0
+        var maximumVerticalSlope: Float = 0
+        for x in [bounds.min.x, bounds.max.x] {
+            for y in [bounds.min.y, bounds.max.y] {
+                let cameraToCorner = SIMD3<Float>(x, y, bounds.min.z) - cameraPosition
+                let forwardDistance = simd_dot(cameraToCorner, forward)
+                guard forwardDistance > 0.01 else { continue }
+                maximumHorizontalSlope = max(
+                    maximumHorizontalSlope,
+                    abs(simd_dot(cameraToCorner, right)) / forwardDistance
+                )
+                maximumVerticalSlope = max(
+                    maximumVerticalSlope,
+                    abs(simd_dot(cameraToCorner, viewUp)) / forwardDistance
+                )
+            }
+        }
+
+        let framingMargin: Float = 1.06
+        let requiredVerticalSlope = max(
+            maximumVerticalSlope,
+            maximumHorizontalSlope / viewportAspect
+        ) * framingMargin
+        let requiredDegrees = 2 * atan(requiredVerticalSlope) * 180 / .pi
+        return min(max(requiredDegrees, minimumDegrees), 125)
     }
 
     private func depthAnythingViewportAspect(photoOrientation: PhotoOrientation) -> Float {

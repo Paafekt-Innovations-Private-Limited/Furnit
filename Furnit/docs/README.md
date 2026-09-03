@@ -38,6 +38,10 @@ interior and opens in portrait; Industrial Loft uses limestone/microcement and
 opens in landscape. Neither includes an interior bar, divider, column, or center
 beam. The USDZ files pass ARKit compliance and the iPhoneOS build, but their final
 appearance and orientation remain device-unconfirmed as of 2026-09-03.
+Volumetric USDZ opening views now keep the eye just inside the detected back wall and derive the
+vertical field of view from the model bounds plus the live viewport, rather than using a bundled-room
+camera coordinate. The generic iPhoneOS Debug build passes; the full-wall Scandinavian portrait
+framing and its wide-angle appearance remain on-device unconfirmed as of 2026-09-03.
 
 Photo orientation follows the displayed pixel dimensions after EXIF rotation, including normalized
 `.up` images. The custom 0.5× capture stays landscape on either device side, applies the same

@@ -97,20 +97,34 @@ struct RealityKitView: UIViewRepresentable {
             context.coordinator.lastViewportSize = .zero
         }
 
-        if model.roomCoordinateFrame == .depthAnythingImageDepthMeters,
-           let cameraAnchor = context.coordinator.cameraAnchor,
+        if let cameraAnchor = context.coordinator.cameraAnchor,
            let boundaryManager = context.coordinator.boundaryManager,
            boundaryManager.bounds != nil {
             let viewportSize = uiView.bounds.size
             if context.coordinator.shouldReframeForViewportChange(viewportSize) {
-                context.coordinator.cameraLookAtTarget = Self.repositionOptimalCamera(
-                    cameraAnchor: cameraAnchor,
-                    cameraEntity: context.coordinator.cameraEntity,
-                    boundaryManager: boundaryManager,
-                    model: model,
-                    cameraMetadata: context.coordinator.depthCameraMetadata
-                )
-                context.coordinator.configureNavigationContract(for: model)
+                if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
+                    context.coordinator.cameraLookAtTarget = Self.repositionOptimalCamera(
+                        cameraAnchor: cameraAnchor,
+                        cameraEntity: context.coordinator.cameraEntity,
+                        boundaryManager: boundaryManager,
+                        model: model,
+                        cameraMetadata: context.coordinator.depthCameraMetadata
+                    )
+                    context.coordinator.configureNavigationContract(for: model)
+                } else {
+                    let optimalPose = boundaryManager.getOptimalCameraPosition(
+                        roomCoordinateFrame: model.roomCoordinateFrame,
+                        photoOrientation: model.photoOrientation
+                    )
+                    Self.configureVolumetricRoomCameraFieldOfView(
+                        context.coordinator.cameraEntity,
+                        boundaryManager: boundaryManager,
+                        cameraPosition: optimalPose.position,
+                        lookAtPosition: optimalPose.lookAt,
+                        photoOrientation: model.photoOrientation,
+                        viewportSize: viewportSize
+                    )
+                }
             }
         }
 
@@ -246,6 +260,27 @@ struct RealityKitView: UIViewRepresentable {
         }
     }
 
+    private static func configureVolumetricRoomCameraFieldOfView(
+        _ cameraEntity: PerspectiveCamera?,
+        boundaryManager: RealityKitBoundaryManager,
+        cameraPosition: SIMD3<Float>,
+        lookAtPosition: SIMD3<Float>,
+        photoOrientation: PhotoOrientation,
+        viewportSize: CGSize?
+    ) {
+        guard let cameraEntity,
+              let verticalFieldOfView = boundaryManager.verticalFieldOfViewToFrameFrontWall(
+                  cameraPosition: cameraPosition,
+                  lookAtPosition: lookAtPosition,
+                  photoOrientation: photoOrientation,
+                  viewportSize: viewportSize
+              ) else {
+            return
+        }
+        cameraEntity.camera.fieldOfViewOrientation = .vertical
+        cameraEntity.camera.fieldOfViewInDegrees = verticalFieldOfView
+    }
+
     private static func authoredDepthCaptureVerticalFieldOfView(
         for model: USDZModel,
         cameraMetadata: [String: Double]?
@@ -371,6 +406,16 @@ struct RealityKitView: UIViewRepresentable {
             position: cameraPosition,
             lookAt: lookAtPosition
         )
+        if model.roomCoordinateFrame != .depthAnythingImageDepthMeters {
+            configureVolumetricRoomCameraFieldOfView(
+                cameraEntity,
+                boundaryManager: boundaryManager,
+                cameraPosition: cameraPosition,
+                lookAtPosition: lookAtPosition,
+                photoOrientation: model.photoOrientation,
+                viewportSize: boundaryManager.arView?.bounds.size
+            )
+        }
         return lookAtPosition
     }
 
