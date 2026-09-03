@@ -213,7 +213,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 Toast.makeText(this, getString(R.string.model_detail_room_not_found), Toast.LENGTH_SHORT).show()
             }
         } else {
-            // Model ID mode (existing rooms - bundled vintage/cozy or from list)
+            // Model ID mode for bundled or saved library rooms.
             val modelId = intent.getStringExtra(EXTRA_MODEL_ID) ?: return
             val model = modelManager.getModel(modelId) ?: run {
                 LogUtil.e(TAG, "Model not found for id=$modelId")
@@ -880,7 +880,7 @@ class ModelDetailActivity : AppCompatActivity() {
                     val buffer = ByteBuffer.wrap(bytes)
                     sceneView.modelLoader.createModelInstance(buffer)
                 } else {
-                    // Asset path - load from assets (bundled rooms like vintage)
+                    // Asset path - load a bundled room directly from app assets.
                     sceneView.modelLoader.createModelInstance(
                         assetFileLocation = assetPath
                     )

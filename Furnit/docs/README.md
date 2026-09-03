@@ -70,6 +70,12 @@ iPhoneOS Debug build succeeds, but preview-versus-reopen appearance remains devi
 2026-08-15. Test a newly generated room through preview → Save → reopen; opening an older room
 exercises only viewer-side compatibility and does not rewrite its USDZ.
 
+The unconfirmed 2026-09-03 saved-room touch candidate keeps RealityKit's projection FOV fixed during
+one-finger turns and applies the authored yaw/pitch envelope without the aspect-fill visible-margin
+clamp. This preserves the original drag sensitivity while making both axes available in portrait and
+landscape. The generic iPhoneOS Debug build passes; manually verify small-drag sensitivity and photo
+edge/background behavior near every limit before treating it as resolved.
+
 The Settings **Infinite Zoom** switch defaults off. With it off, the existing photo/room camera
 envelopes and viewer-specific zoom limits are unchanged. The 2026-08-16 opt-in candidate propagates
 the setting through RealityKit USDZ, immediate photo preview, Metal splat, GLB, and manual-mesh

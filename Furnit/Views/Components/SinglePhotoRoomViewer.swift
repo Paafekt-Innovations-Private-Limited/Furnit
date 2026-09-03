@@ -4236,7 +4236,7 @@ struct SceneKitViewer: View {
         logDebug("❌ [Viewer] Room save cancelled")
     }
 
-    // ✅ Setup camera position like vintage room (outside, looking at front wall)
+    // Set up an exterior camera looking toward the front wall.
     private func setupCamera() {
         logDebug("📷 [SceneKitViewer] Setting up camera position...")
 

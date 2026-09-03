@@ -230,7 +230,7 @@ class RoomBoundaryManager {
 
     /**
      * Which horizontal axis carries the room's view depth (longest X/Z span; Y is always up).
-     * Cozy and other baked rooms may export depth along X instead of Z.
+     * Some baked rooms may export depth along X instead of Z.
      */
     private enum class ViewDepthAxis { X, Z }
 
@@ -244,8 +244,8 @@ class RoomBoundaryManager {
     )
 
     private fun resolveViewDepth(bounds: RoomBounds): ViewDepthFrame {
-        // Cozy-like exports can have real room depth along X while Z is a thin slab (~0.8 m).
-        // Keep Z as default (vintage parity); only remap when Z span is implausibly small.
+        // Some exports can have real room depth along X while Z is a thin slab (~0.8 m).
+        // Keep Z as the established default; only remap when its span is implausibly small.
         val depthTooThin = bounds.depth < minOf(bounds.width * 0.5f, 1.5f)
         val useXAsDepth = bounds.width > bounds.depth && depthTooThin
         return if (useXAsDepth) {
@@ -298,7 +298,7 @@ class RoomBoundaryManager {
 
     /**
      * Bounds-driven camera: pick longest horizontal axis as view depth, then place the camera
-     * outside the back face looking at the front (SceneKit vintage / bundled sample rooms).
+     * outside the back face looking at the front for bundled-room views.
      */
     fun getCameraOutsideBackView(standoffFraction: Float = 0.3f): CameraSetup {
         val bounds = roomBounds ?: run {

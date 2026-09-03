@@ -3,7 +3,7 @@ import SwiftUI
 import SceneKit
 
 /// SceneKit-based gesture handlers - mirrors RealityKitGestureHandlers behavior
-/// Provides consistent gesture behavior for SceneKit rooms (vintage/cozy/manual):
+/// Provides consistent gesture behavior for SceneKit room viewers:
 /// - Single finger: rotate (look around)
 /// - Two fingers: strafe (move left/right/up/down)
 /// - Pinch: zoom (move forward/backward)

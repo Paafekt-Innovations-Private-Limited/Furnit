@@ -35,6 +35,12 @@ For Android Studio device testing, set **Run > Edit Configurations > app > Deplo
 9. Confirm the saved room appears in the home room list and reopens with the same framing, geometry, texture, and initial camera position as the preview. Save must promote the preview GLB rather than rerun inference.
 10. Recenter, pinch within the bounded forward/backward envelope, and use drag plus D-pad toward each coverage limit. Confirm foreground objects stay in place without duplicated layers, edge stretching, fog shells, or renderer-gray holes. Repeat with fresh portrait and landscape inputs. This candidate still requires manual device confirmation as of 2026-08-15.
 
+The unconfirmed 2026-09-03 one-finger candidate uses the original drag sensitivity and keeps FOV
+fixed while turning within the authored yaw/pitch envelope. On a real version-5 room, verify that
+Left/Right and Up/Down both respond in portrait and landscape, that a small drag produces only a
+small turn, and that approaching each limit does not expose renderer-gray gaps or unacceptable
+photo edges. A successful build is only provisional validation for this behavior.
+
 The 2026-08-17 D-pad candidate automatically creates the minimum safe projection overscan before a
 button turn when aspect-fill otherwise leaves zero pitch margin in portrait or zero yaw margin in
 landscape. With Infinite Zoom off, test Up and Down immediately after recentering a real portrait

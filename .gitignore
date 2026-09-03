@@ -284,6 +284,3 @@ android/.gradle-local/
 
 # ONNX Runtime calibration tensors (large)
 android/calibration_image_sample_data_*.npy
-
-# Local script tooling caches (e.g. KTX binaries for export_bundled_usdz_to_glb.py)
-scripts/.tools/

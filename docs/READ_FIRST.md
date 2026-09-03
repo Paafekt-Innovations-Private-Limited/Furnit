@@ -2,7 +2,7 @@
 
 This is the compact active context for contributors and coding agents. It records
 settled facts that should not be reconstructed from chat history or stale audits.
-Last verified: 2026-08-17.
+Last verified: 2026-09-03.
 
 ## Settled product and ownership facts
 
@@ -62,7 +62,8 @@ the resolved cause.
   that final USDZ and Save promotes the same artifact without reconstruction. It has limited
   capture-eye navigation and no
   secondary completed-background shell; one photograph still cannot supply true hidden
-  pixels. Preview/save appearance remains device-unconfirmed as of 2026-08-15.
+  pixels. A fixed-FOV two-axis touch candidate builds but remains device-unconfirmed as of
+  2026-09-03, along with preview/save appearance.
 - The manual boundary path uses `SinglePhotoRoomReconstructor` and
   `SyntheticDepthEstimator`, then opens `MeshRoomView`.
 - Furniture Fit runs RTMDet-Ins-m as **Core ML** (`rtmdet-ins-m.mlpackage`, `RTMDetModel`
@@ -83,7 +84,8 @@ the resolved cause.
   measurement once, authors one opaque version-5 continuous projective GLB, and previews that
   final artifact. Save transactionally promotes the byte-identical preview GLB instead of rerunning
   inference; a flat photo GLB remains only as generation-failure fallback. Portrait/landscape
-  preview/save parity remains device-unconfirmed as of 2026-08-15.
+  preview/save parity and the fixed-FOV two-axis touch candidate remain device-unconfirmed as of
+  2026-09-03.
   Manual setup produces a textured five-plane GLB.
 - Depth Anything and GeoCalib ONNX models plus one RTMDet FP16 LiteRT model ship in install-time
   Play Asset Delivery packs and are loaded through Android's `AssetManager`.

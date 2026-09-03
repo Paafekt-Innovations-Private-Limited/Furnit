@@ -2571,13 +2571,27 @@ class GLBRoomActivity : AppCompatActivity() {
 
             if (points.length === 1) {
                 interiorEuler.setFromQuaternion(camera.quaternion, 'YXZ');
-                interiorEuler.y -= (event.clientX - previousPoint.x) * 0.005;
-                interiorEuler.x -= (event.clientY - previousPoint.y) * 0.005;
+                const deltaX = event.clientX - previousPoint.x;
+                const deltaY = event.clientY - previousPoint.y;
+                const nextYaw = interiorEuler.y - deltaX * 0.005;
+                const nextPitch = interiorEuler.x - deltaY * 0.005;
                 if (navigationMode === 'photoDepth' && isLayeredDepthPhoto) {
-                    const coverage = currentDepthPhotoLookLimits();
-                    interiorEuler.y = THREE.MathUtils.clamp(interiorEuler.y, -coverage.yaw, coverage.yaw);
-                    interiorEuler.x = THREE.MathUtils.clamp(interiorEuler.x, -coverage.pitch, coverage.pitch);
+                    // Do not alter projection zoom while a finger is down: coupling FOV changes
+                    // to rotation makes tiny drags appear to jump. The authored look envelope
+                    // keeps both screen axes responsive at the same speed in either orientation.
+                    interiorEuler.y = THREE.MathUtils.clamp(
+                        nextYaw,
+                        -depthPhotoYawLimit,
+                        depthPhotoYawLimit,
+                    );
+                    interiorEuler.x = THREE.MathUtils.clamp(
+                        nextPitch,
+                        -depthPhotoPitchLimit,
+                        depthPhotoPitchLimit,
+                    );
                 } else {
+                    interiorEuler.y = nextYaw;
+                    interiorEuler.x = nextPitch;
                     interiorEuler.x = THREE.MathUtils.clamp(
                         interiorEuler.x,
                         -(Math.PI / 2 - 0.05),

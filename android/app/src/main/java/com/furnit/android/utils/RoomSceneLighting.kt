@@ -19,7 +19,7 @@ object RoomSceneLighting {
 
     private const val TAG = "RoomSceneLighting"
 
-    /** Tuned for dielectric interior materials (metallic=0); was 40k when floor was black. */
+    /** Tuned for dielectric interior materials (metallic=0). */
     private const val INDOOR_IBL_INTENSITY = 12_000f
 
     /** Softer key fill now that IBL carries most of the room light. */

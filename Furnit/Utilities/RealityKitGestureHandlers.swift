@@ -208,7 +208,7 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         }
         accumulatedYaw += yawDelta
         accumulatedPitch += pitchDelta
-        constrainLayeredPhotoLookIfNeeded()
+        constrainLayeredPhotoLookIfNeeded(useVisibleCoverage: false)
         if layeredPhotoPitchLimit == nil {
             let maxPitch = Float.pi / 2.0 - 0.05
             accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
@@ -222,8 +222,8 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         return true
     }
 
-    private func constrainLayeredPhotoLookIfNeeded() {
-        let coverageLimits = currentLayeredPhotoCoverageLimits()
+    private func constrainLayeredPhotoLookIfNeeded(useVisibleCoverage: Bool = true) {
+        let coverageLimits = useVisibleCoverage ? currentLayeredPhotoCoverageLimits() : nil
         if let authoredLimit = layeredPhotoYawLimit,
            let base = layeredPhotoBaseYaw {
             let limit = min(authoredLimit, coverageLimits?.yaw ?? authoredLimit)
@@ -636,11 +636,13 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
                 for: deltaTranslation
             )
 
-            // Update accumulated rotation values
+            // Keep projection zoom fixed while a finger is down. Changing FOV together with
+            // rotation magnifies tiny drags and makes the room jump. The authored envelope keeps
+            // both axes available at the original gesture sensitivity in either orientation.
             accumulatedYaw += rotationDelta.yaw
             accumulatedPitch += rotationDelta.pitch
 
-            constrainLayeredPhotoLookIfNeeded()
+            constrainLayeredPhotoLookIfNeeded(useVisibleCoverage: false)
 
             // Prevent vertical inversion. Captured rooms allow near-vertical looking; normal
             // room navigation retains its tighter 45-degree pitch limit.

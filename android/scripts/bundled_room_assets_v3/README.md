@@ -15,6 +15,6 @@ The public identifiers remain `scandinavian_minimal` and `industrial_loft`, so
 neither app needs data migration. Both designs keep all structural detailing at the
 perimeter; neither includes an interior column, divider, bar, or center ceiling beam.
 
-The app-owned procedural textures from the prior room generation are reused. New
-image-generation prompts for white oak, limewash, limestone, and microcement returned
-no assets because the image service had reached its usage limit.
+The app-owned procedural textures in `textures/` are the reproducible source inputs
+for both platform outputs. Local preview renders and intermediate generated files stay
+under the ignored `generated/` directory.

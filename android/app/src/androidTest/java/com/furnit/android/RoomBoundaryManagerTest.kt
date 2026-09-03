@@ -113,13 +113,13 @@ class RoomBoundaryManagerTest {
         assertEquals("Look at front wall Z", bounds.frontWallZ, cameraSetup.lookAt.z, 0.01f)
 
         val expectedCamZ = bounds.backWallZ + bounds.depth * 0.3f
-        assertEquals("Camera outside back wall (SceneKit vintage parity)", expectedCamZ, cameraSetup.position.z, 0.01f)
+        assertEquals("Camera outside back wall", expectedCamZ, cameraSetup.position.z, 0.01f)
         assertTrue("Camera should be outside the room", cameraSetup.position.z > bounds.backWallZ)
     }
 
     @Test
     fun testCameraOutsideBackViewUsesLongestHorizontalAxis() {
-        // Cozy-like export: 3m x 2m x 0.8m — depth is along X, not Z.
+        // Thin-Z export: 3m x 2m x 0.8m — depth is along X, not Z.
         manager.initializeFromCenteredExtents(3.0f, 2.0f, 0.8f)
 
         val cameraSetup = manager.getCameraOutsideBackView()
