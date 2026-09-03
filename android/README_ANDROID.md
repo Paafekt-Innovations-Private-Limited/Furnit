@@ -9,6 +9,11 @@ This folder contains the Android app for Furnit: photo/manual room creation, GLB
 3. Select an arm64 Android device.
 4. Run the `app` configuration.
 
+The production app supports Android 11/API 30 and newer, targets API 36, ships an
+arm64-v8a APK split, and requires OpenGL ES 3.0 through the merged SceneView
+manifest. This is the supported market/device envelope, not a guarantee for every
+vendor GPU driver or Android System WebView build.
+
 Terminal build:
 
 ```bash
@@ -148,14 +153,24 @@ Implementation notes:
 
 Android room outputs are GLB files. `GLBRoomActivity` displays saved and preview rooms with the WebView/Three.js viewer and hosts the furniture segmentation overlay in the same screen. Exterior views orbit, while volumetric interiors turn in place. Saved single-photo depth GLBs restore their authored capture lens and optical center; pinch zoom changes field of view instead of moving the camera through the surface. This projective-room behavior is build-validated and awaits final Android device visual confirmation as of 2026-08-13.
 
-Bundled sample room assets live in `app/src/main/assets/bundled_rooms/`.
+Bundled sample room assets live in `app/src/main/assets/bundled_rooms/` and are
+versioned with Git LFS. Home stages and structurally validates a selected bundled
+GLB off the UI thread, then opens it through the same `GLBRoomActivity` path as
+saved rooms. The viewer caps device-pixel ratio (with a lower low-RAM cap) and
+handles WebView renderer-process loss without terminating the app. The
+Scandinavian sample opens in portrait at 5.8 × 2.8 × 4.6 m; Industrial Loft opens
+in landscape at 7.2 × 3.2 × 5.4 m. Their matching iOS USDZ assets and reproducible
+v3 generator share the same geometry and app-owned procedural textures. Automated
+GLB/USDZ validation and platform builds pass; final on-device appearance,
+orientation, repeated-open stability, and Furniture Fit behavior remain
+unconfirmed as of 2026-09-03.
 
 ## Local Asset Notes
 
 The root repository ignores local `*.onnx` and `*.tflite` exports by default. Android's
-`.gitignore` explicitly allows the shipped asset-pack models; repository/Android `.gitattributes`
-store ONNX and TFLite model files in Git LFS. Run `git lfs pull` after a fresh clone if model files
-are missing.
+`.gitignore` explicitly allows the shipped asset-pack and bundled-room models;
+repository/Android `.gitattributes` store ONNX, TFLite, and bundled GLB files in Git
+LFS. Run `git lfs pull` after a fresh clone if model files are missing.
 
 Do not add old native room-generation model exports or large local experiment folders back into app assets.
 

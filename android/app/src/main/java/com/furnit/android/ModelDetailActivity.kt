@@ -53,7 +53,6 @@ import com.furnit.android.utils.RoomBoundaryManager
 import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.RoomSceneLighting
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -908,8 +907,6 @@ class ModelDetailActivity : AppCompatActivity() {
                 )
                 LogUtil.d(TAG, "  Model position set to center at origin: (${modelNode.position.x}, ${modelNode.position.y}, ${modelNode.position.z})")
 
-                addDebugCuboid()
-
                 // Use actual model extents so camera bounds match the geometry (not passed dims which may be wrong)
                 val w = bboxExtents.x
                 val h = bboxExtents.y
@@ -967,100 +964,6 @@ class ModelDetailActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    /**
-     * Add wireframe outline of room bounds for debugging coordinates
-     * Room dimensions: Width=4 (X: -2 to +2), Depth=4.5 (Z: -2.25 to +2.25), Height=2.8 (Y: 0 to 2.8)
-     */
-    private fun addDebugCuboid() {
-        try {
-            val bounds = boundaryManager.getBounds() ?: return
-            val beamThickness = 0.08f  // Thicker beams for better visibility
-
-            // Material for wireframe - bright green for visibility
-            val wireMaterial = sceneView.materialLoader.createColorInstance(
-                color = Color.parseColor("#00FF00"),  // Bright green
-                metallic = 0.0f,
-                roughness = 1.0f,
-                reflectance = 0.0f
-            )
-
-            // Room corner coordinates
-            val minX = bounds.minX
-            val maxX = bounds.maxX
-            val minY = bounds.minY  // Floor
-            val maxY = bounds.maxY  // Ceiling
-            val minZ = bounds.minZ  // Front wall
-            val maxZ = bounds.maxZ  // Back wall
-
-            LogUtil.d(TAG, "Room bounds: X[$minX to $maxX], Y[$minY to $maxY], Z[$minZ to $maxZ]")
-
-            // Create 12 edge beams
-
-            // 4 vertical edges (floor to ceiling)
-            addBeam(minX, minY, minZ, beamThickness, bounds.height, beamThickness, wireMaterial) // Front-left
-            addBeam(maxX, minY, minZ, beamThickness, bounds.height, beamThickness, wireMaterial) // Front-right
-            addBeam(minX, minY, maxZ, beamThickness, bounds.height, beamThickness, wireMaterial) // Back-left
-            addBeam(maxX, minY, maxZ, beamThickness, bounds.height, beamThickness, wireMaterial) // Back-right
-
-            // 4 floor edges (horizontal on floor)
-            addBeam(minX, minY, minZ, bounds.width, beamThickness, beamThickness, wireMaterial) // Front edge
-            addBeam(minX, minY, maxZ, bounds.width, beamThickness, beamThickness, wireMaterial) // Back edge
-            addBeam(minX, minY, minZ, beamThickness, beamThickness, bounds.depth, wireMaterial) // Left edge
-            addBeam(maxX, minY, minZ, beamThickness, beamThickness, bounds.depth, wireMaterial) // Right edge
-
-            // 4 ceiling edges (horizontal at ceiling)
-            addBeam(minX, maxY, minZ, bounds.width, beamThickness, beamThickness, wireMaterial) // Front edge
-            addBeam(minX, maxY, maxZ, bounds.width, beamThickness, beamThickness, wireMaterial) // Back edge
-            addBeam(minX, maxY, minZ, beamThickness, beamThickness, bounds.depth, wireMaterial) // Left edge
-            addBeam(maxX, maxY, minZ, beamThickness, beamThickness, bounds.depth, wireMaterial) // Right edge
-
-            // Add corner markers with coordinate labels
-            addCornerMarker(minX, minY, minZ, Color.RED, "Front-Left-Floor")
-            addCornerMarker(maxX, minY, minZ, Color.BLUE, "Front-Right-Floor")
-            addCornerMarker(minX, minY, maxZ, Color.YELLOW, "Back-Left-Floor")
-            addCornerMarker(maxX, minY, maxZ, Color.MAGENTA, "Back-Right-Floor")
-
-            LogUtil.d(TAG, "Room wireframe added with corner markers")
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to add room wireframe", e)
-        }
-    }
-
-    private fun addBeam(
-        startX: Float, startY: Float, startZ: Float,
-        width: Float, height: Float, depth: Float,
-        material: com.google.android.filament.MaterialInstance
-    ) {
-        val beam = CubeNode(
-            engine = sceneView.engine,
-            size = dev.romainguy.kotlin.math.Float3(width, height, depth),
-            materialInstance = material
-        )
-        // Position beam so it starts at the given corner
-        beam.position = io.github.sceneview.math.Position(
-            startX + width / 2f,
-            startY + height / 2f,
-            startZ + depth / 2f
-        )
-        sceneView.addChildNode(beam)
-    }
-
-    private fun addCornerMarker(x: Float, y: Float, z: Float, color: Int, label: String) {
-        val marker = CubeNode(
-            engine = sceneView.engine,
-            size = dev.romainguy.kotlin.math.Float3(0.25f, 0.25f, 0.25f),  // Bigger markers
-            materialInstance = sceneView.materialLoader.createColorInstance(
-                color = color,
-                metallic = 0.0f,
-                roughness = 0.5f,
-                reflectance = 0.3f
-            )
-        )
-        marker.position = io.github.sceneview.math.Position(x, y + 0.125f, z)
-        sceneView.addChildNode(marker)
-        LogUtil.d(TAG, "Corner marker '$label' at ($x, $y, $z)")
     }
 
     override fun onDestroy() {

@@ -1,7 +1,6 @@
 package com.furnit.android.utils
 
 import com.furnit.android.utils.LogUtil
-import com.google.android.filament.Skybox
 import io.github.sceneview.SceneView
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.EnvironmentLoader
@@ -13,7 +12,7 @@ import kotlin.math.sqrt
  *
  * RealityKit applies default image-based lighting automatically; Filament does not unless
  * configured. Diffuse surfaces need [com.google.android.filament.IndirectLight]; metallic /
- * glossy surfaces also need a [Skybox] (or equivalent reflection environment) or they render
+ * glossy surfaces also need a packaged skybox (or equivalent reflection environment) or they render
  * near-black even when the matte wall next to them is correctly lit.
  */
 object RoomSceneLighting {
@@ -57,7 +56,12 @@ object RoomSceneLighting {
             return
         }
 
-        val environment = ensureReflectionSkybox(sceneView, baseEnvironment)
+        val environment = baseEnvironment
+        if (environment.skybox == null) {
+            // The reflection texture belongs to IndirectLight. Reusing it as a Skybox can
+            // double-destroy the native Filament texture when environments are replaced.
+            LogUtil.w(TAG, "KTX environment has no packaged skybox; retaining IBL only")
+        }
         sceneView.environment = environment
 
         environment.indirectLight?.setIntensity(INDOOR_IBL_INTENSITY)
@@ -87,37 +91,8 @@ object RoomSceneLighting {
         }
     }
 
-    /**
-     * Keep the cmgen skybox KTX when present. Do not bind [IndirectLight.reflectionsTexture]
-     * directly — that texture is owned by the indirect light and reusing it on a skybox can
-     * crash Filament when the environment is replaced.
-     */
-    private fun ensureReflectionSkybox(sceneView: SceneView, environment: Environment): Environment {
-        if (environment.skybox != null) {
-            return environment
-        }
-
-        val reflectionTexture = environment.indirectLight?.reflectionsTexture ?: run {
-            LogUtil.w(TAG, "No skybox or IBL reflection cubemap available")
-            return environment
-        }
-
-        val skybox = Skybox.Builder()
-            .environment(reflectionTexture)
-            .build(sceneView.engine)
-        LogUtil.d(TAG, "Built skybox from IBL reflection cubemap (skybox KTX missing)")
-        return environment.copy(skybox = skybox)
-    }
-
     private fun boostExistingIndirectLight(sceneView: SceneView) {
         sceneView.indirectLight?.setIntensity(INDOOR_IBL_INTENSITY)
-        val reflectionTexture = sceneView.indirectLight?.reflectionsTexture ?: return
-        if (sceneView.skybox != null) return
-
-        sceneView.skybox = Skybox.Builder()
-            .environment(reflectionTexture)
-            .build(sceneView.engine)
-        LogUtil.d(TAG, "Added reflection skybox from existing indirect light")
     }
 
     private fun applyCameraExposure(sceneView: SceneView) {

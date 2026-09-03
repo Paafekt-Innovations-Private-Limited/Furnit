@@ -14,8 +14,8 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
   GeoCalib + Depth Anything + RTMDet object anchor → measurement grid → version-5 single-surface
   projective USDZ → exact RealityKit preview in `DepthAnythingPreviewRoomView` → Save promotes the
   inspected USDZ to `ModelViewerView`/home without reconstructing it again.
-  Other viewers: `GLBRoomView` (GLB), `MeshRoomView` (manual path), `SplatRoomView` (saved PLY via
-  MetalSplatter + SplatIO).
+Other viewers: `GLBRoomView` (GLB), `MeshRoomView` (manual path), `SplatRoomView` (saved PLY via
+MetalSplatter + SplatIO).
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance segmentation
   ("brain") in room viewers: top controls expose ruler/pinch/tap helpers, brain default
   auto-segments primary, **text.viewfinder** toggles full-video identify/segment modes, transparent
@@ -29,6 +29,15 @@ byte-preserving Save promotion. Swift entry points: `SinglePhotoRoomViewer.swift
 (`makeDepthAnythingPreviewDestination` generates the preview artifact; Save copies it) →
 `CameraExifSidecar.swift` → `DepthAnythingRoomReconstructor.swift` → `USDZModel` /
 `ModelViewerView`.
+
+The two bundled product samples use matching geometry/material sources across
+platforms: iOS loads the USDZ data assets from
+`Assets.xcassets/{scandinavian_minimal,industrial_loft}.dataset`, while Android
+ships corresponding GLBs. Scandinavian Minimal has an uninterrupted oak/limewash
+interior and opens in portrait; Industrial Loft uses limestone/microcement and
+opens in landscape. Neither includes an interior bar, divider, column, or center
+beam. The USDZ files pass ARKit compliance and the iPhoneOS build, but their final
+appearance and orientation remain device-unconfirmed as of 2026-09-03.
 
 Photo orientation follows the displayed pixel dimensions after EXIF rotation, including normalized
 `.up` images. The custom 0.5× capture stays landscape on either device side, applies the same

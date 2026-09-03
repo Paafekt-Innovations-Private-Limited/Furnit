@@ -33,7 +33,9 @@ android {
         // Store identity is Paafekt; permanent after first Play publish.
         // Kotlin code stays in the com.furnit.android namespace on purpose.
         applicationId "com.paafekt.android"
-        minSdk 24
+        // Android 11+ covers the large majority of active phones while avoiding legacy
+        // WebView/GPU paths that are unsuitable for this ML- and 3D-heavy app.
+        minSdk 30
         targetSdk 36
         versionCode 8
         versionName "1.4"

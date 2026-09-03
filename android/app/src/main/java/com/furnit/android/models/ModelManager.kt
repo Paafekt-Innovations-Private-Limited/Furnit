@@ -52,7 +52,10 @@ class ModelManager(private val context: Context) {
                 name = context.getString(R.string.bundled_room_scandinavian_minimal),
                 assetPath = "$BUNDLED_ROOM_ASSETS_DIR/scandinavian_minimal.glb",
                 createdAt = 0L,
-                photoOrientation = "landscape",
+                roomWidth = 5.8f,
+                roomHeight = 2.8f,
+                roomDepth = 4.6f,
+                photoOrientation = "portrait",
             ),
         )
         models.add(
@@ -61,6 +64,9 @@ class ModelManager(private val context: Context) {
                 name = context.getString(R.string.bundled_room_industrial_loft),
                 assetPath = "$BUNDLED_ROOM_ASSETS_DIR/industrial_loft.glb",
                 createdAt = 0L,
+                roomWidth = 7.2f,
+                roomHeight = 3.2f,
+                roomDepth = 5.4f,
                 photoOrientation = "landscape",
             ),
         )

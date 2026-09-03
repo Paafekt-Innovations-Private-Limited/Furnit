@@ -2,6 +2,7 @@ package com.furnit.android
 
 import android.annotation.SuppressLint
 import android.Manifest
+import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -15,6 +16,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.utils.BundledRoomAssetStore
 import com.furnit.android.utils.FurnitureFitFrameUsability
 import com.furnit.android.utils.FurnitureFitThermalCadence
 import com.furnit.android.theme.PaafektColors
@@ -85,8 +87,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -107,8 +107,6 @@ class GLBRoomActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "GLBRoomActivity"
-        private const val GLB_MAGIC = 0x46546C67 // "glTF"
-        private const val GLB_VERSION = 2
         /** Bundled Three.js (iOS WebViewVendor parity) — no CDN/network required in WebView. */
         private const val VIEWER_THREE_BASE =
             "https://appassets.androidplatform.net/assets/vendor/three"
@@ -178,6 +176,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private val inlineBrainPinMissingFrameCounts = mutableMapOf<String, Int>()
     private var glbPath: String? = null
     private var glbViewerCacheDir: File? = null
+    private var webViewRenderProcessGone = false
     private var roomName: String = ""
     private var roomId: String? = null
     private var isPreviewMode: Boolean = false
@@ -2147,7 +2146,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
 
         val glbBytes = glbFile.length()
-        validateGlbHeader(glbFile)?.let { validationError ->
+        BundledRoomAssetStore.validateGlb(glbFile)?.let { validationError ->
             val detail = "Invalid room GLB ($validationError) path=${glbFile.absolutePath} size=$glbBytes"
             LogUtil.e(TAG, detail)
             reportWebGlError(detail)
@@ -2214,36 +2213,32 @@ class GLBRoomActivity : AppCompatActivity() {
                 val failingUrl = request?.url?.toString().orEmpty()
                 LogUtil.e(TAG, "WebView resource error url=$failingUrl desc=${error?.description}")
             }
+
+            override fun onRenderProcessGone(
+                view: WebView,
+                detail: RenderProcessGoneDetail,
+            ): Boolean {
+                webViewRenderProcessGone = true
+                LogUtil.e(
+                    TAG,
+                    "WebView renderer exited didCrash=${detail.didCrash()} priority=${detail.rendererPriorityAtExit()}",
+                )
+                if (::rootLayout.isInitialized) rootLayout.removeView(view)
+                view.destroy()
+                if (!isFinishing && !isDestroyed) {
+                    Toast.makeText(
+                        this@GLBRoomActivity,
+                        R.string.room_viewer_preview_unavailable,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    finish()
+                }
+                // Returning true prevents a renderer-process loss from terminating the app.
+                return true
+            }
         }
 
         webView.loadUrl("https://appassets.androidplatform.net/glb/index.html")
-    }
-
-    /** Android room GLBs are plain glTF 2.0 + JPEG textures (GlbGenerator); no Draco/KTX2. */
-    private fun validateGlbHeader(glbFile: File): String? {
-        if (glbFile.length() < 12) {
-            return "file too small (${glbFile.length()} bytes)"
-        }
-        glbFile.inputStream().use { input ->
-            val header = ByteArray(12)
-            if (input.read(header) != 12) {
-                return "could not read GLB header"
-            }
-            val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
-            val magic = buffer.int
-            val version = buffer.int
-            val length = buffer.int
-            if (magic != GLB_MAGIC) {
-                return "bad magic 0x${magic.toUInt().toString(16)}"
-            }
-            if (version != GLB_VERSION) {
-                return "unsupported version $version"
-            }
-            if (length.toLong() != glbFile.length()) {
-                return "header length $length != file size ${glbFile.length()}"
-            }
-        }
-        return null
     }
 
     private fun reportWebGlError(message: String) {
@@ -2263,6 +2258,9 @@ class GLBRoomActivity : AppCompatActivity() {
         // @AppStorage("roomViewer.infiniteZoom").
         val infiniteZoomEnabled = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
             .getBoolean("infinite_zoom_enabled", false)
+        val maxPixelRatio = if (
+            getSystemService(ActivityManager::class.java)?.isLowRamDevice == true
+        ) 1.25 else 2.0
 
         // Three.js GLB viewer matching iOS GLBRoomView exactly
         return """
@@ -2669,7 +2667,7 @@ class GLBRoomActivity : AppCompatActivity() {
             return {
                 width: Math.max(visualViewport?.width ?? window.innerWidth, 1),
                 height: Math.max(visualViewport?.height ?? window.innerHeight, 1),
-                dpr: window.devicePixelRatio || 1,
+                dpr: Math.min(window.devicePixelRatio || 1, $maxPixelRatio),
             };
         }
 
@@ -3518,10 +3516,13 @@ class GLBRoomActivity : AppCompatActivity() {
         furnitureFitManager?.close()
         furnitureFitManager = null
         releaseFurnitureFitResourcesForViewerIfNeeded()
-        cameraExecutor.shutdown()
+        if (::cameraExecutor.isInitialized) cameraExecutor.shutdown()
         glbViewerCacheDir?.deleteRecursively()
         glbViewerCacheDir = null
-        webView.destroy()
+        if (::webView.isInitialized && !webViewRenderProcessGone) {
+            webView.stopLoading()
+            webView.destroy()
+        }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         super.onDestroy()
     }

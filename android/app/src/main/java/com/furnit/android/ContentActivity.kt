@@ -11,6 +11,7 @@ import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.theme.PaafektScreenViews
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.utils.BundledRoomAssetStore
 import com.furnit.android.utils.LogUtil
 import androidx.appcompat.app.AppCompatActivity
 import com.furnit.android.utils.WindowInsetsUtil
@@ -28,11 +29,15 @@ import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.lifecycleScope
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ContentActivity : AppCompatActivity() {
     private lateinit var modelManager: ModelManager
@@ -77,10 +82,12 @@ class ContentActivity : AppCompatActivity() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
         // Check authentication on resume
-        if (!authManager.isAuthenticated) {
+        if (!::authManager.isInitialized || !authManager.isAuthenticated) {
             navigateToLogin()
             return
         }
+
+        if (!::modelManager.isInitialized) return
 
         // Refresh models when returning to this activity
         modelManager.refresh()
@@ -613,10 +620,7 @@ class ContentActivity : AppCompatActivity() {
                     }
                 }
             } else {
-                LogUtil.d("ContentActivity", "Branch bundled: opening ModelDetailActivity with id=${clickedModel.id} (name=${clickedModel.name})")
-                val intent = Intent(this, ModelDetailActivity::class.java)
-                intent.putExtra("MODEL_ID", clickedModel.id)
-                startActivity(intent)
+                openBundledRoom(clickedModel)
             }
         }
 
@@ -630,6 +634,52 @@ class ContentActivity : AppCompatActivity() {
         }
 
         return card
+    }
+
+    private fun openBundledRoom(model: Model) {
+        lifecycleScope.launch {
+            try {
+                val stagedFile = withContext(Dispatchers.IO) {
+                    BundledRoomAssetStore.stage(
+                        context = applicationContext,
+                        roomId = model.id,
+                        assetPath = model.assetPath,
+                    )
+                }
+                if (isFinishing || isDestroyed) return@launch
+                LogUtil.d(
+                    "ContentActivity",
+                    "Branch bundled: staged ${model.id} for GLBRoomActivity (${stagedFile.length()} bytes)",
+                )
+                startActivity(Intent(this@ContentActivity, GLBRoomActivity::class.java).apply {
+                    putExtra(GLBRoomActivity.EXTRA_GLB_PATH, stagedFile.absolutePath)
+                    putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, model.name)
+                    putExtra(GLBRoomActivity.EXTRA_ROOM_ID, model.id)
+                    putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, false)
+                    model.roomWidth?.let { putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, it) }
+                    model.roomHeight?.let { putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                    model.roomDepth?.let {
+                        putExtra(GLBRoomActivity.EXTRA_ROOM_DEPTH, it)
+                        putExtra("ROOM_DEPTH", it)
+                    }
+                    putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, model.photoOrientation)
+                })
+            } catch (error: Exception) {
+                LogUtil.e("ContentActivity", "Could not stage bundled room ${model.id}", error)
+                if (!isFinishing && !isDestroyed) {
+                    Toast.makeText(
+                        this@ContentActivity,
+                        R.string.room_viewer_preview_unavailable,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    CrashReporter.report(
+                        this@ContentActivity,
+                        error,
+                        "Room library — open bundled room",
+                    )
+                }
+            }
+        }
     }
 
     private fun getFileSize(model: Model): String {

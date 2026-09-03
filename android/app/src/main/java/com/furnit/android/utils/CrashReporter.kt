@@ -90,38 +90,46 @@ object CrashReporter {
      */
     fun report(activity: AppCompatActivity, throwable: Throwable, userContext: String) {
         activity.runOnUiThread {
+            // A caught background/rendering error can arrive after navigation or teardown.
+            // Trying to attach an AlertDialog then throws BadTokenException and turns a
+            // handled failure into a process crash.
+            if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
             val body = buildHandledReportBody(activity, userContext, throwable)
-            AlertDialog.Builder(activity)
-                .setTitle(R.string.crash_report_title)
-                .setMessage(R.string.crash_report_message)
-                .setPositiveButton(R.string.crash_report_submit_report) { _, _ ->
-                    if (!sendReportEmail(
-                            activity,
-                            body,
-                            subject = activity.getString(
-                                R.string.crash_report_email_subject_context,
-                                userContext,
-                            ),
-                        )
-                    ) {
+            runCatching {
+                AlertDialog.Builder(activity)
+                    .setTitle(R.string.crash_report_title)
+                    .setMessage(R.string.crash_report_message)
+                    .setPositiveButton(R.string.crash_report_submit_report) { _, _ ->
+                        if (!sendReportEmail(
+                                activity,
+                                body,
+                                subject = activity.getString(
+                                    R.string.crash_report_email_subject_context,
+                                    userContext,
+                                ),
+                            )
+                        ) {
+                            Toast.makeText(
+                                activity,
+                                activity.getString(R.string.crash_report_email_not_configured_message),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            copyReportToClipboard(activity, body)
+                        }
+                    }
+                    .setNeutralButton(R.string.crash_report_copy_details) { _, _ ->
+                        copyReportToClipboard(activity, body)
                         Toast.makeText(
                             activity,
-                            activity.getString(R.string.crash_report_email_not_configured_message),
-                            Toast.LENGTH_LONG,
+                            activity.getString(R.string.crash_report_copy_details),
+                            Toast.LENGTH_SHORT,
                         ).show()
-                        copyReportToClipboard(activity, body)
                     }
-                }
-                .setNeutralButton(R.string.crash_report_copy_details) { _, _ ->
-                    copyReportToClipboard(activity, body)
-                    Toast.makeText(
-                        activity,
-                        activity.getString(R.string.crash_report_copy_details),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }.onFailure { error ->
+                LogUtil.e("CrashReporter", "Could not show handled-error dialog", error)
+            }
         }
     }
 }
